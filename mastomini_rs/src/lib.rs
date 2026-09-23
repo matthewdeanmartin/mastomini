@@ -1,0 +1,15 @@
+//! mastomini: a non-federating Mastodon-compatible server for one household.
+//!
+//! The library is transport-neutral: the desktop binary and (later) the
+//! ESP32 firmware feed requests into [`api::handle`] and persist through a
+//! [`store::Store`]. See `spec/` for the design.
+
+pub mod api;
+pub mod auth;
+pub mod captive;
+pub mod codec;
+pub mod domain;
+pub mod http;
+pub mod ids;
+pub mod store;
+pub mod text;

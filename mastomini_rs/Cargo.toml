@@ -1,0 +1,63 @@
+[package]
+name = "mastomini_rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+default-run = "mastomini"
+description = "A tiny, non-federating Mastodon-compatible server for one household, aimed at ESP32-S3"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+name = "mastomini"
+
+[[bin]]
+name = "mastomini"
+path = "src/bin/desktop.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "mastomini-esp32"
+path = "src/bin/esp32.rs"
+required-features = ["esp32"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tiny_http", "dep:fs2"]
+esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+base64 = "0.22"
+getrandom = "0.2"
+crc32fast = "1.4"
+unicode-segmentation = "1.12"
+form_urlencoded = "1.2"
+percent-encoding = "2.3"
+tiny_http = { version = "0.12", optional = true }
+fs2 = { version = "0.4", optional = true }
+log = { version = "0.4", optional = true }
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"] }
+
+[build-dependencies]
+embuild = { version = "0.33", optional = true, features = ["espidf"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.3"
+esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8.2" }
+bindings_header = "src/mdns_bindings.h"

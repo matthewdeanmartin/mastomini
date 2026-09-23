@@ -1,0 +1,113 @@
+//! Preferences, suggestions, and neutral answers for Tier 2/3 endpoints that
+//! clients call in passing (spec/04 "Tier 3"). Empty lists, never 404s, where
+//! a client polls them.
+
+use super::{entities, fail, Call, Reply};
+use crate::domain::Error;
+use crate::http::Response;
+use crate::store::Store;
+use serde_json::{json, Value};
+
+fn preferences<S: Store>(c: &Call<'_, S>) -> Reply {
+    let viewer = c.user_scoped("read:accounts")?;
+    let rec = &c
+        .svc
+        .state
+        .account(viewer)
+        .ok_or_else(|| fail(Error::NotFound))?
+        .rec;
+    Ok(Response::ok(json!({
+        "posting:default:visibility": rec.privacy.as_str(),
+        "posting:default:sensitive": rec.sensitive,
+        "posting:default:language": rec.language,
+        "posting:default:quote_policy": "nobody",
+        "reading:expand:media": "default",
+        "reading:expand:spoilers": false,
+        "reading:autoplay:gifs": false,
+    })))
+}
+
+/// Household members the viewer does not follow yet.
+fn not_followed<S: Store>(c: &Call<'_, S>, viewer: u8) -> Vec<Value> {
+    c.svc
+        .state
+        .active_accounts()
+        .filter(|a| a.slot != viewer && !c.svc.state.follows(viewer, a.slot) && !a.rec.disabled)
+        .map(|a| entities::account(c.svc, c.ctx, a))
+        .collect()
+}
+
+fn suggestions_v2<S: Store>(c: &Call<'_, S>) -> Reply {
+    let viewer = c.user()?;
+    let rows: Vec<Value> = not_followed(c, viewer)
+        .into_iter()
+        .map(|account| json!({ "source": "staff", "sources": ["featured"], "account": account }))
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+fn directory<S: Store>(c: &Call<'_, S>) -> Reply {
+    c.user()?;
+    let rows: Vec<Value> = c
+        .svc
+        .state
+        .active_accounts()
+        .filter(|a| a.rec.discoverable && !a.rec.disabled)
+        .map(|a| entities::account(c.svc, c.ctx, a))
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+fn notification_policy() -> Value {
+    json!({
+        "for_not_following": "accept",
+        "for_not_followers": "accept",
+        "for_new_accounts": "accept",
+        "for_private_mentions": "accept",
+        "for_limited_accounts": "accept",
+        "filter_not_following": false,
+        "filter_not_followers": false,
+        "filter_new_accounts": false,
+        "filter_private_mentions": false,
+        "summary": { "pending_requests_count": 0, "pending_notifications_count": 0 },
+    })
+}
+
+pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
+    let empty = |c: &Call<'_, S>| c.user().map(|_| Response::ok(json!([])));
+    Some(match (method, seg) {
+        ("GET", ["api", "v1", "preferences"]) => preferences(c),
+        ("GET", ["api", "v2", "suggestions"]) => suggestions_v2(c),
+        ("GET", ["api", "v1", "suggestions"]) => {
+            let viewer = match c.user() {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+            Ok(Response::ok(Value::Array(not_followed(c, viewer))))
+        }
+        ("DELETE", ["api", "v1", "suggestions", _]) => c.user().map(|_| Response::ok(json!({}))),
+        ("GET", ["api", "v1", "directory"]) => directory(c),
+        ("GET", ["api", "v1", "tags", name]) => c
+            .user()
+            .map(|_| Response::ok(entities::tag(c.ctx, &name.to_lowercase(), false))),
+        ("GET" | "PUT", ["api", "v1" | "v2", "notifications", "policy"]) => {
+            c.user().map(|_| Response::ok(notification_policy()))
+        }
+        // Tier 2, not yet implemented: empty lists so clients render nothing.
+        (
+            "GET",
+            ["api", "v1", "lists" | "filters" | "followed_tags" | "featured_tags" | "announcements"
+            | "follow_requests" | "blocks" | "mutes" | "domain_blocks" | "endorsements"
+            | "conversations" | "scheduled_statuses"]
+            | ["api", "v2", "filters"]
+            | ["api", "v1", "trends", ..]
+            | ["api", "v1", "featured_tags", "suggestions"]
+            | ["api", "v1", "timelines", "link"],
+        ) => empty(c),
+        ("POST", ["api", "v1" | "v2", "media"]) => Err(Response::error(
+            422,
+            "Media attachments are not supported on this server",
+        )),
+        _ => return None,
+    })
+}

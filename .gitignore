@@ -1,0 +1,13 @@
+/mastomini_rs/target/
+# Desktop store and its lock/compaction files
+*.store
+mastomini.lock
+*.compact
+.venv/
+__pycache__/
+.pytest_cache/
+/.local/
+.env
+/mastomini_rs/.embuild/
+.idea
+

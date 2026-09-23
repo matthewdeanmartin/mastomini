@@ -1,0 +1,9 @@
+# mastomini layout (spec/01-overview.md). Changing it requires a reviewed
+# migration: scripts/deploy.py refuses any other layout.
+# Name,    Type, SubType,  Offset,    Size
+nvs,       data, nvs,      0x9000,    0x6000
+phy_init,  data, phy,      0xf000,    0x1000
+factory,   app,  factory,  0x10000,   0x400000
+store,     data, nvs,      0x410000,  0x800000
+media,     data, spiffs,   0xC10000,  0x300000
+coredump,  data, coredump, 0xF10000,  0x10000

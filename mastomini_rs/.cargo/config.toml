@@ -1,0 +1,13 @@
+# Host builds stay the default; firmware builds select the Xtensa target
+# explicitly (scripts/build-esp32.sh). There is deliberately no `runner`:
+# only the reviewed scripts in DEPLOY.md write to a board.
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+# 64-bit time_t, required for SystemTime and snowflake ids past 2038.
+rustflags = ["--cfg", "espidf_time64"]
+
+[env]
+MCU = "esp32s3"
+# esp-idf-sys finds this crate's [package.metadata.esp-idf-sys] (the mDNS
+# component) through this; the short CARGO_TARGET_DIR would mislead it.
+CARGO_WORKSPACE_DIR = { value = "", relative = true }
