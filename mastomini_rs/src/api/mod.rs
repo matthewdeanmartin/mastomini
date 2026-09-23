@@ -1,12 +1,15 @@
 //! Mastodon REST API and the household admin API, over [`http`](crate::http)
 //! types so the same code serves the desktop build and the board.
 
+mod about;
 mod accounts;
+mod collections;
 pub mod entities;
 mod household;
 pub mod html;
 mod instance;
 mod misc;
+mod moderation;
 mod oauth;
 mod setup;
 mod statuses;
@@ -84,6 +87,9 @@ impl<S: Store> Call<'_, S> {
         let slot = principal
             .slot
             .ok_or_else(|| Response::error(422, "This method requires an authenticated user"))?;
+        if principal.disabled {
+            return Err(Response::error(403, "Your login is currently disabled"));
+        }
         if !principal.allows(needed) && !(needed == "read" && principal.allows("profile")) {
             return Err(Response::error(
                 403,
@@ -175,7 +181,10 @@ pub fn handle<S: Store>(
             )
             .with_header("Access-Control-Max-Age", "86400")
     } else {
-        dispatch(svc, ctx, req, now_ms)
+        let response = dispatch(svc, ctx, req, now_ms);
+        // The caller's direct-message key never outlives the request.
+        svc.close_session();
+        response
     };
     if cors(&req.path) {
         response = response
@@ -210,11 +219,15 @@ fn dispatch<S: Store>(
     if req.body.len() > limit {
         return Response::error(413, "Request body is too large");
     }
+    svc.tick(now);
     let params = match Params::parse(req) {
         Ok(p) => p,
         Err(e) => return Response::error(400, &e),
     };
     let principal = req.bearer().and_then(|t| svc.principal(t, now));
+    if let (Some(slot), Some(token)) = (principal.as_ref().and_then(|p| p.slot), req.bearer()) {
+        svc.open_session(slot, token);
+    }
     let mut call = Call {
         svc,
         ctx,
@@ -244,7 +257,16 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         | (_, ["api", "v1", "custom_emojis"]) => return instance::route(c, method, seg),
         (_, ["oauth", ..]) | (_, ["api", "v1", "apps", ..]) => return oauth::route(c, method, seg),
         (_, [] | ["setup", ..]) => return setup::route(c, method, seg),
+        (_, ["about" | "terms-of-service" | "terms" | "privacy-policy"]) => {
+            return about::route(c, method, seg)
+        }
+        (_, ["api", "v1", "accounts", _, "collections" | "in_collections"])
+        | (_, ["api", "v1", "collections", ..]) => return collections::route(c, method, seg),
         (_, ["api", "v1", "accounts", ..]) => return accounts::route(c, method, seg),
+        (_, ["api", "v1" | "v2", "admin", ..])
+        | (_, ["api", "v1", "blocks" | "mutes" | "reports"]) => {
+            return moderation::route(c, method, seg)
+        }
         (_, ["api", "v1", "statuses", ..]) => return statuses::route(c, method, seg),
         (_, ["api", "mastomini", "v1", ..]) => return household::route(c, method, &seg[3..]),
         (

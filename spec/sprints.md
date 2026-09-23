@@ -101,6 +101,52 @@ allocation tests, hardware measurements (gate H1), soak and power-cut runs.
   Not verified: joining a phone to `mastomini-setup` and completing the Wi-Fi
   form (the build PC's only network link is Wi-Fi). Needs a human with a phone.
 
+## Moderation, collections and mastodon_mock conformance (pulled forward from Sprint 5)
+
+- **Blocks and mutes** (persistent `B`/`M` edges), **conversation mutes**
+  (`m` reactions on the thread root), filtering in home/public/tag timelines,
+  threads, search, suggestions, directory and notifications; `Relationship` and
+  `Status.muted` are real. `remove_from_followers`.
+- **Reports** with `admin.report` notifications to every admin; **account
+  moderation** (disable, silence, suspend, sensitive, delete with a power-cut-safe
+  purge), roles, admin post deletion; the **Mastodon admin API** for accounts and
+  reports, gated on role and `admin:*` scopes; the matching household endpoints.
+  Disabled/suspended tokens answer `403` and recover when the action is undone.
+- **Collections** (Mastodon 4.6): CRUD, items, revoke, account listings,
+  `added_to_collection` notifications.
+- **Store schema 2**: new record kinds and namespaces only; a schema-1 store is
+  upgraded in place at boot (marker rewrite only).
+- Smaller Mastodon gaps found by the conformance suite: bulk
+  `GET /api/v1/accounts`, `familiar_followers` shape, `directory` ordering,
+  single grouped notification (fetch, accounts, dismiss), `for_bots` in the
+  notification policy, `/health`.
+- **`make conformance`**: mastodon_mock's contract suite, copied verbatim, run
+  against the desktop binary with real OAuth; deviations as data (spec/07).
+
+Evidence: Rust domain tests (block and account-deletion power cuts at every
+write, reboot round-trips, mute expiry, thread mutes, report capacity, slot
+reuse, schema upgrade, collection consent and limits) and API tests through the
+full request path; `make conformance`: 96 passed, 69 not applicable, 45 listed
+deviations, no unlisted failures.
+
+## About, terms, rules; encrypted direct messages
+
+- `/about`, `/terms-of-service`, `/privacy-policy` (server-rendered, no sign-in);
+  `GET /api/v1/instance/terms_of_service` (+ `/:date`), `/privacy_policy`,
+  `/extended_description` with a date; `configuration.urls` in v2. Three default
+  rules; generated terms and privacy policy; `GET/PUT /api/mastomini/v1/admin/server`
+  edits name, description, rules and terms.
+- Direct messages encrypted per participant (05 "Direct messages"): X25519 member
+  keys sealed by password and per device by token, ChaCha20-Poly1305 envelopes,
+  request-scoped unlocked keys. New records only; existing accounts get keys at
+  their next sign-in. Firmware grows by ~60 KiB.
+
+Evidence: crypto unit tests; API tests showing no DM text or content warning
+anywhere in the store, admins (even via reports) and the server without a token
+unable to read, keys surviving restart and password change, revocation removing a
+device seal, lazy keys for old accounts; a power-cut-at-every-write test for
+posting a DM.
+
 ## Known gaps carried forward
 
 | Gap | Planned |
@@ -109,7 +155,9 @@ allocation tests, hardware measurements (gate H1), soak and power-cut runs.
 | Avatar/header upload (`update_credentials` with files returns 422) | Sprint 4 |
 | Invites, reset codes, password change UI, devices list, household Angular app (first-time setup and adding members exist as plain HTML pages) | Sprint 4 |
 | Locked accounts are followed directly (no follow requests) | Sprint 5 |
-| Edits/history, lists, filters, blocks/mutes, conversations, followed tags | Sprint 5 |
-| Differential tests against `mastodon_mock`, OpenAPI schema validation | Sprint 5 |
+| Edits/history, lists, filters, conversations, followed tags (blocks/mutes are done) | Sprint 5 |
+| Notifications are never grouped; notification policy is always accept-all | By design / later |
+| Collections not advertised via `api_versions` (open question #16) | When a client uses them |
+| OpenAPI schema validation (differential tests against `mastodon_mock` are done) | Sprint 5 |
 | Streaming (instance advertises no streaming URL) | Later |
 | Desktop server handles one request at a time | Fine for development; board design uses a service mutex |

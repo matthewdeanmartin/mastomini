@@ -11,3 +11,5 @@ __pycache__/
 /mastomini_rs/.embuild/
 .idea
 
+# mkdocs output
+/site/

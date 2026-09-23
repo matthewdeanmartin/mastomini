@@ -47,7 +47,7 @@ impl Bounds {
         )
     }
 
-    fn contains(self, id: u64) -> bool {
+    pub(crate) fn contains(self, id: u64) -> bool {
         self.lower.is_none_or(|l| id > l) && self.upper.is_none_or(|u| id < u)
     }
 }
@@ -135,8 +135,16 @@ pub struct AccountStatusesQuery {
 
 impl<S: Store> Service<S> {
     /// Who may see a status (spec/04 "Visibility inside a household").
+    /// Nobody sees a suspended account's posts, and an author's block hides
+    /// their posts from the blocked account.
     pub fn can_see(&self, viewer: Option<u8>, status: &Status) -> bool {
         let author = status.rec.author;
+        if self.state.suspended(author) {
+            return false;
+        }
+        if viewer.is_some_and(|v| v != author && self.state.blocks(author, v)) {
+            return false;
+        }
         match (viewer, status.rec.visibility) {
             (_, Visibility::Public | Visibility::Unlisted) => true,
             (None, _) => false,
@@ -190,7 +198,39 @@ impl<S: Store> Service<S> {
     /// Mastodon's home rule: your posts and those of people you follow;
     /// replies only when you also follow (or are) the person replied to.
     pub fn in_home(&self, viewer: u8, entry: Entry) -> bool {
+        self.in_home_masked(viewer, entry, self.state.hidden_mask(viewer))
+    }
+
+    /// Timeline filter for blocks and mutes: the author, the booster, or
+    /// anyone mentioned is in `hidden` (Mastodon's feed filter).
+    fn hidden_entry(&self, entry: Entry, hidden: u16) -> bool {
+        if hidden == 0 {
+            return false;
+        }
+        let Some(s) = self.state.statuses.get(&entry.status_id()) else {
+            return true;
+        };
+        let booster = match entry {
+            Entry::Boost { id, .. } => self.state.boosts.get(&id).map_or(0, |b| bit(b.booster)),
+            Entry::Status(_) => 0,
+        };
+        (bit(s.rec.author) | booster | s.mentions) & hidden != 0
+    }
+
+    fn in_home_masked(&self, viewer: u8, entry: Entry, hidden: u16) -> bool {
         if !self.entry_visible(viewer, entry) {
+            return false;
+        }
+        // Your own posts may mention someone you muted; keep them.
+        let own = match entry {
+            Entry::Status(id) => self
+                .state
+                .statuses
+                .get(&id)
+                .is_some_and(|s| s.rec.author == viewer),
+            Entry::Boost { .. } => false,
+        };
+        if !own && self.hidden_entry(entry, hidden & !bit(viewer)) {
             return false;
         }
         match entry {
@@ -228,23 +268,40 @@ impl<S: Store> Service<S> {
     }
 
     pub fn home(&self, viewer: u8, q: &PageQuery) -> Vec<(u64, Entry)> {
+        let hidden = self.state.hidden_mask(viewer);
         paginate(q, |bounds, asc| {
             Box::new(
                 self.entries(bounds, asc)
-                    .filter(move |(_, e)| self.in_home(viewer, *e)),
+                    .filter(move |(_, e)| self.in_home_masked(viewer, *e, hidden)),
             )
         })
     }
 
-    /// Public (local) timeline: public posts only, no boosts.
-    pub fn public(&self, q: &PageQuery) -> Vec<(u64, Entry)> {
-        self.status_page(q, |s| s.rec.visibility == Visibility::Public)
+    /// Public and tag timelines leave out the viewer's blocks and mutes,
+    /// and silenced ("limited") accounts the viewer doesn't follow.
+    fn on_public(&self, viewer: u8, s: &Status, hidden: u16) -> bool {
+        let author = s.rec.author;
+        s.rec.visibility == Visibility::Public
+            && self.can_see(Some(viewer), s)
+            && (author == viewer || s.mentions & hidden & !bit(viewer) == 0)
+            && bit(author) & hidden == 0
+            && (author == viewer
+                || !self.state.silenced(author)
+                || self.state.follows(viewer, author))
     }
 
-    pub fn tag_timeline(&self, tag: &str, q: &PageQuery) -> Vec<(u64, Entry)> {
+    /// Public (local) timeline: public posts only, no boosts.
+    pub fn public(&self, viewer: u8, q: &PageQuery) -> Vec<(u64, Entry)> {
+        let hidden = self.state.hidden_mask(viewer);
+        self.status_page(q, move |s| self.on_public(viewer, s, hidden))
+    }
+
+    pub fn tag_timeline(&self, viewer: u8, tag: &str, q: &PageQuery) -> Vec<(u64, Entry)> {
         let tag = tag.to_lowercase();
-        self.status_page(q, |s| {
-            s.rec.visibility == Visibility::Public && s.tags.contains(&tag)
+        let hidden = self.state.hidden_mask(viewer);
+        let tag = &tag;
+        self.status_page(q, move |s| {
+            s.tags.contains(tag) && self.on_public(viewer, s, hidden)
         })
     }
 
@@ -354,6 +411,8 @@ impl<S: Store> Service<S> {
                 && !exclude.iter().any(|t| t == n.kind.as_str())
                 && from.is_none_or(|f| n.from == f)
                 && self.state.account(n.from).is_some()
+                && (n.kind == NotificationKind::AdminReport
+                    || self.wants_notification(viewer, n.from, n.status))
                 && n.status
                     .is_none_or(|s| self.visible(Some(viewer), s).is_some())
         };
@@ -383,14 +442,19 @@ impl<S: Store> Service<S> {
     /// descendants in reply order.
     pub fn context(&self, viewer: Option<u8>, id: u64) -> Option<(Vec<u64>, Vec<u64>)> {
         let status = self.visible(viewer, id)?;
+        let hides = |s: &Status| viewer.is_some_and(|v| self.state.hides(v, s.rec.author));
         let mut ancestors = Vec::new();
         let mut parent = status.rec.in_reply_to_id;
+        let mut depth = 0;
         while let Some(p) = parent {
             let Some(s) = self.visible(viewer, p) else {
                 break;
             };
-            ancestors.push(p);
-            if ancestors.len() >= MAX_ANCESTORS {
+            if !hides(s) {
+                ancestors.push(p);
+            }
+            depth += 1;
+            if depth >= MAX_ANCESTORS {
                 break;
             }
             parent = s.rec.in_reply_to_id;
@@ -405,7 +469,9 @@ impl<S: Store> Service<S> {
             if s.rec.in_reply_to_id.is_some_and(|p| thread.contains(&p)) && self.can_see(viewer, s)
             {
                 thread.push(*sid);
-                descendants.push(*sid);
+                if !hides(s) {
+                    descendants.push(*sid);
+                }
             }
         }
         Some((ancestors, descendants))
@@ -420,7 +486,11 @@ impl<S: Store> Service<S> {
             .statuses
             .values()
             .rev()
-            .filter(|s| self.can_see(Some(viewer), s) && s.rec.text.to_lowercase().contains(&q))
+            .filter(|s| {
+                self.can_see(Some(viewer), s)
+                    && !self.state.hides(viewer, s.rec.author)
+                    && s.rec.text.to_lowercase().contains(&q)
+            })
             .map(|s| s.rec.id)
             .take(limit)
             .collect()

@@ -21,6 +21,15 @@ pub enum Kind {
     Boost = 7,
     Reaction = 8,
     Follow = 9,
+    Block = 10,
+    Mute = 11,
+    AccountMod = 12,
+    Report = 13,
+    Collection = 14,
+    Terms = 15,
+    UserKey = 16,
+    TokenKey = 17,
+    Dm = 18,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

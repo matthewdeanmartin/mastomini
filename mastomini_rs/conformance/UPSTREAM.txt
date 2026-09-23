@@ -1,0 +1,2 @@
+mastodon_mock tests copied verbatim from commit e09c035725b5dfdbc8bf2b8efce633d06cc35fed 2026-09-19
+Files: 25. Re-sync with sync_upstream.py; never edit tests/ by hand.

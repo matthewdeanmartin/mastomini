@@ -356,7 +356,7 @@ fn home_timeline_follows_mastodon_rules() {
     );
     assert!(!home.contains(&Entry::Status(bob_to_carol)));
 
-    let public = svc.public(&PageQuery::default());
+    let public = svc.public(0, &PageQuery::default());
     assert_eq!(public.len(), 4);
 }
 
@@ -434,3 +434,7 @@ fn idempotency_key_returns_same_status() {
     assert_eq!(a, b);
     assert_eq!(svc.state.statuses.len(), 1);
 }
+
+mod collections;
+mod dm;
+mod moderation;

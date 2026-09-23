@@ -93,6 +93,7 @@ impl<S: Store> Service<S> {
         };
         self.put(Ns::Acct, &keys::account(slot), Kind::Account, &rec)?;
         self.state.accounts[slot as usize] = Some(Account { slot, rec });
+        self.create_user_key(slot, &member.password)?;
         Ok(slot)
     }
 
@@ -227,7 +228,7 @@ impl<S: Store> Service<S> {
         let found = self
             .state
             .account_by_username(&name)
-            .filter(|a| !a.rec.disabled)
+            .filter(|a| !a.rec.disabled && !self.state.suspended(a.slot))
             .filter(|a| a.rec.verifier.verify(password))
             .map(|a| a.slot);
         match found {
@@ -275,6 +276,7 @@ impl<S: Store> Service<S> {
         if let Some(a) = self.state.accounts[slot as usize].as_mut() {
             a.rec = rec;
         }
+        self.reseal_user_key(slot, current, new)?;
         // The epoch already invalidated them; erasing is tidy-up that boot
         // would otherwise do.
         let stale: Vec<[u8; 32]> = self
@@ -284,11 +286,8 @@ impl<S: Store> Service<S> {
             .filter(|t| t.rec.slot == slot && t.rec.epoch != epoch)
             .map(|t| t.rec.hash)
             .collect();
-        self.state
-            .tokens
-            .retain(|t| !(t.rec.slot == slot && t.rec.epoch != epoch));
         for hash in stale {
-            self.erase(Ns::Tok, &keys::token(&hash))?;
+            self.forget_token(&hash)?;
         }
         Ok(())
     }

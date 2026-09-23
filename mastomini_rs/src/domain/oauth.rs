@@ -20,15 +20,22 @@ pub struct Principal {
     pub slot: Option<u8>,
     pub app_id: u64,
     pub scopes: Vec<String>,
+    /// The account is disabled or suspended: the token is valid but every
+    /// user endpoint answers 403, as Mastodon does.
+    pub disabled: bool,
 }
 
 impl Principal {
-    /// True if the token grants `needed` (e.g. `read`, `write:statuses`).
-    /// A parent scope covers its children; `read`/`write` also cover `follow`.
+    /// True if the token grants `needed` (e.g. `read`, `write:statuses`,
+    /// `admin:read:accounts`). A scope covers its children (`admin:read`
+    /// covers `admin:read:reports`); `read`/`write` also cover `follow`.
     pub fn allows(&self, needed: &str) -> bool {
-        let parent = needed.split(':').next().unwrap_or(needed);
         self.scopes.iter().any(|s| {
-            s == needed || s == parent || (parent == "follow" && (s == "read" || s == "write"))
+            s == needed
+                || needed
+                    .strip_prefix(s.as_str())
+                    .is_some_and(|rest| rest.starts_with(':'))
+                || (needed == "follow" && (s == "read" || s == "write"))
         })
     }
 }
@@ -43,8 +50,12 @@ pub struct AuthCodeGrant {
 }
 
 fn valid_scope(scope: &str) -> bool {
-    let parent = scope.split(':').next().unwrap_or(scope);
-    matches!(parent, "read" | "write") || KNOWN_SCOPES.contains(&scope)
+    let mut parts = scope.split(':');
+    match (parts.next(), parts.next()) {
+        (Some("read" | "write"), _) => true,
+        (Some("admin"), Some("read" | "write")) => parts.count() <= 1,
+        _ => KNOWN_SCOPES.contains(&scope),
+    }
 }
 
 /// Parse a space-separated scope string. Empty means `read`, as in Mastodon.
@@ -70,6 +81,7 @@ fn scopes_within(requested: &[String], granted: &[String]) -> bool {
         slot: None,
         app_id: 0,
         scopes: granted.to_vec(),
+        disabled: false,
     };
     requested.iter().all(|s| principal.allows(s))
 }
@@ -175,6 +187,9 @@ impl<S: Store> Service<S> {
     ) -> Result<String> {
         let app_id = self.check_authorize_request(grant)?.id;
         let slot = self.check_password(username, password, now_ms)?;
+        // Without a key the member can still sign in; their direct messages
+        // just stay locked on this device.
+        let secret = self.unlock(slot, password).ok().map(Held);
         self.state.codes.retain(|c| c.expires_ms > now_ms);
         if self.state.codes.len() >= MAX_CODES {
             return Err(Error::TooMany(
@@ -190,6 +205,7 @@ impl<S: Store> Service<S> {
             scopes: grant.scopes.clone(),
             challenge: grant.code_challenge.clone(),
             expires_ms: now_ms + auth::CODE_TTL_MS,
+            secret,
         });
         Ok(code)
     }
@@ -240,6 +256,9 @@ impl<S: Store> Service<S> {
             return invalid("invalid_grant");
         }
         let token = self.issue_token(pending.slot, app_id, pending.scopes.clone(), now_ms)?;
+        if let Some(Held(secret)) = &pending.secret {
+            self.seal_for_token(pending.slot, &token, secret)?;
+        }
         Ok((token, pending.scopes))
     }
 
@@ -279,8 +298,7 @@ impl<S: Store> Service<S> {
             let Some(hash) = victim.map(|t| t.rec.hash) else {
                 break;
             };
-            self.erase(Ns::Tok, &keys::token(&hash))?;
-            self.state.tokens.retain(|t| t.rec.hash != hash);
+            self.forget_token(&hash)?;
         }
         let token = auth::random_secret();
         let rec = TokenRec {
@@ -325,8 +343,7 @@ impl<S: Store> Service<S> {
         let hash = sha256(token);
         self.state.app_tokens.retain(|t| t.hash != hash);
         if self.state.tokens.iter().any(|t| t.rec.hash == hash) {
-            self.erase(Ns::Tok, &keys::token(&hash))?;
-            self.state.tokens.retain(|t| t.rec.hash != hash);
+            self.forget_token(&hash)?;
         }
         Ok(())
     }
@@ -344,6 +361,7 @@ impl<S: Store> Service<S> {
                 slot: None,
                 app_id: t.app_id,
                 scopes: t.scopes.clone(),
+                disabled: false,
             });
         }
         let state = &mut self.state;
@@ -352,15 +370,19 @@ impl<S: Store> Service<S> {
             .iter_mut()
             .find(|t| auth::ct_eq(&t.rec.hash, &hash))?;
         let account = state.accounts[token.rec.slot as usize].as_ref()?;
-        if account.rec.deleted || account.rec.disabled || account.rec.token_epoch != token.rec.epoch
-        {
+        if account.rec.deleted || account.rec.token_epoch != token.rec.epoch {
             return None;
         }
+        let disabled = account.rec.disabled;
         token.last_used_ms = now_ms;
+        let slot = token.rec.slot;
+        let app_id = token.rec.app_id;
+        let scopes = token.rec.scopes.clone();
         Some(Principal {
-            slot: Some(token.rec.slot),
-            app_id: token.rec.app_id,
-            scopes: token.rec.scopes.clone(),
+            slot: Some(slot),
+            app_id,
+            scopes,
+            disabled: disabled || self.state.suspended(slot),
         })
     }
 }

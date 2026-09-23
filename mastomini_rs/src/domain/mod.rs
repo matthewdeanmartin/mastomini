@@ -5,9 +5,13 @@
 //! interrupt is finished by [`Service::open`] (spec/02-storage.md).
 
 mod accounts;
+mod collections;
+mod dm;
+mod moderation;
 mod oauth;
 pub mod query;
 pub mod records;
+mod server;
 mod statuses;
 
 use crate::codec::{self, Kind};
@@ -18,7 +22,11 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
 pub use accounts::{NewMember, ProfileUpdate};
+pub use collections::{CollectionUpdate, NewCollection};
+pub use dm::{Held, UserKeyRec, LOCKED_TEXT};
+pub use moderation::{AdminAction, NewReport};
 pub use oauth::{parse_scopes, AuthCodeGrant, Principal, KNOWN_SCOPES, OOB};
+pub use server::ServerUpdate;
 pub use statuses::NewStatus;
 
 pub const MAX_ACCOUNTS: usize = 16;
@@ -34,13 +42,19 @@ pub const MAX_APP_TOKENS: usize = 32;
 pub const MAX_NOTIFICATIONS: usize = 512;
 pub const MAX_IDEMPOTENCY: usize = 256;
 pub const IDEMPOTENCY_MS: u64 = 60 * 60 * 1000;
+/// Reports kept in flash. At the limit the oldest resolved one is dropped.
+pub const MAX_REPORTS: usize = 32;
+pub const MAX_COLLECTIONS_PER_ACCOUNT: usize = 8;
 /// Evict before the store passes this fraction of its entries.
 pub const LOW_WATERMARK: f32 = 0.80;
 /// Flash write governor (spec/02 "Flash write governor").
 pub const GOVERNOR_PER_ACCOUNT_HOUR: u32 = 120;
 pub const GOVERNOR_GLOBAL_HOUR: u32 = 600;
 const HOUR_MS: u64 = 60 * 60 * 1000;
-pub const SCHEMA: u16 = 1;
+/// 2: blocks, mutes, conversation mutes, moderation, reports, collections.
+/// A schema-1 store is upgraded in place at boot (only the marker changes),
+/// so older firmware refuses the store instead of misreading new records.
+pub const SCHEMA: u16 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -105,6 +119,9 @@ pub struct Status {
     pub bookmarked: u16,
     pub pinned: u16,
     pub boosted: u16,
+    /// Accounts that muted the conversation, recorded on the status they
+    /// muted (the thread root when it was still there).
+    pub muted: u16,
     pub replies: u32,
 }
 
@@ -113,6 +130,8 @@ pub enum ReactionKind {
     Favourite,
     Bookmark,
     Pin,
+    /// Conversation mute (`POST /api/v1/statuses/:id/mute`).
+    Mute,
 }
 
 impl ReactionKind {
@@ -121,6 +140,7 @@ impl ReactionKind {
             ReactionKind::Favourite => b'f',
             ReactionKind::Bookmark => b'b',
             ReactionKind::Pin => b'p',
+            ReactionKind::Mute => b'm',
         }
     }
 
@@ -129,6 +149,7 @@ impl ReactionKind {
             b'f' => Some(ReactionKind::Favourite),
             b'b' => Some(ReactionKind::Bookmark),
             b'p' => Some(ReactionKind::Pin),
+            b'm' => Some(ReactionKind::Mute),
             _ => None,
         }
     }
@@ -147,6 +168,10 @@ pub enum NotificationKind {
     Favourite,
     Reblog,
     Follow,
+    /// To every admin; `object` is the report id.
+    AdminReport,
+    /// To a featured account; `object` is the collection id.
+    AddedToCollection,
 }
 
 impl NotificationKind {
@@ -156,6 +181,8 @@ impl NotificationKind {
             NotificationKind::Favourite => "favourite",
             NotificationKind::Reblog => "reblog",
             NotificationKind::Follow => "follow",
+            NotificationKind::AdminReport => "admin.report",
+            NotificationKind::AddedToCollection => "added_to_collection",
         }
     }
 }
@@ -168,6 +195,8 @@ pub struct Notification {
     pub to: u8,
     pub from: u8,
     pub status: Option<u64>,
+    /// Report or collection id, depending on `kind`.
+    pub object: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -192,6 +221,9 @@ struct AuthCode {
     scopes: Vec<String>,
     challenge: Option<String>,
     expires_ms: u64,
+    /// The member's secret, unlocked by the password on the sign-in form,
+    /// to seal for the token this code turns into.
+    secret: Option<Held>,
 }
 
 /// App-only tokens from `client_credentials` are ephemeral.
@@ -213,6 +245,7 @@ struct Governor {
 #[derive(Debug, Default)]
 pub struct State {
     pub server: ServerRec,
+    pub terms: Option<TermsRec>,
     pub provisioned: bool,
     pub accounts: [Option<Account>; MAX_ACCOUNTS],
     pub apps: BTreeMap<u64, AppRec>,
@@ -224,6 +257,22 @@ pub struct State {
     pub reactions: BTreeMap<u64, Reaction>,
     reaction_ids: BTreeMap<(ReactionKind, u64, u8), u64>,
     pub follows: BTreeMap<(u8, u8), FollowRec>,
+    /// (blocker, blocked)
+    pub blocks: BTreeMap<(u8, u8), BlockRec>,
+    /// (muter, muted)
+    pub mutes: BTreeMap<(u8, u8), MuteRec>,
+    pub moderation: [Option<AccountModRec>; MAX_ACCOUNTS],
+    pub reports: BTreeMap<u64, ReportRec>,
+    pub collections: BTreeMap<u64, CollectionRec>,
+    /// Wall clock of the request being handled, for mute expiry.
+    pub now_ms: u64,
+    pub user_keys: [Option<UserKeyRec>; MAX_ACCOUNTS],
+    /// Device seals by their `mm_key` key (`w` + token key suffix).
+    pub token_seals: BTreeMap<Key, crate::crypto::Sealed>,
+    /// Envelopes of direct messages, by status id.
+    pub dms: BTreeMap<u64, crate::crypto::Envelope>,
+    /// The caller's unlocked secret, for the current request only.
+    pub session: Option<(u8, Held)>,
     pub notifications: VecDeque<Notification>,
     /// Per account: [home, notifications].
     pub markers: [[Option<Marker>; 2]; MAX_ACCOUNTS],
@@ -264,6 +313,55 @@ impl State {
         self.follows.contains_key(&(src, dst))
     }
 
+    pub fn blocks(&self, src: u8, dst: u8) -> bool {
+        self.blocks.contains_key(&(src, dst))
+    }
+
+    /// Either account blocks the other.
+    pub fn blocked_either(&self, a: u8, b: u8) -> bool {
+        self.blocks(a, b) || self.blocks(b, a)
+    }
+
+    /// An unexpired mute of `dst` by `src`.
+    pub fn mute(&self, src: u8, dst: u8) -> Option<&MuteRec> {
+        self.mutes
+            .get(&(src, dst))
+            .filter(|m| m.expires_ms.is_none_or(|e| e > self.now_ms))
+    }
+
+    /// Should `viewer` not see `author` in timelines, threads and
+    /// notifications: blocked either way, or muted by the viewer.
+    pub fn hides(&self, viewer: u8, author: u8) -> bool {
+        viewer != author
+            && (self.blocked_either(viewer, author) || self.mute(viewer, author).is_some())
+    }
+
+    /// Moderation state of a live account (all clear if none recorded).
+    pub fn moderation(&self, slot: u8) -> AccountModRec {
+        let id = self.account(slot).map(|a| a.rec.id);
+        self.moderation
+            .get(slot as usize)
+            .copied()
+            .flatten()
+            .filter(|m| Some(m.account_id) == id)
+            .unwrap_or_default()
+    }
+
+    pub fn suspended(&self, slot: u8) -> bool {
+        self.moderation(slot).suspended_ms.is_some()
+    }
+
+    pub fn silenced(&self, slot: u8) -> bool {
+        self.moderation(slot).silenced
+    }
+
+    /// Mask of accounts `viewer` blocks, is blocked by, or mutes.
+    pub fn hidden_mask(&self, viewer: u8) -> u16 {
+        (0..MAX_ACCOUNTS as u8)
+            .filter(|s| self.hides(viewer, *s))
+            .fold(0, |m, s| m | bit(s))
+    }
+
     fn mention_mask(&self, ids: &[u64]) -> u16 {
         ids.iter()
             .filter_map(|id| self.slot_of(*id))
@@ -292,6 +390,9 @@ pub(crate) mod keys {
     pub fn server() -> Key {
         Key::new("server").expect("static key")
     }
+    pub fn terms() -> Key {
+        Key::new("terms").expect("static key")
+    }
     pub fn account(slot: u8) -> Key {
         Key::from_parts(&[b"a", &[hex(slot)]]).expect("static key")
     }
@@ -317,6 +418,32 @@ pub(crate) mod keys {
     }
     pub fn follow(src: u8, dst: u8) -> Key {
         Key::from_parts(&[b"F", &[hex(src)], &[hex(dst)]]).expect("fits")
+    }
+    pub fn block(src: u8, dst: u8) -> Key {
+        Key::from_parts(&[b"B", &[hex(src)], &[hex(dst)]]).expect("fits")
+    }
+    pub fn mute(src: u8, dst: u8) -> Key {
+        Key::from_parts(&[b"M", &[hex(src)], &[hex(dst)]]).expect("fits")
+    }
+    pub fn account_mod(slot: u8) -> Key {
+        Key::from_parts(&[b"m", &[hex(slot)]]).expect("fits")
+    }
+    pub fn report(id: u64) -> Key {
+        Key::from_parts(&[b"R", &ids::b32(id)]).expect("fits")
+    }
+    pub fn collection(id: u64) -> Key {
+        Key::from_parts(&[b"c", &ids::b32(id)]).expect("fits")
+    }
+    pub fn user_key(slot: u8) -> Key {
+        Key::from_parts(&[b"k", &[hex(slot)]]).expect("fits")
+    }
+    /// The device seal for a token: `w` + the token key's suffix.
+    pub fn token_seal(hash: &[u8; 32]) -> Key {
+        let token = token(hash);
+        Key::from_parts(&[b"w", &token.as_str().as_bytes()[1..]]).expect("fits")
+    }
+    pub fn dm(id: u64) -> Key {
+        Key::from_parts(&[b"d", &ids::b32(id)]).expect("fits")
     }
 }
 
@@ -357,6 +484,10 @@ impl<S: Store> Service<S> {
                     )));
                 }
                 state.provisioned = true;
+                if schema < SCHEMA {
+                    let marker = codec::encode(Kind::Schema, &SCHEMA)?;
+                    store.set(Ns::Cfg, &keys::schema(), &marker)?;
+                }
             }
             None => {
                 // Without the schema marker the only legitimate leftovers are
@@ -366,7 +497,7 @@ impl<S: Store> Service<S> {
                 let accounts = load(&mut store, Ns::Acct)?;
                 let others = Ns::ALL
                     .iter()
-                    .filter(|ns| !matches!(ns, Ns::Cfg | Ns::Acct))
+                    .filter(|ns| !matches!(ns, Ns::Cfg | Ns::Acct | Ns::Key))
                     .try_fold(0, |n, ns| load(&mut store, *ns).map(|v| n + v.len()))?;
                 let only_owner = accounts.len() <= 1
                     && accounts.iter().all(|(_, bytes)| {
@@ -382,6 +513,10 @@ impl<S: Store> Service<S> {
                     store.erase(Ns::Acct, &key)?;
                     state.repairs += 1;
                 }
+                for (key, _) in load(&mut store, Ns::Key)? {
+                    store.erase(Ns::Key, &key)?;
+                    state.repairs += 1;
+                }
                 for (key, _) in cfg {
                     store.erase(Ns::Cfg, &key)?;
                     state.repairs += 1;
@@ -390,6 +525,9 @@ impl<S: Store> Service<S> {
         }
         if let Some(bytes) = store.get(Ns::Cfg, &keys::server())? {
             state.server = codec::decode(Kind::Server, &bytes)?;
+        }
+        if let Some(bytes) = store.get(Ns::Cfg, &keys::terms())? {
+            state.terms = Some(codec::decode(Kind::Terms, &bytes)?);
         }
 
         for (key, bytes) in load(&mut store, Ns::Acct)? {
@@ -431,6 +569,7 @@ impl<S: Store> Service<S> {
             }
         }
 
+        let mut envelopes = Vec::new();
         for (key, bytes) in load(&mut store, Ns::Stat)? {
             match key.as_str().as_bytes().first() {
                 Some(b's') => {
@@ -450,6 +589,7 @@ impl<S: Store> Service<S> {
                             bookmarked: 0,
                             pinned: 0,
                             boosted: 0,
+                            muted: 0,
                             replies: 0,
                             rec,
                         },
@@ -460,7 +600,25 @@ impl<S: Store> Service<S> {
                     idgen.observe(rec.id);
                     state.boosts.insert(rec.id, rec);
                 }
+                Some(b'd') => {
+                    let envelope: crate::crypto::Envelope = codec::decode(Kind::Dm, &bytes)?;
+                    let id = key
+                        .as_str()
+                        .get(1..)
+                        .and_then(ids::from_b32)
+                        .ok_or_else(|| corrupt(&key, "bad status id"))?;
+                    envelopes.push((key, id, envelope));
+                }
                 _ => return Err(corrupt(&key, "unexpected key")),
+            }
+        }
+        // The status record is the commit point; an envelope without one
+        // is from an interrupted post or delete.
+        for (key, id, envelope) in envelopes {
+            if state.statuses.contains_key(&id) {
+                state.dms.insert(id, envelope);
+            } else {
+                repairs.push((Ns::Stat, key));
             }
         }
         // Derived fields need every status loaded first.
@@ -515,6 +673,7 @@ impl<S: Store> Service<S> {
                         ReactionKind::Favourite => &mut status.favourited,
                         ReactionKind::Bookmark => &mut status.bookmarked,
                         ReactionKind::Pin => &mut status.pinned,
+                        ReactionKind::Mute => &mut status.muted,
                     };
                     *mask |= bit(parsed.slot);
                     state.reactions.insert(rec.id, parsed);
@@ -527,20 +686,126 @@ impl<S: Store> Service<S> {
         }
 
         for (key, bytes) in load(&mut store, Ns::Rel)? {
-            let rec: FollowRec = codec::decode(Kind::Follow, &bytes)?;
             let k = key.as_str().as_bytes();
-            let (src, dst) = match k {
-                [b'F', s, d] => (
+            let (kind, src, dst) = match k {
+                [kind @ (b'F' | b'B' | b'M'), s, d] => (
+                    *kind,
                     unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
                     unhex(*d).ok_or_else(|| corrupt(&key, "bad slot"))?,
                 ),
                 _ => return Err(corrupt(&key, "unexpected key")),
             };
-            idgen.observe(rec.id);
-            if state.account(src).is_some() && state.account(dst).is_some() && src != dst {
-                state.follows.insert((src, dst), rec);
-            } else {
+            let live = state.account(src).is_some() && state.account(dst).is_some() && src != dst;
+            match kind {
+                b'F' => {
+                    let rec: FollowRec = codec::decode(Kind::Follow, &bytes)?;
+                    idgen.observe(rec.id);
+                    if live {
+                        state.follows.insert((src, dst), rec);
+                    }
+                }
+                b'B' => {
+                    let rec: BlockRec = codec::decode(Kind::Block, &bytes)?;
+                    idgen.observe(rec.id);
+                    if live {
+                        state.blocks.insert((src, dst), rec);
+                    }
+                }
+                _ => {
+                    let rec: MuteRec = codec::decode(Kind::Mute, &bytes)?;
+                    idgen.observe(rec.id);
+                    if live {
+                        state.mutes.insert((src, dst), rec);
+                    }
+                }
+            }
+            if !live {
                 repairs.push((Ns::Rel, key));
+            }
+        }
+        // A block commits first; the follows it ends are erased after it.
+        let blocked: Vec<(u8, u8)> = state.blocks.keys().copied().collect();
+        for (a, b) in blocked {
+            for (src, dst) in [(a, b), (b, a)] {
+                if state.follows.remove(&(src, dst)).is_some() {
+                    repairs.push((Ns::Rel, keys::follow(src, dst)));
+                }
+            }
+        }
+
+        for (key, bytes) in load(&mut store, Ns::Mod)? {
+            match key.as_str().as_bytes() {
+                [b'm', h] => {
+                    let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let rec: AccountModRec = codec::decode(Kind::AccountMod, &bytes)?;
+                    let owner = state.account(slot).map(|a| a.rec.id);
+                    if owner == Some(rec.account_id) {
+                        state.moderation[slot as usize] = Some(rec);
+                    } else {
+                        repairs.push((Ns::Mod, key));
+                    }
+                }
+                [b'R', ..] => {
+                    let rec: ReportRec = codec::decode(Kind::Report, &bytes)?;
+                    if keys::report(rec.id) != key {
+                        return Err(corrupt(&key, "id does not match key"));
+                    }
+                    idgen.observe(rec.id);
+                    if state.account(rec.reporter).is_some() && state.account(rec.target).is_some()
+                    {
+                        state.reports.insert(rec.id, rec);
+                    } else {
+                        repairs.push((Ns::Mod, key));
+                    }
+                }
+                _ => return Err(corrupt(&key, "unexpected key")),
+            }
+        }
+
+        for (key, bytes) in load(&mut store, Ns::Coll)? {
+            let mut rec: CollectionRec = codec::decode(Kind::Collection, &bytes)?;
+            if keys::collection(rec.id) != key {
+                return Err(corrupt(&key, "id does not match key"));
+            }
+            idgen.observe(rec.id);
+            for item in &rec.items {
+                idgen.observe(item.id);
+            }
+            if state.account(rec.owner).is_none() {
+                repairs.push((Ns::Coll, key));
+                continue;
+            }
+            // Items naming deleted accounts are dropped from RAM; the record
+            // loses them the next time the collection is written.
+            rec.items
+                .retain(|i| state.account_by_id(i.account_id).is_some());
+            state.collections.insert(rec.id, rec);
+        }
+
+        for (key, bytes) in load(&mut store, Ns::Key)? {
+            match key.as_str().as_bytes() {
+                [b'k', h] => {
+                    let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let rec: UserKeyRec = codec::decode(Kind::UserKey, &bytes)?;
+                    if state.account(slot).map(|a| a.rec.id) == Some(rec.account_id) {
+                        state.user_keys[slot as usize] = Some(rec);
+                    } else {
+                        repairs.push((Ns::Key, key));
+                    }
+                }
+                [b'w', ..] => {
+                    let sealed: crate::crypto::Sealed = codec::decode(Kind::TokenKey, &bytes)?;
+                    let live = state
+                        .tokens
+                        .iter()
+                        .any(|t| keys::token_seal(&t.rec.hash) == key);
+                    if live {
+                        state.token_seals.insert(key, sealed);
+                    } else {
+                        repairs.push((Ns::Key, key));
+                    }
+                }
+                _ => return Err(corrupt(&key, "unexpected key")),
             }
         }
 
@@ -578,6 +843,8 @@ impl<S: Store> Service<S> {
         let s = &self.state;
         let fail = |what: &str| Err(StoreError::Corrupt(format!("invariant: {what}")));
         if s.statuses.len() > MAX_STATUSES
+            || s.reports.len() > MAX_REPORTS
+            || s.collections.len() > MAX_COLLECTIONS_PER_ACCOUNT * MAX_ACCOUNTS
             || s.boosts.len() > MAX_BOOSTS
             || s.reactions.len() > MAX_REACTIONS
             || s.apps.len() > MAX_APPS
@@ -632,6 +899,11 @@ impl<S: Store> Service<S> {
 
     pub(crate) fn next_id(&mut self, now_ms: u64) -> u64 {
         self.ids.next(now_ms)
+    }
+
+    /// Record the wall clock of the request being handled (mute expiry).
+    pub fn tick(&mut self, now_ms: u64) {
+        self.state.now_ms = now_ms;
     }
 
     fn map_store_error(&mut self, e: StoreError) -> Error {
@@ -754,7 +1026,37 @@ impl<S: Store> Service<S> {
         status: Option<u64>,
         now_ms: u64,
     ) {
-        if to == from {
+        self.notify_about(kind, to, from, status, None, now_ms);
+    }
+
+    /// Would `to` accept a notification from `from` (about `status`)?
+    /// Blocks, notification mutes, muted threads, suspended senders, and
+    /// silenced senders `to` doesn't follow all say no.
+    pub fn wants_notification(&self, to: u8, from: u8, status: Option<u64>) -> bool {
+        let s = &self.state;
+        if to == from || s.blocked_either(to, from) || s.suspended(from) {
+            return false;
+        }
+        if s.mute(to, from).is_some_and(|m| m.notifications) {
+            return false;
+        }
+        if s.silenced(from) && !s.follows(to, from) {
+            return false;
+        }
+        status.is_none_or(|id| !self.thread_muted(to, id))
+    }
+
+    pub(crate) fn notify_about(
+        &mut self,
+        kind: NotificationKind,
+        to: u8,
+        from: u8,
+        status: Option<u64>,
+        object: Option<u64>,
+        now_ms: u64,
+    ) {
+        let staff = kind == NotificationKind::AdminReport;
+        if to == from || (!staff && !self.wants_notification(to, from, status)) {
             return;
         }
         if self.state.notifications.len() >= MAX_NOTIFICATIONS {
@@ -767,6 +1069,7 @@ impl<S: Store> Service<S> {
             to,
             from,
             status,
+            object,
         });
     }
 }

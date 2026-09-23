@@ -83,10 +83,11 @@ JSON, bearer token, same error shape as the Mastodon API. Every mutation takes a
 | `GET /admin/members` | admin | includes disabled/role/last-seen-since-boot |
 | `POST /admin/invites` | admin | → one-time code + URL (show as QR code in the UI) |
 | `POST /admin/members/:id/reset` | admin | → one-time reset code. Does **not** change the password until redeemed |
-| `POST /admin/members/:id/disable` / `enable` / `role` | admin | disable bumps token epoch |
-| `DELETE /admin/members/:id` | admin | `{confirm: "<username>"}`; tombstone + purge (02) |
-| `DELETE /admin/statuses/:id` | admin | cannot target DMs the admin isn't party to |
-| `GET/PUT /admin/server` | admin | server settings |
+| `POST /admin/members/:id/disable` / `enable` / `silence` / `unsilence` / `suspend` / `unsuspend` | admin | **done.** Same rules as the Mastodon admin API (04 "Moderation"): not yourself, not the owner, admins only by the owner. Disable does **not** bump the token epoch: tokens answer `403` while disabled and work again once enabled, as on Mastodon |
+| `POST /admin/members/:id/role` | owner | **done.** `{role: "admin" \| "member"}` |
+| `DELETE /admin/members/:id` | admin | **done.** `{confirm: "<username>"}`; tombstone + purge (02). Unlike the Mastodon admin API, no prior suspension is needed: the typed confirmation is the safeguard |
+| `DELETE /admin/statuses/:id` | admin | **done.** Cannot target DMs the admin isn't party to (they get `404`) |
+| `GET/PUT /admin/server` | admin | **done.** `title`, `description`, `rules[]` (≤ 8 × 140 B), `terms` (≤ 3,000 B plain text; `""` restores the generated terms). Changing the terms resets their effective date |
 | `POST /admin/transport` | owner, HTTPS only | Easy/Secure (nanacoin semantics) |
 | `POST /tls`, `DELETE /tls` | owner, HTTPS only | upload/remove real-domain certificate |
 | `POST /clock` | admin | only while clock is unsynced (05) |

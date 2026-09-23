@@ -1,6 +1,8 @@
 //! Instance metadata, nodeinfo and OAuth server metadata.
 
-use super::{entities, Call, Reply};
+use super::time::{date, iso};
+use super::{entities, fail, Call, Reply};
+use crate::domain::Error;
 use crate::domain::{KNOWN_SCOPES, MAX_PINS};
 use crate::http::Response;
 use crate::store::Store;
@@ -110,7 +112,13 @@ fn v2<S: Store>(c: &Call<'_, S>) -> Value {
         "icon": [],
         "languages": ["en"],
         "configuration": {
-            "urls": { "streaming": null, "status": null },
+            "urls": {
+                "streaming": null,
+                "status": null,
+                "about": format!("{}/about", c.ctx.base_url),
+                "privacy_policy": format!("{}/privacy-policy", c.ctx.base_url),
+                "terms_of_service": format!("{}/terms-of-service", c.ctx.base_url),
+            },
             "vapid": { "public_key": "" },
             "accounts": accounts_config(),
             "statuses": statuses_config(),
@@ -125,6 +133,17 @@ fn v2<S: Store>(c: &Call<'_, S>) -> Value {
     })
 }
 
+/// `TermsOfService` (Mastodon 4.4). There is only ever one version.
+fn terms_of_service<S: Store>(c: &Call<'_, S>) -> Value {
+    let (text, effective_ms) = c.svc.terms_of_service();
+    json!({
+        "effective_date": date(effective_ms),
+        "effective": true,
+        "content": crate::text::render_plain(&text),
+        "succeeded_by": null,
+    })
+}
+
 fn oauth_metadata<S: Store>(c: &Call<'_, S>) -> Value {
     let base = &c.ctx.base_url;
     json!({
@@ -134,7 +153,10 @@ fn oauth_metadata<S: Store>(c: &Call<'_, S>) -> Value {
         "token_endpoint": format!("{base}/oauth/token"),
         "revocation_endpoint": format!("{base}/oauth/revoke"),
         "app_registration_endpoint": format!("{base}/api/v1/apps"),
-        "scopes_supported": KNOWN_SCOPES,
+        "scopes_supported": KNOWN_SCOPES
+            .iter()
+            .chain(["admin:read", "admin:write"].iter())
+            .collect::<Vec<_>>(),
         "response_types_supported": ["code"],
         "response_modes_supported": ["query", "fragment", "form_post"],
         "code_challenge_methods_supported": ["S256"],
@@ -154,9 +176,21 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ["api", "v1", "instance", "peers" | "activity" | "domain_blocks" | "languages"]
         | ["api", "v1", "custom_emojis"] => json!([]),
         ["api", "v1", "instance", "extended_description"] => json!({
-            "updated_at": null,
+            "updated_at": iso(c.svc.provisioned_ms()),
             "content": crate::text::render_plain(&c.svc.state.server.description),
         }),
+        ["api", "v1", "instance", "privacy_policy"] => json!({
+            "updated_at": iso(c.svc.provisioned_ms()),
+            "content": crate::text::render_plain(&c.svc.privacy_policy()),
+        }),
+        ["api", "v1", "instance", "terms_of_service"] => terms_of_service(c),
+        ["api", "v1", "instance", "terms_of_service", day] => {
+            let terms = terms_of_service(c);
+            if terms["effective_date"] != *day {
+                return Some(Err(fail(Error::NotFound)));
+            }
+            terms
+        }
         [".well-known", "oauth-authorization-server"] => oauth_metadata(c),
         [".well-known", "nodeinfo"] => json!({
             "links": [{

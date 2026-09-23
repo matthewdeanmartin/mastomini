@@ -33,6 +33,7 @@ fn not_followed<S: Store>(c: &Call<'_, S>, viewer: u8) -> Vec<Value> {
         .state
         .active_accounts()
         .filter(|a| a.slot != viewer && !c.svc.state.follows(viewer, a.slot) && !a.rec.disabled)
+        .filter(|a| !c.svc.state.hides(viewer, a.slot) && !c.svc.state.suspended(a.slot))
         .map(|a| entities::account(c.svc, c.ctx, a))
         .collect()
 }
@@ -46,13 +47,30 @@ fn suggestions_v2<S: Store>(c: &Call<'_, S>) -> Reply {
     Ok(Response::ok(Value::Array(rows)))
 }
 
+/// `order=active` (default: most recent post first) or `order=new`.
 fn directory<S: Store>(c: &Call<'_, S>) -> Reply {
-    c.user()?;
-    let rows: Vec<Value> = c
+    let viewer = c.user()?;
+    let mut accounts: Vec<&crate::domain::Account> = c
         .svc
         .state
         .active_accounts()
         .filter(|a| a.rec.discoverable && !a.rec.disabled)
+        .filter(|a| !c.svc.state.blocked_either(viewer, a.slot) && !c.svc.state.suspended(a.slot))
+        .collect();
+    if c.params.get("order") == Some("new") {
+        accounts.sort_by_key(|a| std::cmp::Reverse(a.rec.id));
+    } else {
+        accounts.sort_by_key(|a| std::cmp::Reverse(c.svc.last_status_ms(a.slot)));
+    }
+    let offset = c.params.u64("offset").unwrap_or(0) as usize;
+    let limit = c
+        .params
+        .u64("limit")
+        .map_or(40, |l| l.clamp(1, 80) as usize);
+    let rows: Vec<Value> = accounts
+        .into_iter()
+        .skip(offset)
+        .take(limit)
         .map(|a| entities::account(c.svc, c.ctx, a))
         .collect();
     Ok(Response::ok(Value::Array(rows)))
@@ -65,6 +83,7 @@ fn notification_policy() -> Value {
         "for_new_accounts": "accept",
         "for_private_mentions": "accept",
         "for_limited_accounts": "accept",
+        "for_bots": "accept",
         "filter_not_following": false,
         "filter_not_followers": false,
         "filter_new_accounts": false,
@@ -77,6 +96,7 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
     let empty = |c: &Call<'_, S>| c.user().map(|_| Response::ok(json!([])));
     Some(match (method, seg) {
         ("GET", ["api", "v1", "preferences"]) => preferences(c),
+        ("GET", ["health"]) => Ok(Response::new(200, "text/plain", "OK")),
         ("GET", ["api", "v2", "suggestions"]) => suggestions_v2(c),
         ("GET", ["api", "v1", "suggestions"]) => {
             let viewer = match c.user() {
@@ -97,8 +117,8 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         (
             "GET",
             ["api", "v1", "lists" | "filters" | "followed_tags" | "featured_tags" | "announcements"
-            | "follow_requests" | "blocks" | "mutes" | "domain_blocks" | "endorsements"
-            | "conversations" | "scheduled_statuses"]
+            | "follow_requests" | "domain_blocks" | "endorsements" | "conversations"
+            | "scheduled_statuses"]
             | ["api", "v2", "filters"]
             | ["api", "v1", "trends", ..]
             | ["api", "v1", "featured_tags", "suggestions"]

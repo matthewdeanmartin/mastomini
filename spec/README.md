@@ -41,3 +41,6 @@ setting up third-party clients.
 | Follows | Same as Mastodon: nobody follows anyone automatically | user |
 | Passwords | Relaxed: minimum 4 characters; the household Wi-Fi is the second factor | user |
 | Household CA | Own CA by default; `MASTOMINI_CA_DIR` reuses an existing one (e.g. nanacoin's) | user |
+| Moderation | Blocks, mutes, conversation mutes, reports, admin actions (disable/silence/suspend/sensitive/delete), and the Mastodon admin API for accounts and reports | user |
+| Collections | Mastodon 4.6 collections, auto-accepted (household), revocable by the featured member | user |
+| Conformance | mastodon_mock's contract tests copied verbatim and run against the desktop binary; differences listed as data | user |

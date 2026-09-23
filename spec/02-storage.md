@@ -133,11 +133,29 @@ base32 snowflake.
 | `mm_stat` | `r` + `ID` | boost: booster slot, target status id | boost/unboost |
 | `mm_hist` | `h` + `ID` + rev (0–2) | previous revision of an edited status | edit |
 | `mm_rx` | `f`/`b`/`p` + `ID` + `A` | favourite / bookmark / pin: record id (snowflake, used as the notification id) | toggle |
-| `mm_rel` | `F`/`B`/`M` + `A` + `A` | follow / block / mute edge: record id, flags (e.g. `notify`, `reblogs`) | toggle |
+| `mm_rx` | `m` + `ID` + `A` | conversation mute, same shape as a favourite (schema 2) | toggle |
+| `mm_rel` | `F`/`B`/`M` + `A` + `A` | follow (record id, `notify`, `reblogs`) / block (record id) / mute (record id, `notifications`, expiry) edge. `B` and `M` since schema 2 | toggle |
+| `mm_mod` | `m` + `A` | account moderation: account id (guards a reused slot), silenced, suspended-at, sensitized. Erased when all clear | admin action |
+| `mm_mod` | `R` + `ID` | report: reporter and target slots, post ids, comment, category, rule ids, assignee, resolution | report / admin |
+| `mm_stat` | `d` + `ID` | encrypted direct message envelope: ephemeral public key, sealed text and content warning, content key sealed per participant. The status record then has empty text (05 "Direct messages") | post/delete/evict |
+| `mm_key` | `k` + `A` | member key pair: public key, secret sealed with a password-derived key (salt, rounds) | account created, first sign-in, password change |
+| `mm_key` | `w` + token key suffix | the member's secret sealed for one signed-in device (token-derived key) | token issue/revoke |
+| `mm_cfg` | `terms` | admin-written terms of service and the date they took effect; absent means generated terms | admin |
+| `mm_coll` | `c` + `ID` | collection: curator slot, name, description, flags, language, tag, items inline (item id, account id, revoked) | edit |
 | `mm_list` | `l` + `A` + n | list: title, members bitmask, replies policy | edit |
 | `mm_filt` | `x` + `A` + n | filter: title, context flags, action, keywords | edit |
 | `mm_tag` | `g` + `A` + n | followed hashtag | toggle |
 | `mm_inv` | `i` + n | invite / password-reset code hash, target slot, expiry | admin |
+
+**Schema 2** added the `B`/`M`/`m` keys and the `mm_mod` and `mm_coll`
+namespaces, as new record kinds. No existing record changed layout (postcard is
+not self-describing, so a changed struct would misread every stored record).
+Boot rewrites a schema-1 marker to 2, which is the only write needed; firmware
+that only knows schema 1 then refuses the store instead of misreading it.
+Boot repair also drops follows that cross a block (a block commits before its
+unfollows), moderation records whose account id no longer matches the slot,
+reports naming a missing account, collections of a missing curator, and (in RAM)
+collection items naming a deleted account.
 
 Derived at boot, **not stored**: hashtags and mentions (parsed from text), all
 counts, conversations, timelines, and `last_id`.

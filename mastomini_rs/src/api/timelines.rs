@@ -42,7 +42,7 @@ fn public<S: Store>(c: &Call<'_, S>) -> Reply {
     if c.params.flag("remote") || c.params.flag("only_media") {
         return Ok(Response::ok(json!([])));
     }
-    let page = c.svc.public(&q);
+    let page = c.svc.public(viewer, &q);
     Ok(entries(c, page, viewer, q.limit()))
 }
 
@@ -52,7 +52,7 @@ fn tag<S: Store>(c: &Call<'_, S>, name: &str) -> Reply {
     if c.params.flag("remote") || c.params.flag("only_media") {
         return Ok(Response::ok(json!([])));
     }
-    let page = c.svc.tag_timeline(name, &q);
+    let page = c.svc.tag_timeline(viewer, name, &q);
     Ok(entries(c, page, viewer, q.limit()))
 }
 
@@ -127,12 +127,17 @@ fn notifications_v2<S: Store>(c: &Call<'_, S>) -> Reply {
         limit,
     } = notifications_page(c)?;
     let ids: Vec<u64> = rows.iter().map(|(id, _)| *id).collect();
+    Ok(c.paged(grouped(c, viewer, &rows), &ids, limit))
+}
+
+/// `GroupedNotificationsResults` for the given notifications.
+fn grouped<S: Store>(c: &Call<'_, S>, viewer: u8, rows: &[(u64, Notification)]) -> Value {
     let mut accounts: Vec<Value> = Vec::new();
     let mut statuses: Vec<Value> = Vec::new();
     let mut seen_accounts: Vec<u8> = Vec::new();
     let mut seen_statuses: Vec<u64> = Vec::new();
     let mut groups = Vec::new();
-    for (_, n) in &rows {
+    for (_, n) in rows {
         let Some(from) = c.svc.state.account(n.from) else {
             continue;
         };
@@ -160,15 +165,54 @@ fn notifications_v2<S: Store>(c: &Call<'_, S>) -> Reply {
             "status_id": n.status.map(|s| s.to_string()),
         }));
     }
-    Ok(c.paged(
-        json!({
-            "accounts": accounts,
-            "statuses": statuses,
-            "notification_groups": groups,
-        }),
-        &ids,
-        limit,
-    ))
+    json!({
+        "accounts": accounts,
+        "statuses": statuses,
+        "notification_groups": groups,
+    })
+}
+
+/// Every notification is its own group, keyed `ungrouped-<id>`.
+fn group_id<S: Store>(c: &Call<'_, S>, key: &str) -> Result<u64, Response> {
+    let id = key.strip_prefix("ungrouped-").unwrap_or(key);
+    c.id(id)
+}
+
+/// `GET /api/v2/notifications/:group_key`: the grouped shape for one group.
+fn group<S: Store>(c: &Call<'_, S>, key: &str) -> Reply {
+    let viewer = c.user_scoped("read:notifications")?;
+    let id = group_id(c, key)?;
+    let n = c
+        .svc
+        .state
+        .notifications
+        .iter()
+        .find(|n| n.id == id && n.to == viewer)
+        .copied()
+        .ok_or_else(|| fail(Error::NotFound))?;
+    Ok(Response::ok(grouped(c, viewer, &[(n.id, n)])))
+}
+
+/// `GET /api/v2/notifications/:group_key/accounts`.
+fn group_accounts<S: Store>(c: &Call<'_, S>, key: &str) -> Reply {
+    let viewer = c.user_scoped("read:notifications")?;
+    let id = group_id(c, key)?;
+    let from = c
+        .svc
+        .state
+        .notifications
+        .iter()
+        .find(|n| n.id == id && n.to == viewer)
+        .map(|n| n.from)
+        .ok_or_else(|| fail(Error::NotFound))?;
+    let rows: Vec<Value> = c
+        .svc
+        .state
+        .account(from)
+        .map(|a| entities::account(c.svc, c.ctx, a))
+        .into_iter()
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
 }
 
 fn notification<S: Store>(c: &Call<'_, S>, id: &str) -> Reply {
@@ -262,6 +306,8 @@ fn search<S: Store>(c: &Call<'_, S>) -> Reply {
             .into_iter()
             .skip(offset)
             .filter(|slot| !c.params.flag("following") || c.svc.state.follows(viewer, *slot))
+            .filter(|slot| !c.svc.state.blocked_either(viewer, *slot))
+            .filter(|slot| *slot == viewer || !c.svc.state.suspended(*slot))
             .filter_map(|slot| c.svc.state.account(slot))
             .map(|a| entities::account(c.svc, c.ctx, a))
             .collect()
@@ -314,6 +360,12 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", ["api", "v1", "notifications", "dismiss"]) => dismiss(c, None),
         ("POST", ["api", "v1", "notifications", id, "dismiss"]) => dismiss(c, Some(id)),
         ("GET", ["api", "v2", "notifications"]) => notifications_v2(c),
+        ("GET", ["api", "v2", "notifications", key]) if *key != "policy" => group(c, key),
+        ("GET", ["api", "v2", "notifications", key, "accounts"]) => group_accounts(c, key),
+        ("POST", ["api", "v2", "notifications", key, "dismiss"]) => match group_id(c, key) {
+            Ok(id) => dismiss(c, Some(&id.to_string())),
+            Err(e) => Err(e),
+        },
         ("GET", ["api", "v1", "markers"]) => markers_get(c),
         ("POST", ["api", "v1", "markers"]) => markers_set(c),
         ("GET", ["api", "v2", "search"]) => search(c),

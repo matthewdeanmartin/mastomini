@@ -28,10 +28,15 @@ pub enum Ns {
     Hist = 5,
     Rx = 6,
     Rel = 7,
+    /// Account moderation state and reports.
+    Mod = 8,
+    Coll = 9,
+    /// Member key pairs and per-device seals for direct messages.
+    Key = 10,
 }
 
 impl Ns {
-    pub const ALL: [Ns; 8] = [
+    pub const ALL: [Ns; 11] = [
         Ns::Cfg,
         Ns::Acct,
         Ns::App,
@@ -40,6 +45,9 @@ impl Ns {
         Ns::Hist,
         Ns::Rx,
         Ns::Rel,
+        Ns::Mod,
+        Ns::Coll,
+        Ns::Key,
     ];
 
     /// NVS namespace name (at most 15 characters).
@@ -53,6 +61,9 @@ impl Ns {
             Ns::Hist => "mm_hist",
             Ns::Rx => "mm_rx",
             Ns::Rel => "mm_rel",
+            Ns::Mod => "mm_mod",
+            Ns::Coll => "mm_coll",
+            Ns::Key => "mm_key",
         }
     }
 

@@ -1,9 +1,9 @@
-//! `/api/mastomini/v1`: what the Mastodon API cannot do (spec/06). Sprint 2
-//! covers bootstrap only: status, provisioning, and an admin adding members.
+//! `/api/mastomini/v1`: what the Mastodon API cannot do (spec/06): status,
+//! provisioning, and admins managing members and deleting posts.
 
 use super::{entities, fail, Call, Reply};
 use crate::domain::records::Role;
-use crate::domain::{Error, NewMember};
+use crate::domain::{AdminAction, Error, NewMember, ServerUpdate};
 use crate::http::Response;
 use crate::store::Store;
 use serde_json::{json, Value};
@@ -84,14 +84,119 @@ fn members<S: Store>(c: &Call<'_, S>) -> Reply {
         .svc
         .state
         .active_accounts()
-        .map(|a| {
-            let mut v = entities::account(c.svc, c.ctx, a);
-            v["role"] = json!(a.rec.role.as_str());
-            v["disabled"] = json!(a.rec.disabled);
-            v
-        })
+        .map(|a| member_json(c, a))
         .collect();
     Ok(Response::ok(Value::Array(rows)))
+}
+
+fn member_json<S: Store>(c: &Call<'_, S>, a: &crate::domain::Account) -> Value {
+    let m = c.svc.state.moderation(a.slot);
+    let mut v = entities::account(c.svc, c.ctx, a);
+    v["role"] = json!(a.rec.role.as_str());
+    v["disabled"] = json!(a.rec.disabled);
+    v["silenced"] = json!(m.silenced);
+    v["suspended"] = json!(m.suspended_ms.is_some());
+    v
+}
+
+fn member_slot<S: Store>(c: &Call<'_, S>, id: &str) -> Result<u8, Response> {
+    let id = c.id(id)?;
+    c.svc.state.slot_of(id).ok_or_else(|| fail(Error::NotFound))
+}
+
+fn member_reply<S: Store>(c: &Call<'_, S>, slot: u8) -> Reply {
+    let account = c
+        .svc
+        .state
+        .account(slot)
+        .ok_or_else(|| fail(Error::NotFound))?;
+    Ok(Response::ok(member_json(c, account)))
+}
+
+/// `POST /admin/members/:id/{disable,enable,silence,unsilence,suspend,unsuspend}`.
+/// Disabled and suspended members can't sign in; enabling brings their
+/// devices back without signing in again.
+fn member_action<S: Store>(c: &mut Call<'_, S>, id: &str, action: AdminAction) -> Reply {
+    let actor = c.user()?;
+    let slot = member_slot(c, id)?;
+    c.svc
+        .moderate(actor, slot, action, None, c.now)
+        .map_err(fail)?;
+    member_reply(c, slot)
+}
+
+fn member_role<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let slot = member_slot(c, id)?;
+    let role = c
+        .params
+        .text("role")
+        .and_then(Role::parse)
+        .ok_or_else(|| Response::error(422, "Validation failed: Role is invalid"))?;
+    c.svc.set_role(actor, slot, role, c.now).map_err(fail)?;
+    member_reply(c, slot)
+}
+
+/// `DELETE /admin/members/:id` with `{confirm: "<username>"}`.
+fn member_delete<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let slot = member_slot(c, id)?;
+    let username = c
+        .svc
+        .state
+        .account(slot)
+        .map(|a| a.rec.username.clone())
+        .unwrap_or_default();
+    if c.params.get("confirm") != Some(username.as_str()) {
+        return Err(Response::error(
+            422,
+            "Validation failed: Type the member's username to confirm",
+        ));
+    }
+    c.svc.delete_account(actor, slot, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
+}
+
+fn server_json<S: Store>(c: &Call<'_, S>) -> Value {
+    let server = &c.svc.state.server;
+    let (terms, effective_ms) = c.svc.terms_of_service();
+    json!({
+        "title": server.title,
+        "description": server.description,
+        "rules": server.rules,
+        "terms": terms,
+        "terms_customized": c.svc.state.terms.is_some(),
+        "terms_effective_date": super::time::date(effective_ms),
+    })
+}
+
+fn get_server<S: Store>(c: &Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    c.svc.require_admin(actor).map_err(fail)?;
+    Ok(Response::ok(server_json(c)))
+}
+
+/// `PUT /admin/server`: any of `title`, `description`, `rules[]`, `terms`
+/// (`""` restores the generated terms).
+fn put_server<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    let p = &c.params;
+    let has_rules = p.names().any(|n| n == "rules" || n.starts_with("rules["));
+    let update = ServerUpdate {
+        title: p.get("title").map(str::to_string),
+        description: p.get("description").map(str::to_string),
+        rules: has_rules.then(|| p.all("rules").iter().map(|r| r.to_string()).collect()),
+        terms: p.get("terms").map(str::to_string),
+    };
+    c.svc.update_server(actor, update, c.now).map_err(fail)?;
+    Ok(Response::ok(server_json(c)))
+}
+
+fn delete_status<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let id = c.id(id)?;
+    c.svc.admin_delete_status(actor, id, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
 }
 
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
@@ -100,6 +205,23 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", ["provision"]) => provision(c),
         ("GET", ["admin", "members"]) => members(c),
         ("POST", ["admin", "members"]) => create_member(c),
+        ("POST", ["admin", "members", id, action]) => {
+            let action = match *action {
+                "role" => return Some(member_role(c, id)),
+                "disable" => AdminAction::Disable,
+                "enable" => AdminAction::Enable,
+                "silence" => AdminAction::Silence,
+                "unsilence" => AdminAction::Unsilence,
+                "suspend" => AdminAction::Suspend,
+                "unsuspend" => AdminAction::Unsuspend,
+                _ => return None,
+            };
+            member_action(c, id, action)
+        }
+        ("DELETE", ["admin", "members", id]) => member_delete(c, id),
+        ("DELETE", ["admin", "statuses", id]) => delete_status(c, id),
+        ("GET", ["admin", "server"]) => get_server(c),
+        ("PUT" | "PATCH", ["admin", "server"]) => put_server(c),
         _ => return None,
     })
 }

@@ -117,6 +117,8 @@ fn search<S: Store>(c: &Call<'_, S>) -> Reply {
         .search_accounts(q, limit)
         .into_iter()
         .filter(|slot| !following || c.svc.state.follows(viewer, *slot))
+        .filter(|slot| !c.svc.state.blocked_either(viewer, *slot))
+        .filter(|slot| *slot == viewer || !c.svc.state.suspended(*slot))
         .filter_map(|slot| c.svc.state.account(slot))
         .map(|a| entities::account(c.svc, c.ctx, a))
         .collect();
@@ -187,6 +189,61 @@ fn set_follow<S: Store>(c: &mut Call<'_, S>, id: &str, on: bool) -> Reply {
     Ok(Response::ok(entities::relationship(c.svc, viewer, account)))
 }
 
+/// `GET /api/v1/accounts?id[]=...`: unknown ids are skipped.
+fn show_many<S: Store>(c: &Call<'_, S>) -> Reply {
+    c.user()?;
+    let rows: Vec<Value> = c
+        .params
+        .all("id")
+        .iter()
+        .take(40)
+        .filter_map(|id| crate::ids::parse(id))
+        .filter_map(|id| c.svc.state.account_by_id(id))
+        .map(|a| entities::account(c.svc, c.ctx, a))
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+/// For each account: its followers that the viewer follows.
+fn familiar_followers<S: Store>(c: &Call<'_, S>) -> Reply {
+    let viewer = c.user_scoped("read:follows")?;
+    let state = &c.svc.state;
+    let rows: Vec<Value> = c
+        .params
+        .all("id")
+        .iter()
+        .take(40)
+        .filter_map(|id| crate::ids::parse(id))
+        .filter_map(|id| state.account_by_id(id))
+        .map(|target| {
+            let accounts: Vec<Value> = state
+                .active_accounts()
+                .filter(|a| a.slot != viewer && a.slot != target.slot)
+                .filter(|a| state.follows(a.slot, target.slot) && state.follows(viewer, a.slot))
+                .filter(|a| !state.hides(viewer, a.slot) && !state.suspended(a.slot))
+                .map(|a| entities::account(c.svc, c.ctx, a))
+                .collect();
+            json!({ "id": target.rec.id.to_string(), "accounts": accounts })
+        })
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+/// Make someone stop following you, without blocking them.
+fn remove_from_followers<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let viewer = c.user_scoped("follow")?;
+    let follower = target(c, id)?.slot;
+    c.svc
+        .set_follow(follower, viewer, false, None, None, c.now)
+        .map_err(fail)?;
+    let account = c
+        .svc
+        .state
+        .account(follower)
+        .ok_or_else(|| fail(Error::NotFound))?;
+    Ok(Response::ok(entities::relationship(c.svc, viewer, account)))
+}
+
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, &seg[3..]) {
         ("GET", ["verify_credentials"]) => verify_credentials(c),
@@ -194,7 +251,8 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("GET", ["lookup"]) => lookup(c),
         ("GET", ["search"]) => search(c),
         ("GET", ["relationships"]) => relationships(c),
-        ("GET", ["familiar_followers"]) => c.user().map(|_| Response::ok(json!([]))),
+        ("GET", ["familiar_followers"]) => familiar_followers(c),
+        ("GET", []) => show_many(c),
         ("POST", []) => Err(Response::error(
             403,
             "Registrations are closed; ask your household admin",
@@ -208,6 +266,11 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         }
         ("POST", [id, "follow"]) => set_follow(c, id, true),
         ("POST", [id, "unfollow"]) => set_follow(c, id, false),
+        ("POST", [id, "remove_from_followers"]) => remove_from_followers(c, id),
+        ("POST", [id, "block"]) => super::moderation::block(c, id, true),
+        ("POST", [id, "unblock"]) => super::moderation::block(c, id, false),
+        ("POST", [id, "mute"]) => super::moderation::mute(c, id, true),
+        ("POST", [id, "unmute"]) => super::moderation::mute(c, id, false),
         _ => return None,
     })
 }

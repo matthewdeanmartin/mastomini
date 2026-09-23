@@ -113,7 +113,7 @@ fn delete<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
         .ok_or_else(|| fail(Error::NotFound))?;
     // Render before deleting so "delete & redraft" gets the full entity.
     let mut body = entities::status(c.svc, c.ctx, status, Some(slot));
-    let text = status.rec.text.clone();
+    let (text, _) = c.svc.readable_text(Some(slot), status);
     c.svc.delete_status(slot, id, c.now).map_err(fail)?;
     body["text"] = json!(text);
     Ok(Response::ok(body))
@@ -143,6 +143,7 @@ fn react<S: Store>(c: &mut Call<'_, S>, id: &str, kind: ReactionKind, on: bool) 
         ReactionKind::Favourite => "write:favourites",
         ReactionKind::Bookmark => "write:bookmarks",
         ReactionKind::Pin => "write:accounts",
+        ReactionKind::Mute => "write:mutes",
     };
     let slot = c.user_scoped(scope)?;
     let id = original(c, id)?;
@@ -202,10 +203,11 @@ fn source<S: Store>(c: &Call<'_, S>, id: &str) -> Reply {
         .svc
         .visible(Some(viewer), id)
         .ok_or_else(|| fail(Error::NotFound))?;
+    let (text, spoiler_text) = c.svc.readable_text(Some(viewer), s);
     Ok(Response::ok(json!({
         "id": id.to_string(),
-        "text": s.rec.text,
-        "spoiler_text": s.rec.spoiler_text,
+        "text": text,
+        "spoiler_text": spoiler_text,
     })))
 }
 
@@ -231,6 +233,16 @@ fn history<S: Store>(c: &Call<'_, S>, id: &str) -> Reply {
     }])))
 }
 
+/// Conversation mute: no more notifications from this thread.
+fn mute_conversation<S: Store>(c: &mut Call<'_, S>, id: &str, on: bool) -> Reply {
+    let slot = c.user_scoped("write:mutes")?;
+    let id = original(c, id)?;
+    c.svc
+        .set_conversation_mute(slot, id, on, c.now)
+        .map_err(fail)?;
+    render(c, id, slot)
+}
+
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, &seg[3..]) {
         ("POST", []) => create(c),
@@ -252,16 +264,8 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", [id, "unpin"]) => react(c, id, ReactionKind::Pin, false),
         ("POST", [id, "reblog"]) => reblog(c, id),
         ("POST", [id, "unreblog"]) => unreblog(c, id),
-        ("POST", [id, "mute" | "unmute"]) => {
-            let viewer = match c.user() {
-                Ok(v) => v,
-                Err(e) => return Some(Err(e)),
-            };
-            match original(c, id) {
-                Ok(id) => render(c, id, viewer),
-                Err(e) => Err(e),
-            }
-        }
+        ("POST", [id, "mute"]) => mute_conversation(c, id, true),
+        ("POST", [id, "unmute"]) => mute_conversation(c, id, false),
         _ => return None,
     })
 }

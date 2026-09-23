@@ -21,6 +21,8 @@ Byte limits are **UTF-8 bytes**. Character limits use Mastodon's counting rules
 | Password | — | 4–128 bytes. Relaxed on purpose: being on the household Wi-Fi is the second factor | PBKDF2 verifier 48 B |
 | List title | — | 40 B | |
 | Filter title / keyword | — | 40 B / 40 B | |
+| Report comment | 1,000 chars | 500 chars | 1,000 B |
+| Collection name / description | 40 / 100 chars | 40 / 100 chars | 160 B / 400 B |
 | Hashtag | — | 40 B | |
 | Server name / description | — | 40 B / 280 B | |
 | Server rules | — | 8 × 140 B | |
@@ -62,6 +64,10 @@ and the server agree:
 | Lists | 8 per account | `422` |
 | Filters (v2) | 8 per account × 4 keywords | `422` |
 | Followed hashtags | 16 per account | `422` |
+| Blocks, mutes | one edge per ordered pair of accounts (≤ 240 each) | — |
+| Reports | 32 | oldest resolved dropped; `422` if none is resolved |
+| Posts per report | 10 | `422` |
+| Collections | 8 per account, items inline (≤ 15 other members) | `422` |
 | Notifications (RAM ring, all accounts) | 512 | oldest dropped. Emptied by reboot |
 | Invites / reset codes | 8 live, 7-day expiry | oldest expired first |
 | Custom emoji | 0 | `[]` |

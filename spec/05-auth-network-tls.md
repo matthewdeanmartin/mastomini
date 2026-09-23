@@ -5,7 +5,7 @@
 | Role | Can |
 |---|---|
 | `owner` (exactly one at a time, created by the setup wizard) | everything `admin` can do, plus transfer ownership and change TLS/transport settings |
-| `admin` | create/disable/delete members, issue invite and reset codes, edit server settings, delete any post (not read DMs) |
+| `admin` | create/disable/delete members, issue invite and reset codes, edit server settings, delete any post (not read DMs: they are encrypted, see "Direct messages") |
 | `member` | ordinary Mastodon use, edit own profile/password, manage own devices |
 
 There is always at least one enabled owner, enforced in the domain (nanacoin
@@ -164,13 +164,65 @@ Snowflake IDs and `created_at` need a real clock.
   when the internet is down after a power cut.
 - IDs are guarded to be monotonic whatever the clock does (02).
 
+## Direct messages
+
+Direct messages are encrypted so that only their participants can read them
+(`src/crypto.rs`, `src/domain/dm.rs`).
+
+- **Keys.** Every member has an X25519 key pair (`mm_key` `k` + slot). The public
+  half is stored as is. The secret half is sealed (ChaCha20-Poly1305) with a key
+  derived from the member's password (PBKDF2-SHA256, own salt, same round count
+  as the verifier). The member's password is only present when an account is
+  created, at sign-in and at a password change, so those are the only moments
+  the secret can be opened.
+- **Devices.** At sign-in, the opened secret rides along with the one-use
+  authorization code (RAM, 60 s) and is sealed again for the token it becomes:
+  a key derived from the token with HKDF (`mm_key` `w` + token key suffix). The
+  token record stores `sha256(token)`, which does not give that key. Revoking a
+  token, a password change (all tokens end) and account deletion erase the seals.
+- **Messages.** A direct message is encrypted once with a random content key; the
+  content key is wrapped for the author and each mentioned member via X25519
+  against a fresh ephemeral key and HKDF. The envelope (`mm_stat` `d` + id) is
+  written first, then the status record (the commit point) with empty text and
+  content warning. The status id is bound into the ciphertext.
+- **Reading.** For each request with a user token, the server opens that
+  device's seal, keeps the secret for that request only, and zeroes it
+  afterwards. A participant whose device has no seal (signed in before
+  encryption existed) sees "🔒 Encrypted direct message. Sign in again on this
+  device to read it."
+- **Members without a key** (accounts from before this) get one at their next
+  sign-in. Until then nobody can send them a direct message (`422`
+  "@name needs to sign in again before they can receive direct messages").
+- A password change re-seals the secret under the new password: old messages stay
+  readable. There is no recovery: if a password is reset without the old one
+  (when reset codes exist), that member's old direct messages become unreadable.
+
+What it protects against: anyone reading the flash (a dump, a stolen board), an
+admin or the owner through any API or tool, and anyone with the store but no
+participant's password or live token.
+
+What it does not protect against:
+
+- **Short passwords.** Passwords may be 4 characters (see "Passwords"). With a
+  flash dump, a short password falls to offline guessing despite PBKDF2, and
+  with it that member's key. The encryption is as strong as the password.
+- **The admin who set the password.** Until reset codes exist, an admin creates
+  members with a password they know. Members should change it.
+- **Modified firmware.** The server decrypts in RAM to serve Mastodon apps
+  (they don't do end-to-end encryption). Firmware changed to log what it serves
+  would see messages as they are read.
+- **Metadata.** Who wrote to whom and when, and the reply structure, are stored
+  in plain text: the server needs them to route and thread messages.
+- Followers-only posts are not encrypted, only direct messages.
+
 ## Privacy and threat model
 
-- Protected: casual access by other devices on the LAN (TLS, tokens), and one
-  member reading another's DMs through any API.
-- Not protected: someone with physical access to the board (flash is not encrypted,
-  and DMs and password verifiers can be read from a flash dump), and a compromised
-  household device. ESP32 flash encryption + NVS encryption is a possible later
-  hardening. It complicates USB recovery and needs its own key management design, so
-  it is not in v1.
+- Protected: casual access by other devices on the LAN (TLS, tokens), one member
+  reading another's DMs through any API, and DM contents in flash (see "Direct
+  messages", with its limits).
+- Not protected: other data on a stolen board (posts, profiles and password
+  verifiers can be read from a flash dump), and a compromised household device.
+  ESP32 flash encryption + NVS encryption would cover the rest of the flash. It
+  burns eFuses irreversibly, complicates USB recovery and needs its own key
+  management design, so it is not in v1.
 - Nothing leaves the LAN. The board makes no outbound connections except SNTP.

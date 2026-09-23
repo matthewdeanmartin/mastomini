@@ -8,6 +8,7 @@ pub mod api;
 pub mod auth;
 pub mod captive;
 pub mod codec;
+pub mod crypto;
 pub mod domain;
 pub mod http;
 pub mod ids;

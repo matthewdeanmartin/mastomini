@@ -4,8 +4,8 @@
 use super::time::{date, iso, iso_day};
 use super::Ctx;
 use crate::domain::query::Entry;
-use crate::domain::records::{BoostRec, Role};
-use crate::domain::{bit, Account, Notification, Service, Status};
+use crate::domain::records::{BoostRec, CollectionRec, ReportRec, Role};
+use crate::domain::{bit, Account, Notification, NotificationKind, Service, Status};
 use crate::ids;
 use crate::store::Store;
 use crate::text::{self, MentionTarget};
@@ -36,7 +36,8 @@ pub fn account<S: Store>(svc: &Service<S>, ctx: &Ctx, account: &Account) -> Valu
     let rec = &account.rec;
     let (followers, following) = svc.follower_counts(account.slot);
     let url = profile_url(ctx, &rec.username);
-    json!({
+    let moderation = svc.state.moderation(account.slot);
+    let mut value = json!({
         "id": rec.id.to_string(),
         "username": rec.username,
         "acct": rec.username,
@@ -63,7 +64,25 @@ pub fn account<S: Store>(svc: &Service<S>, ctx: &Ctx, account: &Account) -> Valu
         "emojis": [],
         "roles": [],
         "fields": fields_json(account),
-    })
+    });
+    // Mastodon's optional flags, present only when set. A suspended
+    // account keeps its name but shows nothing else about itself.
+    if moderation.silenced {
+        value["limited"] = json!(true);
+    }
+    if moderation.suspended_ms.is_some() {
+        value["suspended"] = json!(true);
+        value["display_name"] = json!("");
+        value["note"] = json!("");
+        value["fields"] = json!([]);
+        value["locked"] = json!(false);
+        value["bot"] = json!(false);
+        value["statuses_count"] = json!(0);
+        value["followers_count"] = json!(0);
+        value["following_count"] = json!(0);
+        value["last_status_at"] = Value::Null;
+    }
+    value
 }
 
 fn role_json(role: Role) -> Value {
@@ -154,6 +173,7 @@ pub fn status<S: Store>(svc: &Service<S>, ctx: &Ctx, s: &Status, viewer: Option<
         .map(|app| json!({ "name": app.name, "website": app.website }));
     let url = status_url(ctx, &author.rec.username, rec.id);
     let resolve = resolver(svc, ctx);
+    let (text, spoiler_text) = svc.readable_text(viewer, s);
     json!({
         "id": rec.id.to_string(),
         "uri": url,
@@ -161,11 +181,13 @@ pub fn status<S: Store>(svc: &Service<S>, ctx: &Ctx, s: &Status, viewer: Option<
         "created_at": iso(ids::millis(rec.id)),
         "edited_at": rec.edited_at_ms.map(iso),
         "account": account(svc, ctx, author),
-        "content": text::render(&rec.text, &resolve, &format!("{}/tags", ctx.base_url)),
+        "content": text::render(&text, &resolve, &format!("{}/tags", ctx.base_url)),
         "text": null,
         "visibility": rec.visibility.as_str(),
-        "sensitive": rec.sensitive || !rec.spoiler_text.is_empty(),
-        "spoiler_text": rec.spoiler_text,
+        "sensitive": rec.sensitive
+            || !spoiler_text.is_empty()
+            || (viewer != Some(rec.author) && svc.state.moderation(rec.author).sensitized),
+        "spoiler_text": spoiler_text,
         "language": rec.language,
         "in_reply_to_id": rec.in_reply_to_id.map(|id| id.to_string()),
         "in_reply_to_account_id": rec.in_reply_to_account_id.map(|id| id.to_string()),
@@ -186,7 +208,7 @@ pub fn status<S: Store>(svc: &Service<S>, ctx: &Ctx, s: &Status, viewer: Option<
         "reblogged": s.boosted & viewer_bit != 0,
         "bookmarked": s.bookmarked & viewer_bit != 0,
         "pinned": s.pinned & bit(rec.author) != 0,
-        "muted": false,
+        "muted": viewer.is_some_and(|v| svc.thread_muted(v, rec.id)),
         "filtered": [],
     })
 }
@@ -232,7 +254,7 @@ pub fn boost<S: Store>(svc: &Service<S>, ctx: &Ctx, b: &BoostRec, viewer: Option
         "reblogged": inner["reblogged"],
         "bookmarked": inner["bookmarked"],
         "pinned": false,
-        "muted": false,
+        "muted": inner["muted"],
         "filtered": [],
         "reblog": inner,
     })
@@ -255,6 +277,7 @@ pub fn entry<S: Store>(svc: &Service<S>, ctx: &Ctx, e: Entry, viewer: Option<u8>
 
 pub fn relationship<S: Store>(svc: &Service<S>, viewer: u8, target: &Account) -> Value {
     let follow = svc.state.follows.get(&(viewer, target.slot));
+    let mute = svc.state.mute(viewer, target.slot);
     json!({
         "id": target.rec.id.to_string(),
         "following": follow.is_some(),
@@ -262,10 +285,11 @@ pub fn relationship<S: Store>(svc: &Service<S>, viewer: u8, target: &Account) ->
         "notifying": follow.is_some_and(|f| f.notify),
         "languages": null,
         "followed_by": svc.state.follows(target.slot, viewer),
-        "blocking": false,
-        "blocked_by": false,
-        "muting": false,
-        "muting_notifications": false,
+        "blocking": svc.state.blocks(viewer, target.slot),
+        "blocked_by": svc.state.blocks(target.slot, viewer),
+        "muting": mute.is_some(),
+        "muting_notifications": mute.is_some_and(|m| m.notifications),
+        "muting_expires_at": mute.and_then(|m| m.expires_ms).map(iso),
         "requested": false,
         "requested_by": false,
         "domain_blocking": false,
@@ -280,13 +304,161 @@ pub fn notification<S: Store>(svc: &Service<S>, ctx: &Ctx, n: &Notification) -> 
         .status
         .and_then(|id| svc.state.statuses.get(&id))
         .map(|s| status(svc, ctx, s, Some(n.to)));
-    json!({
+    let mut value = json!({
         "id": n.id.to_string(),
         "type": n.kind.as_str(),
         "created_at": iso(ids::millis(n.id)),
         "group_key": format!("ungrouped-{}", n.id),
         "account": from.map(|a| account(svc, ctx, a)),
         "status": status,
+    });
+    match n.kind {
+        NotificationKind::AdminReport => {
+            value["report"] = n
+                .object
+                .and_then(|id| svc.state.reports.get(&id))
+                .map_or(Value::Null, |r| report(svc, ctx, r));
+        }
+        NotificationKind::AddedToCollection => {
+            value["collection"] = n
+                .object
+                .and_then(|id| svc.state.collections.get(&id))
+                .map_or(Value::Null, |c| collection(svc, ctx, c, n.to));
+        }
+        _ => {}
+    }
+    value
+}
+
+fn rule_ids(r: &ReportRec) -> Vec<String> {
+    r.rule_ids.iter().map(|id| id.to_string()).collect()
+}
+
+/// `Report`, as the reporter (and a notified admin) sees it.
+pub fn report<S: Store>(svc: &Service<S>, ctx: &Ctx, r: &ReportRec) -> Value {
+    let target = svc.state.account(r.target);
+    json!({
+        "id": r.id.to_string(),
+        "action_taken": r.action_taken_ms.is_some(),
+        "action_taken_at": r.action_taken_ms.map(iso),
+        "category": r.category.as_str(),
+        "comment": r.comment,
+        "forwarded": false,
+        "created_at": iso(ids::millis(r.id)),
+        "status_ids": r.status_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        "rule_ids": rule_ids(r),
+        "collection_ids": [],
+        "target_account": target.map(|a| account(svc, ctx, a)),
+    })
+}
+
+/// `Admin::Account`. There are no e-mail addresses or IPs to show.
+pub fn admin_account<S: Store>(svc: &Service<S>, ctx: &Ctx, a: &Account) -> Value {
+    let m = svc.state.moderation(a.slot);
+    json!({
+        "id": a.rec.id.to_string(),
+        "username": a.rec.username,
+        "domain": null,
+        "created_at": iso(ids::millis(a.rec.id)),
+        "email": "",
+        "ip": null,
+        "ips": [],
+        "locale": a.rec.language.clone().unwrap_or_default(),
+        "invite_request": null,
+        "role": role_json(a.rec.role),
+        "confirmed": true,
+        "approved": true,
+        "disabled": a.rec.disabled,
+        "silenced": m.silenced,
+        "suspended": m.suspended_ms.is_some(),
+        "sensitized": m.sensitized,
+        "account": account(svc, ctx, a),
+        "created_by_application_id": null,
+        "invited_by_account_id": null,
+    })
+}
+
+/// `Admin::Report`.
+pub fn admin_report<S: Store>(svc: &Service<S>, ctx: &Ctx, r: &ReportRec, viewer: u8) -> Value {
+    let admin = |slot: Option<u8>| {
+        slot.and_then(|s| svc.state.account(s))
+            .map_or(Value::Null, |a| admin_account(svc, ctx, a))
+    };
+    // Reported posts are shown to admins even if they could not otherwise
+    // see them, except direct messages they aren't part of (spec/04).
+    let statuses: Vec<Value> = r
+        .status_ids
+        .iter()
+        .filter_map(|id| svc.state.statuses.get(id))
+        .filter(|s| {
+            s.rec.visibility != crate::domain::records::Visibility::Direct
+                || s.rec.author == viewer
+                || s.mentions & bit(viewer) != 0
+        })
+        .map(|s| status(svc, ctx, s, None))
+        .collect();
+    let rules: Vec<Value> = r
+        .rule_ids
+        .iter()
+        .filter_map(|id| {
+            svc.state
+                .server
+                .rules
+                .get((*id as usize).checked_sub(1)?)
+                .map(|text| json!({ "id": id.to_string(), "text": text, "hint": "" }))
+        })
+        .collect();
+    json!({
+        "id": r.id.to_string(),
+        "action_taken": r.action_taken_ms.is_some(),
+        "action_taken_at": r.action_taken_ms.map(iso),
+        "category": r.category.as_str(),
+        "comment": r.comment,
+        "forwarded": false,
+        "created_at": iso(ids::millis(r.id)),
+        "updated_at": iso(r.updated_ms),
+        "account": admin(Some(r.reporter)),
+        "target_account": admin(Some(r.target)),
+        "assigned_account": admin(r.assigned),
+        "action_taken_by_account": admin(r.action_taken_by),
+        "statuses": statuses,
+        "rules": rules,
+    })
+}
+
+pub fn collection_url(ctx: &Ctx, id: u64) -> String {
+    format!("{}/collections/{}", ctx.base_url, id)
+}
+
+pub fn collection_item(svc_item: &crate::domain::records::CollectionItemRec) -> Value {
+    json!({
+        "id": svc_item.id.to_string(),
+        "account_id": svc_item.account_id.to_string(),
+        "state": if svc_item.revoked { "revoked" } else { "accepted" },
+        "created_at": iso(ids::millis(svc_item.id)),
+    })
+}
+
+/// `Collection`, with the items `viewer` may see.
+pub fn collection<S: Store>(svc: &Service<S>, ctx: &Ctx, c: &CollectionRec, viewer: u8) -> Value {
+    let owner_id = svc.state.account(c.owner).map_or(0, |a| a.rec.id);
+    let items: Vec<Value> = svc.visible_items(viewer, c).map(collection_item).collect();
+    json!({
+        "id": c.id.to_string(),
+        "account_id": owner_id.to_string(),
+        "uri": collection_url(ctx, c.id),
+        "url": collection_url(ctx, c.id),
+        "name": c.name,
+        "description": c.description,
+        "language": c.language,
+        "local": true,
+        "sensitive": c.sensitive,
+        "discoverable": c.discoverable,
+        "tag": c.tag.as_ref().map(|t| json!({ "name": t, "url": format!("{}/tags/{}", ctx.base_url, t) })),
+        "item_count": svc.accepted_count(c),
+        "items": items,
+        "created_at": iso(ids::millis(c.id)),
+        "updated_at": iso(c.updated_ms),
     })
 }
 

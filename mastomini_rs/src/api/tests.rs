@@ -814,3 +814,7 @@ fn streaming_is_advertised_as_absent() {
     let health = s.get("/api/v1/streaming/health", None);
     assert_eq!(health.status, 404);
 }
+
+mod about;
+mod dm;
+mod moderation;

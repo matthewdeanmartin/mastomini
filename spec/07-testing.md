@@ -18,21 +18,33 @@
 
 ## Differential testing against mastodon_mock
 
-`mimb/mastodon_mock` already runs a Mastodon.py-based suite against itself and ships
-pytest fixtures. The plan:
+`make conformance` runs mastodon_mock's own Mastodon.py contract suite against
+the mastomini desktop binary (`mastomini_rs/conformance/`).
 
-1. Add a `mastomini` target to a copy of the relevant integration tests: start the
-   mastomini desktop binary, seed accounts through `/api/mastomini/v1`, and log in
-   through the real OAuth code flow (scripted form post). mastomini offers no
-   `/_mock/login` shortcut.
-2. Run the **same client scripts** against both servers and diff the responses
-   after normalizing IDs, timestamps and hostnames. Differences are either bugs or
-   documented deviations (a list checked into `spec/deviations.md` when it exists).
-3. Exclude what mastomini deliberately lacks: media, federation, admin API, mock
-   helpers.
+- **The tests are copied verbatim** by `make conformance-sync`
+  (`sync_upstream.py`, source commit in `UPSTREAM.txt`), 25 files that talk to a
+  server only over HTTP. Tests that drive mock internals (`MockServer` seeds,
+  fault injection, CLI, UI, alembic, unit tests) are not copied. Nothing in
+  mastodon_mock changes for mastomini's sake, and `tests/` is never edited by
+  hand.
+- **`conftest.py` provides the mock's fixtures** (`live_server`, `alice`, `bob`,
+  `carol`, `mastodon_client`, …) on the real binary. The seed (alice owns the
+  household, bob and carol are members, carol is locked, alice follows bob) is
+  created once per session through `/api/mastomini/v1` and the genuine OAuth
+  form flow. Each test then starts its own server on a byte-for-byte copy of that
+  store file. The tests' literal `"alice_token"`-style bearer tokens are mapped to
+  the real tokens at the client boundary (Mastodon.py, httpx2, requests). The
+  server has no test shortcut.
+- **`deviations.py` is the list of known differences**, as data:
+  `NOT_APPLICABLE` (skipped: federation, media, sign-ups, mock helpers, trends, …),
+  `NOT_YET` (strict xfail: lists, filters, edits, conversations, follow requests,
+  followed tags, …) and `DIFFERENT` (strict xfail: 140 characters, no grouping,
+  and places where mastomini follows real Mastodon and the mock does not).
+  Strict xfail means a test that starts passing fails the run until its entry is
+  removed. Anything failing that isn't listed is a bug.
 
-This gives a quick answer to "does this behave like Mastodon?" without a real
-Mastodon instance.
+First result (2026-09-23): 87 of 210 passed as-is; after fixes, 96 pass, 69 are
+not applicable and 45 are listed deviations, with no unlisted failures.
 
 Python tooling runs under `uv run` (per workspace convention). Rust through
 `cargo` via the Makefile in Git Bash.

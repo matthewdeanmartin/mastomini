@@ -1,0 +1,38 @@
+---
+site_name: mastomini
+site_url: https://mastomini.readthedocs.io/
+site_author: Matthew Martin <matthewdeanmartin@gmail.com>
+site_description: A private Mastodon-compatible server for one household, on an ESP32-S3
+repo_url: https://github.com/matthewdeanmartin/mastomini
+theme:
+  name: readthedocs
+  features: [navigation.footer]
+edit_uri: edit/main/docs/
+extra_javascript: [javascripts/nav-sections.js]
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite
+  - toc:
+      permalink: true
+nav:
+  - Home: index.md
+  - User guide:
+      - Installation: installation.md
+      - Usage:
+          - Connecting Mastodon apps: usage/connecting-apps.md
+          - Running the household: usage/administration.md
+      - Security:
+          - Encryption at rest: security/encryption.md
+          - HTTPS and certificates: security/https.md
+  - Contributor guide:
+      - Start here: contributing/index.md
+validation:
+  nav:
+    omitted_files: warn
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+plugins:
+  - search

@@ -65,15 +65,24 @@ impl<S: Store> Service<S> {
             .filter_map(|name| self.state.account_by_username(name))
             .map(|a| (a.rec.id, a.slot))
             .collect();
+        let visibility = new.visibility.unwrap_or(default_visibility);
+        // A direct message is readable only by its author and the people it
+        // mentions: all of them need a key before anything is written.
+        let participants: Vec<u8> = std::iter::once(slot)
+            .chain(mentions.iter().map(|(_, s)| *s).filter(|s| *s != slot))
+            .collect();
+        if visibility == Visibility::Direct {
+            self.seal_dm(0, &participants, "", "")?;
+        }
 
         self.govern(Some(slot), now_ms)?;
         self.make_room(Room::Status)?;
-        let rec = StatusRec {
+        let mut rec = StatusRec {
             id: self.next_id(now_ms),
             author: slot,
             text,
             spoiler_text: spoiler,
-            visibility: new.visibility.unwrap_or(default_visibility),
+            visibility,
             sensitive: new.sensitive,
             language: new.language,
             in_reply_to_id: new.in_reply_to_id,
@@ -85,6 +94,17 @@ impl<S: Store> Service<S> {
             edited_at_ms: None,
         };
         let id = rec.id;
+        if visibility == Visibility::Direct {
+            // Envelope first; the status record is the commit point. The
+            // stored status keeps no text, and stays marked sensitive if it
+            // had a content warning.
+            let envelope = self.seal_dm(id, &participants, &rec.text, &rec.spoiler_text)?;
+            self.put(Ns::Stat, &keys::dm(id), Kind::Dm, &envelope)?;
+            self.state.dms.insert(id, envelope);
+            rec.sensitive |= !rec.spoiler_text.is_empty();
+            rec.text.clear();
+            rec.spoiler_text.clear();
+        }
         self.put(Ns::Stat, &keys::status(id), Kind::Status, &rec)?;
 
         let mask = mentions.iter().fold(0, |m, (_, s)| m | bit(*s));
@@ -105,6 +125,7 @@ impl<S: Store> Service<S> {
                 bookmarked: 0,
                 pinned: 0,
                 boosted: 0,
+                muted: 0,
                 replies: 0,
             },
         );
@@ -139,6 +160,9 @@ impl<S: Store> Service<S> {
     /// if power is lost in between).
     pub(crate) fn remove_status(&mut self, id: u64) -> Result<()> {
         self.erase(Ns::Stat, &keys::status(id))?;
+        if self.state.dms.remove(&id).is_some() {
+            self.erase(Ns::Stat, &keys::dm(id))?;
+        }
         let Some(status) = self.state.statuses.remove(&id) else {
             return Ok(());
         };
@@ -276,6 +300,7 @@ impl<S: Store> Service<S> {
                 ReactionKind::Favourite => &mut status.favourited,
                 ReactionKind::Bookmark => &mut status.bookmarked,
                 ReactionKind::Pin => &mut status.pinned,
+                ReactionKind::Mute => &mut status.muted,
             };
             if on {
                 *mask |= bit(slot);
@@ -367,6 +392,9 @@ impl<S: Store> Service<S> {
         }
         if src == dst {
             return Err(Error::Forbidden("You can't follow yourself".into()));
+        }
+        if on && self.state.blocked_either(src, dst) {
+            return Err(Error::Forbidden("This action is not allowed".into()));
         }
         let existing = self.state.follows.get(&(src, dst)).copied();
         if !on {

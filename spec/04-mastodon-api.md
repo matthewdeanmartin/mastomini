@@ -36,7 +36,8 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 
 | Area | Endpoints |
 |---|---|
-| Discovery | `GET /api/v1/instance`, `GET /api/v2/instance`, `GET /.well-known/oauth-authorization-server`, `GET /.well-known/nodeinfo` + `/nodeinfo/2.0`, `GET /api/v1/instance/rules` |
+| Discovery | `GET /api/v1/instance`, `GET /api/v2/instance` (with `configuration.urls.about`, `terms_of_service`, `privacy_policy`), `GET /.well-known/oauth-authorization-server`, `GET /.well-known/nodeinfo` + `/nodeinfo/2.0`, `GET /api/v1/instance/rules`, `/extended_description`, `/terms_of_service` (+ `/:date`), `/privacy_policy` |
+| About pages (HTML, no sign-in) | `GET /about` (description, rules, admins), `/terms-of-service`, `/privacy-policy` |
 | Apps & OAuth | `POST /api/v1/apps`, `GET /api/v1/apps/verify_credentials`, `GET /oauth/authorize` (HTML), `POST /oauth/authorize` (form), `POST /oauth/token` (`authorization_code` with/without PKCE, `client_credentials`), `POST /oauth/revoke` |
 | Me | `GET /api/v1/accounts/verify_credentials` (with `source`), `PATCH /api/v1/accounts/update_credentials` (display name, note, fields, locked, bot, avatar, header, source.privacy/sensitive/language) |
 | Accounts | `GET /api/v1/accounts/:id`, `/:id/statuses` (with `pinned`, `exclude_replies`, `exclude_reblogs`, `only_media`, `tagged`), `/:id/followers`, `/:id/following`, `GET /api/v1/accounts/relationships`, `GET /api/v1/accounts/lookup`, `GET /api/v1/accounts/search` |
@@ -51,8 +52,8 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 
 | Area | Endpoints |
 |---|---|
-| Relationships | follow/unfollow (with `reblogs`, `notify`), block/unblock, mute/unmute, `GET /api/v1/blocks`, `/mutes`, follow requests (only if `locked` accounts are allowed; household default is unlocked), `POST /api/v1/accounts/:id/note` (RAM + store, tiny) |
-| Statuses | `PUT /api/v1/statuses/:id` (edit), `GET /:id/history`, `GET /:id/source`, `POST /:id/mute`/`unmute` (conversation mute, bitmask) |
+| Relationships | follow/unfollow (with `reblogs`, `notify`), `remove_from_followers`, **block/unblock, mute/unmute (with `notifications`, `duration`), `GET /api/v1/blocks`, `/mutes` (done, see "Moderation")**, follow requests (only if `locked` accounts are allowed; household default is unlocked), `POST /api/v1/accounts/:id/note` (RAM + store, tiny) |
+| Statuses | `PUT /api/v1/statuses/:id` (edit), `GET /:id/history`, `GET /:id/source`, **`POST /:id/mute`/`unmute` (conversation mute, done)** |
 | Lists | full CRUD + `accounts` add/remove, `GET /api/v1/timelines/list/:id` |
 | Filters | v2 CRUD + keywords, applied server-side as `Status.filtered` |
 | Favourites / bookmarks | `GET /api/v1/favourites`, `/bookmarks` (paginated by reaction record id, as Mastodon does) |
@@ -72,15 +73,118 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Media (`/api/v1/media`, `/api/v2/media`) | `422` "media attachments are not supported"; `configuration.media_attachments` advertises `max_media_attachments: 0` if clients tolerate it (check in the client matrix) |
 | Push (`/api/v1/push/subscription`) | `404` in v1. Later maybe, if the board has internet access |
 | Account creation (`POST /api/v1/accounts`) | `registrations: false`. Returns `403`. Members are created in the household app |
-| Reports | Later maybe: a report becomes a notification to the admin |
-| Admin API (`/api/v1/admin/*`) | No. The household app uses `/api/mastomini/v1` instead |
-| Translation, preview cards, quotes, collections, annual reports, domain blocks, endorsements | No. Neutral values in entities |
+| Reports | **Done**, see "Moderation" |
+| Admin API (`/api/v1/admin/*`) | **Accounts and reports only**, see "Moderation". Domain/e-mail/IP blocks, trends, measures, dimensions, retention and announcements: `404` (no federation, no sign-ups, no analytics) |
+| Collections | **Done** (Mastodon 4.6), see "Collections" |
+| Translation, preview cards, quotes, annual reports, domain blocks, endorsements | No. Neutral values in entities |
+
+## Moderation
+
+Everything here persists (spec/02 `mm_rel`, `mm_rx`, `mm_mod`) and survives a
+reboot. Notifications stay RAM only.
+
+**Blocks** (`POST /api/v1/accounts/:id/block`, `/unblock`, `GET /api/v1/blocks`).
+Blocking ends follows in both directions and drops the notifications the two
+exchanged. The blocked member can't follow the blocker again, and can't see the
+blocker's posts at all (`404`, as Mastodon's `StatusPolicy`). The blocker can
+still open a blocked member's post by id, but neither sees the other on the home,
+public or tag timelines, in threads, in search, in suggestions or in the
+directory. `Relationship.blocking` / `blocked_by` are real.
+
+**Mutes** (`/mute` with `notifications` (default `true`) and `duration` in
+seconds (`0` = forever), `/unmute`, `GET /api/v1/mutes` with `mute_expires_at`).
+The muted member disappears from the muter's timelines and threads, and from
+their notifications unless `notifications=false`. Nothing changes for the muted
+member. Expired mutes simply stop applying.
+
+**Conversation mutes** (`POST /api/v1/statuses/:id/mute`, `/unmute`). Stored as a
+reaction record on the oldest status of the thread still in flash, so a whole
+thread goes quiet. `Status.muted` is real. A thread mute suppresses every
+notification about a status in that thread.
+
+Timeline filtering follows Mastodon's feed filter: an entry is hidden when its
+author, its booster or anyone it mentions is blocked or muted by the viewer (the
+viewer's own posts are always kept).
+
+**Reports** (`POST /api/v1/reports`, `GET /api/v1/reports` for your own). A report
+names a member, up to 10 of their posts the reporter can see, a comment (500
+characters), a category (`spam`, `legal`, `violation`, `other`; `violation` when
+rule ids are given) and rule ids (1-based, as `/api/v1/instance/rules`). Every
+admin gets an `admin.report` notification carrying the `Report`. The reported
+member is not told. 32 reports are kept; when full, the oldest resolved report
+is dropped, and if none is resolved a new report gets `422`.
+
+**Account moderation**, by admins, through the Mastodon admin API or the
+household API (spec/06). Nobody moderates themselves or the owner, and only the
+owner moderates admins.
+
+| Action | Effect |
+|---|---|
+| `disable` / `enable` | Can't sign in; every existing token answers `403 "Your login is currently disabled"` until enabled, then the member's devices work again without signing in |
+| `silence` / `unsilence` | Mastodon's "limited": off the public and tag timelines, and no notifications, for members who don't follow them. `Account.limited: true` |
+| `suspend` / `unsuspend` | Can't sign in (tokens `403`), all their posts hidden from everyone, profile blanked with `Account.suspended: true`. Reversible |
+| `sensitive` / `unsensitive` | Everyone but the author sees their posts as `sensitive: true` (Mastodon's `StatusSerializer`) |
+| delete | Only after `suspend`, as Mastodon's `AccountPolicy#destroy?`. Tombstone first, then everything the account made is purged; boot finishes an interrupted purge (spec/02) |
+| delete a post | Household API only. Never a direct message the admin isn't part of |
+
+Admin API endpoints: `GET /api/v1/admin/accounts` (v1 filters) and
+`/api/v2/admin/accounts` (`origin`, `status`, `permissions`, `username`,
+`display_name`), `GET /api/v1/admin/accounts/:id`, `POST /:id/action`
+(`type`, `report_id`), `/enable`, `/unsilence`, `/unsuspend`, `/unsensitive`,
+`/approve` and `/reject` (`403`: nobody is ever pending), `DELETE /:id`;
+`GET /api/v1/admin/reports` (`resolved`, `account_id`, `target_account_id`),
+`GET`/`PUT /:id`, `/assign_to_self`, `/unassign`, `/resolve`, `/reopen`. They need
+an admin account **and** an `admin:read[:…]` / `admin:write[:…]` scope.
+`Admin::Account.email` is `""` and `ip` is `null`: neither exists here.
+`Admin::Report.statuses` leaves out direct messages the admin isn't part of
+(the household rule wins over Mastodon's; see open question #15).
+
+## Collections
+
+Mastodon 4.6 collections: a member's curated list of other members, like a
+starter pack. Response shapes follow docs.joinmastodon.org/methods/collections.
+
+| Endpoint | Returns |
+|---|---|
+| `POST /api/v1/collections` (`name`, `description`, `discoverable`, `sensitive`, `language`, `tag_name`, `account_ids[]`) | `{"collection": Collection}` |
+| `GET /api/v1/collections/:id` | `{"collection": Collection, "accounts": [curator, featured…]}` |
+| `PATCH /api/v1/collections/:id` | `{"collection": Collection}` |
+| `DELETE /api/v1/collections/:id` | `{}` |
+| `POST /api/v1/collections/:id/items` (`account_id`) | `{"collection_item": CollectionItem}` |
+| `DELETE /api/v1/collections/:id/items/:item_id` | `{}` |
+| `POST /api/v1/collections/:id/items/:item_id/revoke` | `{}` |
+| `GET /api/v1/accounts/:id/collections`, `/in_collections` (`limit` ≤ 80, `offset`) | `{"collections": [...]}` |
+
+Household rules:
+
+- **Auto-accept.** Items are `accepted` immediately. The featured member gets an
+  `added_to_collection` notification and can revoke. A revoked item stays (state
+  `revoked`, visible only to the curator) so the curator can't simply add them
+  back. Deleting a revoked item does nothing.
+- Only members with `discoverable: true` can be featured. Nobody features
+  themselves. Suspended members and members blocked either way can't be added,
+  and drop out of existing collections for everyone but the curator.
+- `discoverable: false` collections are left out of `accounts/:id/collections`
+  (except for the curator) but can still be opened by id.
+- Scopes `read:collections` / `write:collections` (covered by `read` / `write`).
+- `item_count` counts accepted items. `local` is always `true`.
+- mastomini still advertises `api_versions.mastodon: 2`, so clients that gate
+  collections on API version 10 won't show them yet (open question #16).
 
 ## Semantics that differ from Mastodon
 
 - **No remote anything.** `acct` is always the bare username. `url` / `uri`
   are `https://<host>/@<username>` and `https://<host>/@<username>/<id>`. The server
   serves no HTML for these URLs except a redirect to the household app.
+- **Rules and terms.** A new household starts with three rules (be patient, the
+  microcontroller is slow; don't unplug it; obey the laws where it physically
+  is). Without admin-written terms, `terms_of_service` is generated from the
+  server name and rules, effective from the day the household was set up. The
+  privacy policy is generated and describes what is stored and that direct
+  messages are encrypted.
+- **Direct messages are encrypted** (05 "Direct messages"). They are not
+  searchable, and a participant on a device signed in before encryption sees a
+  "sign in again" placeholder instead of the text.
 - **Visibility inside a household.** `public` and `unlisted` both mean "every
   signed-in household member". The difference only affects whether the post appears
   on the public/local timeline, as in Mastodon. `private` means followers only.
