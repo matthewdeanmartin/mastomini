@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod avatar;
 pub mod captive;
 pub mod codec;
 pub mod crypto;
@@ -14,3 +15,4 @@ pub mod http;
 pub mod ids;
 pub mod store;
 pub mod text;
+pub mod web;

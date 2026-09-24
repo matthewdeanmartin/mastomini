@@ -12,6 +12,21 @@ pub const BODY_LIMIT: usize = 4 * 1024;
 /// `update_credentials` may carry avatar/header images.
 pub const UPLOAD_BODY_LIMIT: usize = 160 * 1024;
 
+/// Request headers the board passes to [`crate::api::handle`]. The desktop
+/// server passes every header, so a name missing here only breaks on the
+/// board; a test checks that every header the code reads is listed.
+pub const FORWARDED_HEADERS: [&str; 8] = [
+    "Host",
+    "Authorization",
+    "Content-Type",
+    "Idempotency-Key",
+    "Accept",
+    "Origin",
+    // The household app (src/web.rs): gzip negotiation and revalidation.
+    "Accept-Encoding",
+    "If-None-Match",
+];
+
 #[derive(Debug, Clone, Default)]
 pub struct Request {
     pub method: String,
@@ -295,6 +310,11 @@ impl Params {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.pairs.iter().map(|(k, _)| k.as_str())
     }
+
+    /// Every name and value, in the order sent.
+    pub fn pairs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.pairs.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -315,6 +335,50 @@ pub fn encode(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Every `.header("…")` read outside tests must be one the board
+    /// forwards (the bug that broke `/app/` on the board: `Accept-Encoding`).
+    #[test]
+    fn every_request_header_read_is_forwarded_by_the_board() {
+        fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_string_lossy().to_string();
+                if path.is_dir() {
+                    if name != "tests" && name != "bin" {
+                        sources(&path, out);
+                    }
+                } else if name.ends_with(".rs") && name != "testkit.rs" && name != "tests.rs" {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        sources(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        let mut read = Vec::new();
+        for file in &files {
+            let text = std::fs::read_to_string(file).unwrap();
+            let code = text.split("#[cfg(test)]").next().unwrap();
+            for part in code.split(".header(\"").skip(1) {
+                read.push(part.split('"').next().unwrap().to_string());
+            }
+        }
+        assert!(
+            read.iter().any(|h| h == "Accept-Encoding"),
+            "scan found {read:?}"
+        );
+        for header in &read {
+            assert!(
+                super::FORWARDED_HEADERS
+                    .iter()
+                    .any(|f| f.eq_ignore_ascii_case(header)),
+                "{header} is read but src/bin/esp32.rs won't forward it"
+            );
+        }
+    }
+
     use super::*;
 
     #[test]

@@ -199,8 +199,8 @@ purpose. The household does it like this:
 2. **Household**: tap **Create your household** (or visit the board's address
    from any browser on the home network). Enter a household name, a username
    and a password. That account is the owner.
-3. **Family**: the board's address now shows how to connect a Mastodon app,
-   and an **Add a family member** form (confirmed with the owner's password).
+3. **Family**: **Invite your family** opens the household app at `/app/`;
+   sign in as the owner and create invite links.
 
 The `mastomini-setup` network closes about two minutes after the household is
 created; the phone then goes back to the home network.
@@ -258,3 +258,23 @@ Report, without credentials or household content:
 | `ac:a7:04:2c:29:9c` (ESP32-S3 N16R8, COM11 on the build PC). Provisioned 2026-09-23 through the setup page with the owner from the repo-root `.env`; Wi-Fi saved on the board | 2026-09-23, procedure B | MicroPython 1.19.1 with an LED demo `main.py`; no household data | `.local/board-backups/aca7042c299c-20260923-081302-full16MB.bin`, sha256 `d73b6dd5…6fb15` | 192.168.1.161 (DHCP; may change) |
 
 Add a row after every first install. Update the address when it changes.
+
+## Deployment comments
+
+- **2026-09-24 — upgrade on COM11** (ESP32-S3, MAC `ac:a7:04:2c:29:9c`),
+  checkout revision `780f7e5` with a dirty working tree. `make check` passed:
+  117 Rust tests, 14 UI tests, 6 client tests, and 96 conformance tests passed;
+  the conformance suite also reported its existing skips and expected xfails.
+- The first `bash` available in PowerShell was WSL, where the guide's
+  `/c/...` path and `make` were unavailable. Switched to the installed Git Bash
+  explicitly; deployment then followed the documented commands.
+- The install dry run identified the existing mastomini partition layout, so
+  procedure A was used. The app image was 1,813,024 bytes (under the 4 MiB
+  limit). The flash hash verified and the script reported `Application
+  updated. The board restarts; household data was not touched.`
+- Firmware compilation emitted 10 non-fatal uppercase-name warnings for the
+  ESP-IDF reset-reason constants in `src/bin/esp32.rs`.
+- Boot log: `store: provisioned=true accounts=2 statuses=2 repairs=0`;
+  ready at `192.168.1.161`. The read-only probes passed by IP and by
+  `mastomini.local`. The hostname probe took about 90 seconds to resolve on
+  Windows, then all checks passed.

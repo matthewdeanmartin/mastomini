@@ -373,6 +373,24 @@ fn transport_rules() {
     assert!(png.body.starts_with(b"\x89PNG"));
 }
 
+#[test]
+fn accounts_have_generated_avatars() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read");
+    let me = s
+        .get("/api/v1/accounts/verify_credentials", Some(&alice))
+        .json_body();
+    let url = me["avatar"].as_str().unwrap();
+    assert_eq!(me["avatar_static"], url);
+    let path = url.strip_prefix("http://mastomini.test").unwrap();
+    let png = s.get(path, None);
+    assert_eq!(png.status, 200);
+    assert_eq!(png.header("Content-Type"), Some("image/png"));
+    assert!(png.body.starts_with(b"\x89PNG"));
+    assert_eq!(s.get("/avatars/123.png", None).status, 404);
+    assert_eq!(s.get("/avatars/nonsense.png", None).status, 404);
+}
+
 /// Alice (owner) and bob, following each other. Returns their tokens.
 fn pair() -> (Server, String, String) {
     let mut s = Server::provisioned();
@@ -737,54 +755,10 @@ fn first_visit_shows_setup_and_creates_the_household() {
         1
     );
     let landing = s.get("/", None);
-    assert!(html(&landing).contains("Add a family member"));
+    assert!(html(&landing).contains("href=\"/app/\""));
+    assert!(!html(&landing).contains("admin_password"));
     assert!(!html(&landing).contains("action=\"/setup\""));
     s.login("mom", "abcd", "read");
-}
-
-#[test]
-fn adding_family_members_needs_an_admin_password() {
-    let mut s = Server::provisioned();
-    let wrong = s.post_form(
-        "/setup/members",
-        None,
-        &[
-            ("username", "kid"),
-            ("password", "kidpw"),
-            ("admin_username", "alice"),
-            ("admin_password", "nope"),
-        ],
-    );
-    assert_eq!(wrong.status, 401);
-    assert!(html(&wrong).contains("Wrong admin username or password"));
-
-    let ok = s.post_form(
-        "/setup/members",
-        None,
-        &[
-            ("username", "kid"),
-            ("password", "kidpw"),
-            ("admin_username", "alice"),
-            ("admin_password", "alicepw"),
-        ],
-    );
-    assert_eq!(ok.status, 200);
-    assert!(html(&ok).contains("Added kid"));
-    s.login("kid", "kidpw", "read");
-
-    // A plain member cannot add members.
-    let member = s.post_form(
-        "/setup/members",
-        None,
-        &[
-            ("username", "eve"),
-            ("password", "evepw"),
-            ("admin_username", "kid"),
-            ("admin_password", "kidpw"),
-        ],
-    );
-    assert_eq!(member.status, 422);
-    assert!(html(&member).contains("Only an admin"));
 }
 
 #[test]
@@ -816,5 +790,10 @@ fn streaming_is_advertised_as_absent() {
 }
 
 mod about;
+mod codes;
+mod conversations;
+mod diag;
 mod dm;
+mod edits_polls;
+mod lists_filters;
 mod moderation;

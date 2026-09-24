@@ -14,6 +14,7 @@ pub struct NewStatus {
     pub in_reply_to_id: Option<u64>,
     pub idempotency_key: Option<String>,
     pub app_id: Option<u64>,
+    pub poll: Option<NewPoll>,
 }
 
 const MAX_IDEMPOTENCY_KEY: usize = 80;
@@ -66,6 +67,12 @@ impl<S: Store> Service<S> {
             .map(|a| (a.rec.id, a.slot))
             .collect();
         let visibility = new.visibility.unwrap_or(default_visibility);
+        if let Some(poll) = &new.poll {
+            if visibility == Visibility::Direct {
+                return invalid("Validation failed: Direct messages can't have polls");
+            }
+            super::polls::validate_poll(poll)?;
+        }
         // A direct message is readable only by its author and the people it
         // mentions: all of them need a key before anything is written.
         let participants: Vec<u8> = std::iter::once(slot)
@@ -94,6 +101,12 @@ impl<S: Store> Service<S> {
             edited_at_ms: None,
         };
         let id = rec.id;
+        // The poll is written before its status, like a DM's envelope.
+        if let Some(poll) = &new.poll {
+            let poll = poll.record(now_ms);
+            self.put(Ns::Stat, &keys::poll(id), Kind::Poll, &poll)?;
+            self.state.polls.insert(id, poll);
+        }
         if visibility == Visibility::Direct {
             // Envelope first; the status record is the commit point. The
             // stored status keeps no text, and stays marked sensitive if it
@@ -163,6 +176,11 @@ impl<S: Store> Service<S> {
         if self.state.dms.remove(&id).is_some() {
             self.erase(Ns::Stat, &keys::dm(id))?;
         }
+        if self.state.polls.remove(&id).is_some() {
+            self.erase(Ns::Stat, &keys::poll(id))?;
+        }
+        self.state.polls_announced.remove(&id);
+        self.erase_history(id)?;
         let Some(status) = self.state.statuses.remove(&id) else {
             return Ok(());
         };
@@ -376,8 +394,8 @@ impl<S: Store> Service<S> {
         Ok(())
     }
 
-    /// Follow (with options) or unfollow. Locked accounts are followed
-    /// directly for now: follow requests arrive with the Tier 2 API.
+    /// Follow (with options) or unfollow. Following a locked account asks
+    /// first (a follow request); unfollowing also withdraws a request.
     pub fn set_follow(
         &mut self,
         src: u8,
@@ -398,12 +416,23 @@ impl<S: Store> Service<S> {
         }
         let existing = self.state.follows.get(&(src, dst)).copied();
         if !on {
-            if existing.is_some() {
+            let requested = self.state.follow_requests.contains_key(&(src, dst));
+            if existing.is_some() || requested {
                 self.govern(Some(src), now_ms)?;
+            }
+            if existing.is_some() {
                 self.erase(Ns::Rel, &keys::follow(src, dst))?;
                 self.state.follows.remove(&(src, dst));
+                self.leave_lists(src, dst)?;
+            }
+            if requested {
+                self.drop_follow_request(src, dst)?;
             }
             return Ok(());
+        }
+        let locked = self.state.account(dst).is_some_and(|a| a.rec.locked);
+        if existing.is_none() && locked {
+            return self.request_follow(src, dst, reblogs, notify, now_ms);
         }
         let rec = FollowRec {
             id: existing.map_or_else(|| self.next_id(now_ms), |e| e.id),

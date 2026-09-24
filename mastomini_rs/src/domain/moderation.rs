@@ -86,7 +86,9 @@ impl<S: Store> Service<S> {
             if self.state.follows.contains_key(&(a, b)) {
                 self.erase(Ns::Rel, &keys::follow(a, b))?;
                 self.state.follows.remove(&(a, b));
+                self.leave_lists(a, b)?;
             }
+            self.drop_follow_request(a, b)?;
         }
         self.state
             .notifications
@@ -337,7 +339,7 @@ impl<S: Store> Service<S> {
 
     /// May `actor` moderate `target`? Nobody moderates themselves or the
     /// owner, and only the owner moderates admins.
-    fn require_power_over(&self, actor: u8, target: u8) -> Result<()> {
+    pub(crate) fn require_power_over(&self, actor: u8, target: u8) -> Result<()> {
         self.require_admin(actor)?;
         let actor_role = self.state.account(actor).map(|a| a.rec.role);
         let target_role = self.state.account(target).ok_or(Error::NotFound)?.rec.role;
@@ -705,6 +707,50 @@ impl<S: Store> Service<S> {
         }
         if self.state.user_keys[slot as usize].take().is_some() {
             self.erase(Ns::Key, &keys::user_key(slot))?;
+        }
+        self.forget_votes(slot)?;
+        let requests: Vec<(u8, u8)> = self
+            .state
+            .follow_requests
+            .keys()
+            .filter(|(a, b)| *a == slot || *b == slot)
+            .copied()
+            .collect();
+        for (a, b) in requests {
+            self.erase(Ns::Rel, &keys::follow_request(a, b))?;
+            self.state.follow_requests.remove(&(a, b));
+        }
+        let lists: Vec<(u8, u8)> = self
+            .state
+            .lists
+            .range((slot, 0)..=(slot, 15))
+            .map(|(k, _)| *k)
+            .collect();
+        for (s, n) in lists {
+            self.erase(Ns::List, &keys::list(s, n))?;
+            self.state.lists.remove(&(s, n));
+        }
+        let filters: Vec<(u8, u8)> = self
+            .state
+            .filters
+            .range((slot, 0)..=(slot, 15))
+            .map(|(k, _)| *k)
+            .collect();
+        for (s, n) in filters {
+            self.erase(Ns::Filt, &keys::filter(s, n))?;
+            self.state.filters.remove(&(s, n));
+        }
+        self.state.conversations.retain(|(s, _), _| *s != slot);
+        let codes: Vec<u64> = self
+            .state
+            .invites
+            .values()
+            .filter(|c| matches!(c.kind, CodeKind::Reset { slot: s, .. } if s == slot))
+            .map(|c| c.id)
+            .collect();
+        for id in codes {
+            self.erase(Ns::Inv, &keys::code(id))?;
+            self.state.invites.remove(&id);
         }
         self.state
             .notifications

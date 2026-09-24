@@ -23,9 +23,9 @@ use esp_idf_svc::{
     wifi::{BlockingWifi, EspWifi},
 };
 use mastomini::{
-    api::{self, Ctx},
+    api::{self, diag::Platform, Ctx},
     domain::{Config, Service},
-    http::{Request, Response, UPLOAD_BODY_LIMIT},
+    http::{Request, Response, FORWARDED_HEADERS, UPLOAD_BODY_LIMIT},
 };
 use std::{
     sync::{Arc, Mutex},
@@ -48,14 +48,6 @@ const HOSTNAME: &str = match option_env!("MASTOMINI_HOSTNAME") {
 const CLOCK_VALID_AFTER_MS: u128 = 1_704_067_200_000;
 
 /// Request headers the API reads. esp-idf's server cannot enumerate headers.
-const HEADERS: [&str; 6] = [
-    "Host",
-    "Authorization",
-    "Content-Type",
-    "Idempotency-Key",
-    "Accept",
-    "Origin",
-];
 
 fn now_ms() -> Option<u64> {
     let ms = SystemTime::now()
@@ -63,6 +55,52 @@ fn now_ms() -> Option<u64> {
         .ok()?
         .as_millis();
     (ms > CLOCK_VALID_AFTER_MS).then_some(ms as u64)
+}
+
+/// Milliseconds since boot (monotonic), for the manually set clock.
+fn uptime_ms() -> u64 {
+    // SAFETY: reads the monotonic system timer.
+    (unsafe { esp_idf_svc::sys::esp_timer_get_time() } / 1000) as u64
+}
+
+fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
+    use esp_idf_svc::sys::*;
+    match reason {
+        esp_reset_reason_t_ESP_RST_POWERON => "power on",
+        esp_reset_reason_t_ESP_RST_EXT => "reset pin",
+        esp_reset_reason_t_ESP_RST_SW => "software restart",
+        esp_reset_reason_t_ESP_RST_PANIC => "crash",
+        esp_reset_reason_t_ESP_RST_INT_WDT
+        | esp_reset_reason_t_ESP_RST_TASK_WDT
+        | esp_reset_reason_t_ESP_RST_WDT => "watchdog",
+        esp_reset_reason_t_ESP_RST_DEEPSLEEP => "deep sleep",
+        esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout (power dipped)",
+        esp_reset_reason_t_ESP_RST_USB => "USB",
+        _ => "other",
+    }
+}
+
+/// Board facts for `/diag`.
+fn platform() -> Platform {
+    use esp_idf_svc::sys::*;
+    let internal = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    // SAFETY: heap and reset queries take no pointers; the AP record is a
+    // local that the call fills in.
+    unsafe {
+        let mut ap: wifi_ap_record_t = core::mem::zeroed();
+        let rssi = (esp_wifi_sta_get_ap_info(&mut ap) == ESP_OK).then_some(i32::from(ap.rssi));
+        Platform {
+            target: "esp32s3",
+            uptime_ms: uptime_ms(),
+            heap_internal_free: Some(heap_caps_get_free_size(internal) as u64),
+            heap_internal_min_free: Some(heap_caps_get_minimum_free_size(internal) as u64),
+            heap_internal_largest_block: Some(heap_caps_get_largest_free_block(internal) as u64),
+            psram_free: Some(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) as u64),
+            psram_min_free: Some(heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM) as u64),
+            reset_reason: Some(reset_reason(esp_reset_reason())),
+            wifi_rssi: rssi,
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,7 +124,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_url = option_env!("MASTOMINI_BASE_URL")
         .map(str::to_string)
         .unwrap_or_else(|| format!("http://{HOSTNAME}.local"));
-    let ctx = Arc::new(Ctx::new(&base_url));
+    let ctx = Arc::new(Ctx {
+        platform,
+        uptime_ms,
+        ..Ctx::new(&base_url)
+    });
     let config = Config {
         host: ctx.host().to_string(),
         ..Config::default()
@@ -177,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         server.fn_handler::<esp_idf_svc::io::EspIOError, _>("/*", method, move |mut req| {
             let head = name == "HEAD";
             let mut request = Request::new(if head { "GET" } else { name }, req.uri());
-            for header in HEADERS {
+            for header in FORWARDED_HEADERS {
                 if let Some(value) = req.header(header) {
                     request
                         .headers

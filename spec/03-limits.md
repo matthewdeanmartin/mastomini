@@ -62,7 +62,7 @@ and the server agree:
 | Access tokens | 8 per account, 64 total | issuing a 9th revokes that account's oldest token |
 | Pending authorization codes | 16, 60 s, single use | `503` try again |
 | Lists | 8 per account | `422` |
-| Filters (v2) | 8 per account × 4 keywords | `422` |
+| Filters (v2) | 8 per account × 4 keywords and 4 statuses | `422` |
 | Followed hashtags | 16 per account | `422` |
 | Blocks, mutes | one edge per ordered pair of accounts (≤ 240 each) | — |
 | Reports | 32 | oldest resolved dropped; `422` if none is resolved |
@@ -71,7 +71,7 @@ and the server agree:
 | Notifications (RAM ring, all accounts) | 512 | oldest dropped. Emptied by reboot |
 | Invites / reset codes | 8 live, 7-day expiry | oldest expired first |
 | Custom emoji | 0 | `[]` |
-| Polls (later phase) | 4 options × 50 chars, 1 poll per status, max 7-day expiry | `422` |
+| Polls | 2–4 options × 50 chars, 1 poll per status, 5 minutes to 7 days, not in direct messages | `422` |
 
 ## Request and response limits
 

@@ -4,10 +4,14 @@
 mod about;
 mod accounts;
 mod collections;
+mod conversations;
+pub mod diag;
 pub mod entities;
+mod filters;
 mod household;
 pub mod html;
 mod instance;
+mod lists;
 mod misc;
 mod moderation;
 mod oauth;
@@ -21,17 +25,25 @@ use crate::domain::{Error, Principal, Service};
 use crate::http::{self, Params, Request, Response};
 use crate::store::Store;
 
-/// Where the server is reachable, for URLs in responses.
+/// Where the server is reachable, for URLs in responses, and what the
+/// platform can report about itself.
 #[derive(Debug, Clone)]
 pub struct Ctx {
     /// `https://mastomini.local` or `http://127.0.0.1:8080`, no trailing slash.
     pub base_url: String,
+    /// Heap, uptime, Wi-Fi and so on, for `/diag`. The board replaces this.
+    pub platform: fn() -> diag::Platform,
+    /// A monotonic clock, for the manually set time (`POST /clock`).
+    pub uptime_ms: fn() -> u64,
 }
 
 impl Ctx {
     pub fn new(base_url: &str) -> Ctx {
+        diag::host_uptime_ms();
         Ctx {
             base_url: base_url.trim_end_matches('/').to_string(),
+            platform: diag::Platform::host,
+            uptime_ms: diag::host_uptime_ms,
         }
     }
 
@@ -50,6 +62,8 @@ pub(crate) struct Call<'a, S: Store> {
     pub req: &'a Request,
     pub params: Params,
     pub now: u64,
+    /// Where `now` came from.
+    pub clock: diag::Clock,
     pub principal: Option<Principal>,
 }
 
@@ -201,9 +215,18 @@ fn dispatch<S: Store>(
     now_ms: Option<u64>,
 ) -> Response {
     let reading = matches!(req.method.as_str(), "GET" | "HEAD");
+    // Without a synced clock, a time an admin set by hand (RAM only).
+    let (now_ms, clock) = match (now_ms, svc.state.clock_anchor) {
+        (Some(now), _) => (Some(now), diag::Clock::Synced),
+        (None, Some((wall, at))) => (
+            Some(wall + (ctx.uptime_ms)().saturating_sub(at)),
+            diag::Clock::Manual,
+        ),
+        (None, None) => (None, diag::Clock::Unset),
+    };
     let now = match now_ms {
         Some(now) => now,
-        None if reading => svc.last_id() >> 16,
+        None if reading || req.path == "/api/mastomini/v1/clock" => svc.last_id() >> 16,
         None if req.path.starts_with("/setup") => return setup::clock_not_set(),
         None => {
             return fail(Error::Unavailable(
@@ -234,6 +257,7 @@ fn dispatch<S: Store>(
         req,
         params,
         now,
+        clock,
         principal,
     };
     let segments = req.segments();
@@ -256,29 +280,73 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         )
         | (_, ["api", "v1", "custom_emojis"]) => return instance::route(c, method, seg),
         (_, ["oauth", ..]) | (_, ["api", "v1", "apps", ..]) => return oauth::route(c, method, seg),
+        (_, ["app", ..]) => Ok(crate::web::serve(c.req)),
         (_, [] | ["setup", ..]) => return setup::route(c, method, seg),
         (_, ["about" | "terms-of-service" | "terms" | "privacy-policy"]) => {
             return about::route(c, method, seg)
         }
         (_, ["api", "v1", "accounts", _, "collections" | "in_collections"])
         | (_, ["api", "v1", "collections", ..]) => return collections::route(c, method, seg),
+        (_, ["api", "v1", "accounts", _, "lists"]) => return lists::route(c, method, seg),
         (_, ["api", "v1", "accounts", ..]) => return accounts::route(c, method, seg),
         (_, ["api", "v1" | "v2", "admin", ..])
         | (_, ["api", "v1", "blocks" | "mutes" | "reports"]) => {
             return moderation::route(c, method, seg)
         }
         (_, ["api", "v1", "statuses", ..]) => return statuses::route(c, method, seg),
-        (_, ["api", "mastomini", "v1", ..]) => return household::route(c, method, &seg[3..]),
+        (_, ["api", "v1", "conversations", ..]) => return conversations::route(c, method, seg),
+        (_, ["api", "v1", "polls", ..]) => return statuses::polls(c, method, seg),
+        (_, ["api", "v1" | "v2", "filters", ..]) => return filters::route(c, method, seg),
+        (_, ["api", "v1", "lists", ..])
+        | (_, ["api", "v1", "follow_requests", ..])
+        | (_, ["api", "v1", "timelines", "list", _]) => return lists::route(c, method, seg),
+        (_, ["api", "mastomini", "v1", ..]) => {
+            return diag::route(c, method, &seg[3..])
+                .or_else(|| household::route(c, method, &seg[3..]))
+        }
         (
             "GET",
             ["avatars", "original", "missing.png"] | ["headers", "original", "missing.png"],
         ) => Ok(Response::new(200, "image/png", MISSING_PNG)
             .with_header("Cache-Control", "public, max-age=604800")),
+        ("GET", ["avatars", file]) => Ok(avatar(c, file)),
+        // Browsers ask for these at the root of every site.
+        ("GET", ["favicon.ico"]) => Ok(Response::new(200, "image/x-icon", FAVICON)
+            .with_header("Cache-Control", "public, max-age=604800")),
+        ("GET", ["apple-touch-icon.png" | "apple-touch-icon-precomposed.png"]) => {
+            Ok(Response::new(200, "image/png", TOUCH_ICON)
+                .with_header("Cache-Control", "public, max-age=604800"))
+        }
         _ => return timelines::route(c, method, seg).or_else(|| misc::route(c, method, seg)),
     })
 }
 
-/// The default avatar/header: a 48×48 grey PNG.
+/// `/avatars/<account id>.png`: the member's generated avatar. Ids are never
+/// reused and usernames never change, so it can be cached for a long time.
+fn avatar<S: Store>(c: &Call<'_, S>, file: &str) -> Response {
+    let account = file
+        .strip_suffix(".png")
+        .and_then(crate::ids::parse)
+        .and_then(|id| c.svc.state.account_by_id(id));
+    match account {
+        Some(a) => Response::new(
+            200,
+            "image/png",
+            crate::avatar::png(a.rec.id, &a.rec.username),
+        )
+        .with_header("Cache-Control", "public, max-age=604800"),
+        None => Response::error(404, "Record not found"),
+    }
+}
+
+/// The mammoth, 16 and 32 px (3.8 KiB), and 180 px for iOS home screens
+/// (64 colours, 6.6 KiB). Cut down from favicon.io's set: the web manifest
+/// and 192/512 px icons only matter for installable apps, which browsers
+/// allow over HTTPS only.
+static FAVICON: &[u8] = include_bytes!("../../assets/favicon.ico");
+static TOUCH_ICON: &[u8] = include_bytes!("../../assets/apple-touch-icon.png");
+
+/// The default header: a 48×48 grey PNG.
 static MISSING_PNG: &[u8] = include_bytes!("../../assets/missing.png");
 
 #[cfg(test)]

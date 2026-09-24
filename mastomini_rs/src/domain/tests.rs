@@ -435,6 +435,9 @@ fn idempotency_key_returns_same_status() {
     assert_eq!(svc.state.statuses.len(), 1);
 }
 
+mod codes;
 mod collections;
 mod dm;
+mod edits;
 mod moderation;
+mod social;

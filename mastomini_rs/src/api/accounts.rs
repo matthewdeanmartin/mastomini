@@ -157,6 +157,7 @@ fn statuses<S: Store>(c: &Call<'_, S>, id: &str) -> Reply {
         .into_iter()
         .map(|(_, e)| entities::entry(c.svc, c.ctx, e, Some(viewer)))
         .collect();
+    let body = super::filters::annotate(c, viewer, "account", body);
     Ok(c.paged(Value::Array(body), &ids, q.limit()))
 }
 

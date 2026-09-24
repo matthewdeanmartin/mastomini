@@ -116,10 +116,8 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         // Tier 2, not yet implemented: empty lists so clients render nothing.
         (
             "GET",
-            ["api", "v1", "lists" | "filters" | "followed_tags" | "featured_tags" | "announcements"
-            | "follow_requests" | "domain_blocks" | "endorsements" | "conversations"
+            ["api", "v1", "followed_tags" | "featured_tags" | "announcements" | "domain_blocks" | "endorsements"
             | "scheduled_statuses"]
-            | ["api", "v2", "filters"]
             | ["api", "v1", "trends", ..]
             | ["api", "v1", "featured_tags", "suggestions"]
             | ["api", "v1", "timelines", "link"],

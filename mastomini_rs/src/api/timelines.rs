@@ -13,11 +13,13 @@ use serde_json::{json, Map, Value};
 const SEARCH_LIMIT: usize = 20;
 const TIMELINES: [&str; 2] = ["home", "notifications"];
 
+/// A page of statuses, annotated with the viewer's filters for `context`.
 fn entries<S: Store>(
     c: &Call<'_, S>,
     page: Vec<(u64, Entry)>,
     viewer: u8,
     limit: usize,
+    context: &str,
 ) -> Response {
     let ids: Vec<u64> = page.iter().map(|(id, _)| *id).collect();
     let body: Vec<Value> = page
@@ -25,6 +27,7 @@ fn entries<S: Store>(
         .map(|(_, e)| entities::entry(c.svc, c.ctx, e, Some(viewer)))
         .filter(|v| !v.is_null())
         .collect();
+    let body = super::filters::annotate(c, viewer, context, body);
     c.paged(Value::Array(body), &ids, limit)
 }
 
@@ -32,7 +35,7 @@ fn home<S: Store>(c: &Call<'_, S>) -> Reply {
     let viewer = c.user_scoped("read:statuses")?;
     let q = c.page_query();
     let page = c.svc.home(viewer, &q);
-    Ok(entries(c, page, viewer, q.limit()))
+    Ok(entries(c, page, viewer, q.limit(), "home"))
 }
 
 fn public<S: Store>(c: &Call<'_, S>) -> Reply {
@@ -43,7 +46,7 @@ fn public<S: Store>(c: &Call<'_, S>) -> Reply {
         return Ok(Response::ok(json!([])));
     }
     let page = c.svc.public(viewer, &q);
-    Ok(entries(c, page, viewer, q.limit()))
+    Ok(entries(c, page, viewer, q.limit(), "public"))
 }
 
 fn tag<S: Store>(c: &Call<'_, S>, name: &str) -> Reply {
@@ -53,7 +56,7 @@ fn tag<S: Store>(c: &Call<'_, S>, name: &str) -> Reply {
         return Ok(Response::ok(json!([])));
     }
     let page = c.svc.tag_timeline(viewer, name, &q);
-    Ok(entries(c, page, viewer, q.limit()))
+    Ok(entries(c, page, viewer, q.limit(), "public"))
 }
 
 fn reactions<S: Store>(c: &Call<'_, S>, kind: ReactionKind) -> Reply {
@@ -108,12 +111,17 @@ fn notifications_page<S: Store>(c: &Call<'_, S>) -> Result<NotificationPage, Res
 }
 
 fn notifications<S: Store>(c: &Call<'_, S>) -> Reply {
-    let NotificationPage { rows, limit, .. } = notifications_page(c)?;
+    let NotificationPage {
+        viewer,
+        rows,
+        limit,
+    } = notifications_page(c)?;
     let ids: Vec<u64> = rows.iter().map(|(id, _)| *id).collect();
     let body: Vec<Value> = rows
         .iter()
         .map(|(_, n)| entities::notification(c.svc, c.ctx, n))
         .collect();
+    let body = super::filters::annotate(c, viewer, "notifications", body);
     Ok(c.paged(Value::Array(body), &ids, limit))
 }
 

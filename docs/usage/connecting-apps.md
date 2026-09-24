@@ -4,8 +4,9 @@ Each family member needs an account first: an admin creates it (see
 [Running the household](administration.md)). Then:
 
 1. In a Mastodon app, choose to sign in to a server and type the board's
-   address, for example `192.168.1.161` or `mastomini.local`. The board's own
-   page (its address in a browser) shows the address to use.
+   address, for example `192.168.1.161` or `mastomini.local`. On the board's
+   page, **Set up my phone** shows the address to use, with a Copy button, and
+   which apps to try on your kind of device.
 2. The app opens mastomini's sign-in page. Enter your username and password,
    then **Approve**.
 3. That's it. Follow each other: a new account follows nobody, just like on
@@ -37,7 +38,15 @@ likely to work.
 
 - **140 characters** per post, content warning included. Links count as 23,
   as on Mastodon.
-- **No pictures or video**, no polls, no scheduled posts, no quote posts.
+- **No pictures or video**, no scheduled posts, no quote posts. Everyone's
+  picture is their initial on a colour.
+- **Polls** have 2 to 4 options and last up to a week. Direct messages can't
+  have polls.
+- **Editing** works as on Mastodon, and the three previous versions are kept.
+  Edited direct messages keep no history.
+- **Lists and filters** work as on Mastodon. Filters mark matching posts; your
+  app decides whether to warn, blur or hide them.
+- **Locked accounts** get follow requests, as on Mastodon.
 - **Nobody outside the household.** Search and mentions only find household
   members. `@user@mastomini.local` and `@user` are the same person.
 - **Sign-in required for everything**, including the public timeline.

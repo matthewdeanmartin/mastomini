@@ -36,8 +36,8 @@ fn media_config() -> Value {
 
 fn polls_config() -> Value {
     json!({
-        "max_options": 0,
-        "max_characters_per_option": 0,
+        "max_options": crate::domain::MAX_POLL_OPTIONS,
+        "max_characters_per_option": crate::domain::MAX_POLL_OPTION_CHARS,
         "min_expiration": 300,
         "max_expiration": 604800,
     })

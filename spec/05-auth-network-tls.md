@@ -161,7 +161,10 @@ Snowflake IDs and `created_at` need a real clock.
   can post the browser's time to `POST /api/mastomini/v1/clock`. The board accepts it
   only while SNTP has not synced, and only if it is later than the newest stored ID.
   Diagnostics mark it as "approximate". This avoids a permanently read-only board
-  when the internet is down after a power cut.
+  when the internet is down after a power cut. **Built:** the time is anchored
+  to the platform's monotonic uptime in RAM (`State::clock_anchor`); requests
+  then report `clock: "manual"`, and a synced clock always wins. The household
+  app's Health page offers the button while the clock isn't synced.
 - IDs are guarded to be monotonic whatever the clock does (02).
 
 ## Direct messages
@@ -195,7 +198,8 @@ Direct messages are encrypted so that only their participants can read them
   "@name needs to sign in again before they can receive direct messages").
 - A password change re-seals the secret under the new password: old messages stay
   readable. There is no recovery: if a password is reset without the old one
-  (when reset codes exist), that member's old direct messages become unreadable.
+  (a reset code), the member gets a new key pair and their old direct messages
+  become unreadable.
 
 What it protects against: anyone reading the flash (a dump, a stolen board), an
 admin or the owner through any API or tool, and anyone with the store but no
@@ -206,8 +210,10 @@ What it does not protect against:
 - **Short passwords.** Passwords may be 4 characters (see "Passwords"). With a
   flash dump, a short password falls to offline guessing despite PBKDF2, and
   with it that member's key. The encryption is as strong as the password.
-- **The admin who set the password.** Until reset codes exist, an admin creates
-  members with a password they know. Members should change it.
+- **The admin who set the password.** Invite and reset codes let members choose
+  their own passwords, but an admin can still create a member with a password
+  they choose (`POST /admin/members`, the "Add a family member" form). Until the
+  member changes it, that admin knows it.
 - **Modified firmware.** The server decrypts in RAM to serve Mastodon apps
   (they don't do end-to-end encryption). Firmware changed to log what it serves
   would see messages as they are read.

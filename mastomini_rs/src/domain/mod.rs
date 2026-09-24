@@ -5,10 +5,17 @@
 //! interrupt is finished by [`Service::open`] (spec/02-storage.md).
 
 mod accounts;
+mod codes;
 mod collections;
+mod conversations;
 mod dm;
+mod edits;
+mod filters;
+mod follow_requests;
+mod lists;
 mod moderation;
 mod oauth;
+mod polls;
 pub mod query;
 pub mod records;
 mod server;
@@ -22,10 +29,16 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
 pub use accounts::{NewMember, ProfileUpdate};
+pub use codes::{Redemption, CODE_LIFETIME_MS, MAX_CODES_LIVE};
 pub use collections::{CollectionUpdate, NewCollection};
+pub use conversations::Conversation;
 pub use dm::{Held, UserKeyRec, LOCKED_TEXT};
+pub use edits::StatusEdit;
+pub use filters::{filter_context_bit, FilterMatch};
+pub use lists::ListUpdate;
 pub use moderation::{AdminAction, NewReport};
 pub use oauth::{parse_scopes, AuthCodeGrant, Principal, KNOWN_SCOPES, OOB};
+pub use polls::NewPoll;
 pub use server::ServerUpdate;
 pub use statuses::NewStatus;
 
@@ -52,9 +65,23 @@ pub const GOVERNOR_PER_ACCOUNT_HOUR: u32 = 120;
 pub const GOVERNOR_GLOBAL_HOUR: u32 = 600;
 const HOUR_MS: u64 = 60 * 60 * 1000;
 /// 2: blocks, mutes, conversation mutes, moderation, reports, collections.
-/// A schema-1 store is upgraded in place at boot (only the marker changes),
+/// 3: invite and reset codes (`mm_inv`).
+/// 4: edit history (`mm_hist`), polls, follow requests, lists (`mm_list`),
+/// filters (`mm_filt`).
+/// An older store is upgraded in place at boot (only the marker changes),
 /// so older firmware refuses the store instead of misreading new records.
-pub const SCHEMA: u16 = 2;
+pub const SCHEMA: u16 = 4;
+/// Previous versions kept per edited status, and in all (spec/03).
+pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
+pub const MAX_REVISIONS: usize = 1024;
+pub const MAX_LISTS_PER_ACCOUNT: u8 = 8;
+pub const MAX_FILTERS_PER_ACCOUNT: u8 = 8;
+pub const MAX_FILTER_KEYWORDS: usize = 4;
+pub const MAX_FILTER_STATUSES: usize = 4;
+pub const MAX_POLL_OPTIONS: usize = 4;
+pub const MAX_POLL_OPTION_CHARS: usize = 50;
+pub const POLL_MIN_SECONDS: u64 = 300;
+pub const POLL_MAX_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -172,6 +199,12 @@ pub enum NotificationKind {
     AdminReport,
     /// To a featured account; `object` is the collection id.
     AddedToCollection,
+    /// A poll you made or voted in has ended.
+    Poll,
+    /// A status you boosted was edited.
+    Update,
+    /// Someone asked to follow your locked account.
+    FollowRequest,
 }
 
 impl NotificationKind {
@@ -183,6 +216,9 @@ impl NotificationKind {
             NotificationKind::Follow => "follow",
             NotificationKind::AdminReport => "admin.report",
             NotificationKind::AddedToCollection => "added_to_collection",
+            NotificationKind::Poll => "poll",
+            NotificationKind::Update => "update",
+            NotificationKind::FollowRequest => "follow_request",
         }
     }
 }
@@ -197,6 +233,16 @@ pub struct Notification {
     pub status: Option<u64>,
     /// Report or collection id, depending on `kind`.
     pub object: Option<u64>,
+}
+
+/// A member's view of one direct-message conversation (RAM only, like
+/// markers: a restart shows everything as read and nothing as hidden).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ConversationState {
+    /// Newest status the member has marked read.
+    pub read_up_to: u64,
+    /// "Delete": hidden until a newer message arrives.
+    pub hidden_up_to: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -264,6 +310,26 @@ pub struct State {
     pub moderation: [Option<AccountModRec>; MAX_ACCOUNTS],
     pub reports: BTreeMap<u64, ReportRec>,
     pub collections: BTreeMap<u64, CollectionRec>,
+    /// Invite and password-reset codes, by id.
+    pub invites: BTreeMap<u64, CodeRec>,
+    /// Previous versions of edited statuses: (status id, 0-2).
+    pub history: BTreeMap<(u64, u8), RevisionRec>,
+    /// Polls by status id.
+    pub polls: BTreeMap<u64, PollRec>,
+    /// Polls whose end has been announced (RAM; primed at the first tick).
+    pub polls_announced: std::collections::BTreeSet<u64>,
+    polls_primed: bool,
+    /// (requester, locked account)
+    pub follow_requests: BTreeMap<(u8, u8), FollowRec>,
+    /// (owner slot, 0-7)
+    pub lists: BTreeMap<(u8, u8), ListRec>,
+    /// (owner slot, 0-7)
+    pub filters: BTreeMap<(u8, u8), FilterRec>,
+    /// (member slot, conversation root status id)
+    pub conversations: BTreeMap<(u8, u64), ConversationState>,
+    /// A time set by an admin's browser while the clock isn't synced:
+    /// (wall clock ms, platform uptime ms when set). RAM only.
+    pub clock_anchor: Option<(u64, u64)>,
     /// Wall clock of the request being handled, for mute expiry.
     pub now_ms: u64,
     pub user_keys: [Option<UserKeyRec>; MAX_ACCOUNTS],
@@ -445,6 +511,24 @@ pub(crate) mod keys {
     pub fn dm(id: u64) -> Key {
         Key::from_parts(&[b"d", &ids::b32(id)]).expect("fits")
     }
+    pub fn code(id: u64) -> Key {
+        Key::from_parts(&[b"i", &ids::b32(id)]).expect("fits")
+    }
+    pub fn revision(status: u64, n: u8) -> Key {
+        Key::from_parts(&[b"h", &ids::b32(status), &[b'0' + n]]).expect("fits")
+    }
+    pub fn poll(status: u64) -> Key {
+        Key::from_parts(&[b"o", &ids::b32(status)]).expect("fits")
+    }
+    pub fn follow_request(src: u8, dst: u8) -> Key {
+        Key::from_parts(&[b"Q", &[hex(src)], &[hex(dst)]]).expect("fits")
+    }
+    pub fn list(slot: u8, n: u8) -> Key {
+        Key::from_parts(&[b"l", &[hex(slot)], &[hex(n)]]).expect("fits")
+    }
+    pub fn filter(slot: u8, n: u8) -> Key {
+        Key::from_parts(&[b"x", &[hex(slot)], &[hex(n)]]).expect("fits")
+    }
 }
 
 pub struct Service<S: Store> {
@@ -570,6 +654,7 @@ impl<S: Store> Service<S> {
         }
 
         let mut envelopes = Vec::new();
+        let mut polls = Vec::new();
         for (key, bytes) in load(&mut store, Ns::Stat)? {
             match key.as_str().as_bytes().first() {
                 Some(b's') => {
@@ -600,6 +685,15 @@ impl<S: Store> Service<S> {
                     idgen.observe(rec.id);
                     state.boosts.insert(rec.id, rec);
                 }
+                Some(b'o') => {
+                    let poll: PollRec = codec::decode(Kind::Poll, &bytes)?;
+                    let id = key
+                        .as_str()
+                        .get(1..)
+                        .and_then(ids::from_b32)
+                        .ok_or_else(|| corrupt(&key, "bad status id"))?;
+                    polls.push((key, id, poll));
+                }
                 Some(b'd') => {
                     let envelope: crate::crypto::Envelope = codec::decode(Kind::Dm, &bytes)?;
                     let id = key
@@ -619,6 +713,38 @@ impl<S: Store> Service<S> {
                 state.dms.insert(id, envelope);
             } else {
                 repairs.push((Ns::Stat, key));
+            }
+        }
+        // Polls are written before their status, too.
+        for (key, id, poll) in polls {
+            if state.statuses.contains_key(&id) {
+                state.polls.insert(id, poll);
+            } else {
+                repairs.push((Ns::Stat, key));
+            }
+        }
+        // History: a revision is written before the status it came from is
+        // overwritten, so one that is not older than the current version is
+        // from an interrupted edit (spec/02 "Crash consistency").
+        for (key, bytes) in load(&mut store, Ns::Hist)? {
+            let rec: RevisionRec = codec::decode(Kind::Revision, &bytes)?;
+            let k = key.as_str();
+            let parsed = (|| {
+                let status = ids::from_b32(k.get(1..14)?)?;
+                let n = k.as_bytes().get(14)?.checked_sub(b'0')?;
+                (k.len() == 15 && k.starts_with('h') && n < MAX_REVISIONS_PER_STATUS)
+                    .then_some((status, n))
+            })()
+            .ok_or_else(|| corrupt(&key, "unparsable revision key"))?;
+            let current_since = state
+                .statuses
+                .get(&parsed.0)
+                .map(|s| s.rec.edited_at_ms.unwrap_or(ids::millis(s.rec.id)));
+            match current_since {
+                Some(since) if rec.created_ms < since => {
+                    state.history.insert(parsed, rec);
+                }
+                _ => repairs.push((Ns::Hist, key)),
             }
         }
         // Derived fields need every status loaded first.
@@ -688,7 +814,7 @@ impl<S: Store> Service<S> {
         for (key, bytes) in load(&mut store, Ns::Rel)? {
             let k = key.as_str().as_bytes();
             let (kind, src, dst) = match k {
-                [kind @ (b'F' | b'B' | b'M'), s, d] => (
+                [kind @ (b'F' | b'B' | b'M' | b'Q'), s, d] => (
                     *kind,
                     unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
                     unhex(*d).ok_or_else(|| corrupt(&key, "bad slot"))?,
@@ -702,6 +828,13 @@ impl<S: Store> Service<S> {
                     idgen.observe(rec.id);
                     if live {
                         state.follows.insert((src, dst), rec);
+                    }
+                }
+                b'Q' => {
+                    let rec: FollowRec = codec::decode(Kind::FollowRequest, &bytes)?;
+                    idgen.observe(rec.id);
+                    if live {
+                        state.follow_requests.insert((src, dst), rec);
                     }
                 }
                 b'B' => {
@@ -723,14 +856,29 @@ impl<S: Store> Service<S> {
                 repairs.push((Ns::Rel, key));
             }
         }
-        // A block commits first; the follows it ends are erased after it.
+        // A block commits first; the follows and requests it ends are
+        // erased after it.
         let blocked: Vec<(u8, u8)> = state.blocks.keys().copied().collect();
         for (a, b) in blocked {
             for (src, dst) in [(a, b), (b, a)] {
                 if state.follows.remove(&(src, dst)).is_some() {
                     repairs.push((Ns::Rel, keys::follow(src, dst)));
                 }
+                if state.follow_requests.remove(&(src, dst)).is_some() {
+                    repairs.push((Ns::Rel, keys::follow_request(src, dst)));
+                }
             }
+        }
+        // Authorizing writes the follow, then erases the request.
+        let answered: Vec<(u8, u8)> = state
+            .follow_requests
+            .keys()
+            .filter(|pair| state.follows.contains_key(pair))
+            .copied()
+            .collect();
+        for pair in answered {
+            state.follow_requests.remove(&pair);
+            repairs.push((Ns::Rel, keys::follow_request(pair.0, pair.1)));
         }
 
         for (key, bytes) in load(&mut store, Ns::Mod)? {
@@ -782,6 +930,37 @@ impl<S: Store> Service<S> {
             state.collections.insert(rec.id, rec);
         }
 
+        for (ns, kind) in [(Ns::List, Kind::List), (Ns::Filt, Kind::Filter)] {
+            for (key, bytes) in load(&mut store, ns)? {
+                let (slot, n) = match key.as_str().as_bytes() {
+                    [b'l' | b'x', s, n] => (
+                        unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
+                        unhex(*n).ok_or_else(|| corrupt(&key, "bad index"))?,
+                    ),
+                    _ => return Err(corrupt(&key, "unexpected key")),
+                };
+                if state.account(slot).is_none() {
+                    repairs.push((ns, key));
+                    continue;
+                }
+                if kind == Kind::List {
+                    let rec: ListRec = codec::decode(kind, &bytes)?;
+                    idgen.observe(rec.id);
+                    state.lists.insert((slot, n), rec);
+                } else {
+                    let rec: FilterRec = codec::decode(kind, &bytes)?;
+                    idgen.observe(rec.id);
+                    for k in &rec.keywords {
+                        idgen.observe(k.id);
+                    }
+                    for s in &rec.statuses {
+                        idgen.observe(s.id);
+                    }
+                    state.filters.insert((slot, n), rec);
+                }
+            }
+        }
+
         for (key, bytes) in load(&mut store, Ns::Key)? {
             match key.as_str().as_bytes() {
                 [b'k', h] => {
@@ -809,6 +988,25 @@ impl<S: Store> Service<S> {
             }
         }
 
+        for (key, bytes) in load(&mut store, Ns::Inv)? {
+            let rec: CodeRec = codec::decode(Kind::Code, &bytes)?;
+            if keys::code(rec.id) != key {
+                return Err(corrupt(&key, "id does not match key"));
+            }
+            idgen.observe(rec.id);
+            let live = match rec.kind {
+                CodeKind::Invite => true,
+                CodeKind::Reset { slot, account_id } => {
+                    state.account(slot).map(|a| a.rec.id) == Some(account_id)
+                }
+            };
+            if live {
+                state.invites.insert(rec.id, rec);
+            } else {
+                repairs.push((Ns::Inv, key));
+            }
+        }
+
         // Tombstoned accounts: everything that referenced them was skipped
         // above and queued for erasure; finally erase the account itself.
         for account in state.accounts.iter().flatten() {
@@ -817,7 +1015,28 @@ impl<S: Store> Service<S> {
             }
         }
 
-        state.repairs += repairs.len() as u64;
+        // Votes are bits by slot: a tombstoned member's votes must not pass
+        // to whoever reuses the slot.
+        let mut rewrites: Vec<(u64, PollRec)> = Vec::new();
+        for account in state.accounts.iter().flatten().filter(|a| a.rec.deleted) {
+            for (id, poll) in &mut state.polls {
+                if poll.voters() & bit(account.slot) != 0 {
+                    for v in &mut poll.votes {
+                        *v &= !bit(account.slot);
+                    }
+                    rewrites.push((*id, poll.clone()));
+                }
+            }
+        }
+        for (id, poll) in &rewrites {
+            store.set(
+                Ns::Stat,
+                &keys::poll(*id),
+                &codec::encode(Kind::Poll, poll)?,
+            )?;
+        }
+
+        state.repairs += repairs.len() as u64 + rewrites.len() as u64;
         for (ns, key) in &repairs {
             store.erase(*ns, key)?;
         }
@@ -849,6 +1068,8 @@ impl<S: Store> Service<S> {
             || s.reactions.len() > MAX_REACTIONS
             || s.apps.len() > MAX_APPS
             || s.tokens.len() > MAX_TOKENS
+            || s.invites.len() > MAX_CODES_LIVE
+            || s.history.len() > MAX_REVISIONS
         {
             return fail("capacity exceeded");
         }
@@ -904,6 +1125,7 @@ impl<S: Store> Service<S> {
     /// Record the wall clock of the request being handled (mute expiry).
     pub fn tick(&mut self, now_ms: u64) {
         self.state.now_ms = now_ms;
+        self.announce_polls(now_ms);
     }
 
     fn map_store_error(&mut self, e: StoreError) -> Error {
@@ -1056,7 +1278,11 @@ impl<S: Store> Service<S> {
         now_ms: u64,
     ) {
         let staff = kind == NotificationKind::AdminReport;
-        if to == from || (!staff && !self.wants_notification(to, from, status)) {
+        // The one notification about your own post: your poll ended.
+        let own_poll = kind == NotificationKind::Poll && to == from;
+        if (to == from && !own_poll)
+            || (!staff && !own_poll && !self.wants_notification(to, from, status))
+        {
             return;
         }
         if self.state.notifications.len() >= MAX_NOTIFICATIONS {

@@ -45,19 +45,19 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Timelines | `GET /api/v1/timelines/home`, `/public` (`local` is implied), `/tag/:hashtag` |
 | Notifications (RAM only, see 02) | `GET /api/v1/notifications` (types/exclude_types/account_id), `GET /:id`, `POST /clear`, `POST /:id/dismiss`, `GET /api/v1/notifications/unread_count` |
 | Markers | `GET/POST /api/v1/markers` (RAM only, reset on reboot) |
-| Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (`[]` or admin announcements, later), `GET /api/v1/filters` + `/api/v2/filters` (`[]` until Tier 2), `GET /api/v1/lists` (`[]` until Tier 2), `GET /api/v1/followed_tags` |
+| Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (`[]` or admin announcements, later), `GET /api/v1/followed_tags` (`[]`) |
 | Search | `GET /api/v2/search` (accounts, hashtags, statuses: linear scan over RAM), `resolve=true` never goes off-box |
 
 ## Tier 2 — commonly used
 
 | Area | Endpoints |
 |---|---|
-| Relationships | follow/unfollow (with `reblogs`, `notify`), `remove_from_followers`, **block/unblock, mute/unmute (with `notifications`, `duration`), `GET /api/v1/blocks`, `/mutes` (done, see "Moderation")**, follow requests (only if `locked` accounts are allowed; household default is unlocked), `POST /api/v1/accounts/:id/note` (RAM + store, tiny) |
-| Statuses | `PUT /api/v1/statuses/:id` (edit), `GET /:id/history`, `GET /:id/source`, **`POST /:id/mute`/`unmute` (conversation mute, done)** |
-| Lists | full CRUD + `accounts` add/remove, `GET /api/v1/timelines/list/:id` |
-| Filters | v2 CRUD + keywords, applied server-side as `Status.filtered` |
+| Relationships | follow/unfollow (with `reblogs`, `notify`), `remove_from_followers`, **block/unblock, mute/unmute (with `notifications`, `duration`), `GET /api/v1/blocks`, `/mutes` (done, see "Moderation")**, **follow requests (done): following a locked account asks first; `GET /api/v1/follow_requests`, `POST /:account_id/authorize`/`reject`, `follow_request` notifications, `Relationship.requested`/`requested_by`, `source.follow_requests_count`; unlocking lets everyone waiting in (as on Mastodon)**, `POST /api/v1/accounts/:id/note` (RAM + store, tiny) |
+| Statuses | **`PUT /api/v1/statuses/:id` (edit: text, content warning, sensitive, language, poll), `GET /:id/history` (up to 3 previous versions, oldest first, then the current one), `GET /:id/source` (done).** People who boosted a post get an `update` notification; newly mentioned people a `mention`. Direct messages are re-encrypted on edit and keep no history. **`POST /:id/mute`/`unmute` (conversation mute, done)** |
+| Lists | **Done.** CRUD, `replies_policy` (`followed`/`list`/`none`), `exclusive` (members' posts stay off home), `GET/POST/DELETE /:id/accounts` (only people you follow, as on Mastodon; unfollowing removes them), `GET /api/v1/accounts/:id/lists`, `GET /api/v1/timelines/list/:id` |
+| Filters | **Done.** v2 CRUD with `keywords_attributes`, `/:id/keywords`, `/keywords/:id`, `/:id/statuses`, `/statuses/:id`; v1 as a view (one v1 filter per keyword). Matching statuses get `Status.filtered` (keyword and status matches) in the filter's contexts; nothing is removed server-side, clients warn, blur or hide as on Mastodon. Expired filters stop matching. Direct messages match on the reader's decrypted text |
 | Favourites / bookmarks | `GET /api/v1/favourites`, `/bookmarks` (paginated by reaction record id, as Mastodon does) |
-| Conversations | `GET /api/v1/conversations`, `POST /:id/read`, `DELETE /:id` (derived from `direct` statuses) |
+| Conversations | **Done.** `GET /api/v1/conversations`, `POST /:id/read`, `DELETE /:id`. Derived from `direct` statuses: a conversation is a thread of direct messages, named by its first message. Read and hidden state are RAM only, like markers (a restart shows everything as read); a hidden conversation comes back when a new message arrives |
 | Tags | `GET /api/v1/tags/:name`, follow/unfollow, featured tags (`[]`) |
 | Grouped notifications | `GET /api/v2/notifications`, `/api/v2/notifications/unread_count` (mastodon_mock has the grouping logic) |
 | Trends | `GET /api/v1/trends/tags`, `/trends/statuses`, `/trends/links` all return `[]`. No feed algorithms |
@@ -68,7 +68,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Endpoint | Plan |
 |---|---|
 | Streaming (`/api/v1/streaming`, WebSocket + SSE) | **Later.** `configuration.urls.streaming` (v2) and `urls.streaming_api` (v1) are `null`, the standard "no streaming" signal: clients such as Elk then open no WebSockets. `/api/v1/streaming/health` is 404, never `OK`. A client that ignores the signal and connects anyway is refused by ESP-IDF's HTTP server itself (400, about 30 ms, before any app code: WebSocket support is not compiled in). Measured on the board (2026-09-23): refused attempts mixed with API calls stay at median 40–75 ms up to 4 simultaneous connections; at 8 simultaneous connects a few requests wait 1 or 3 s (TCP SYN retries after the listen backlog of 5 overflows). Raising the HTTP sockets from 6 to 10 changed nothing, so it stays 6. When implemented: 2 concurrent streams max, user + public only; it holds a socket (a TLS session once HTTPS exists), so revisit the socket budget |
-| Polls | Later phase. Votes are a `u16` bitmask per option |
+| Polls | **Done** (moved up). `poll[options][]` (2–4, ≤ 50 characters, distinct), `poll[expires_in]` (5 minutes to 7 days), `multiple`, `hide_totals`; `GET /api/v1/polls/:id`, `POST /:id/votes`. Votes are a `u16` bitmask per option, so one write per vote. No voting on your own poll, once only. Not allowed in direct messages (the options would be unencrypted). When a poll ends, author and voters get a `poll` notification (RAM, checked on each request). Editing the options resets the votes |
 | Scheduled statuses | Never in v1 (`[]` from `GET /api/v1/scheduled_statuses`). Needs a timer and a valid clock |
 | Media (`/api/v1/media`, `/api/v2/media`) | `422` "media attachments are not supported"; `configuration.media_attachments` advertises `max_media_attachments: 0` if clients tolerate it (check in the client matrix) |
 | Push (`/api/v1/push/subscription`) | `404` in v1. Later maybe, if the board has internet access |
@@ -204,8 +204,8 @@ Household rules:
 
 `POST /api/v1/statuses` accepts both form and JSON bodies (clients use both), and
 `status`, `spoiler_text`, `sensitive`, `visibility`, `language`,
-`in_reply_to_id`. `media_ids[]` must be empty (`422` otherwise), `poll[...]` gives
-`422` until polls exist, and `scheduled_at` gives `422`.
+`in_reply_to_id`, and `poll[...]` (not with `direct`). `media_ids[]` must be empty
+(`422` otherwise), and `scheduled_at` gives `422`.
 
 Processing order: auth → governor check → parse/validate (length, visibility,
 reply target visible to author) → idempotency lookup (RAM, 1 h, per account + key)

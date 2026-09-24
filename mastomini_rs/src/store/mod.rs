@@ -33,10 +33,15 @@ pub enum Ns {
     Coll = 9,
     /// Member key pairs and per-device seals for direct messages.
     Key = 10,
+    /// Invite and password-reset codes.
+    Inv = 11,
+    List = 12,
+    /// Content filters.
+    Filt = 13,
 }
 
 impl Ns {
-    pub const ALL: [Ns; 11] = [
+    pub const ALL: [Ns; 14] = [
         Ns::Cfg,
         Ns::Acct,
         Ns::App,
@@ -48,6 +53,9 @@ impl Ns {
         Ns::Mod,
         Ns::Coll,
         Ns::Key,
+        Ns::Inv,
+        Ns::List,
+        Ns::Filt,
     ];
 
     /// NVS namespace name (at most 15 characters).
@@ -64,6 +72,9 @@ impl Ns {
             Ns::Mod => "mm_mod",
             Ns::Coll => "mm_coll",
             Ns::Key => "mm_key",
+            Ns::Inv => "mm_inv",
+            Ns::List => "mm_list",
+            Ns::Filt => "mm_filt",
         }
     }
 

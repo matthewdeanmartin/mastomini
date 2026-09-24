@@ -1,9 +1,10 @@
 //! `/api/mastomini/v1`: what the Mastodon API cannot do (spec/06): status,
-//! provisioning, and admins managing members and deleting posts.
+//! provisioning, admins managing members and deleting posts, invite and
+//! reset codes, and members managing their password and devices.
 
-use super::{entities, fail, Call, Reply};
-use crate::domain::records::Role;
-use crate::domain::{AdminAction, Error, NewMember, ServerUpdate};
+use super::{entities, fail, time, Call, Reply};
+use crate::domain::records::{CodeKind, CodeRec, Role};
+use crate::domain::{AdminAction, Error, NewMember, Redemption, ServerUpdate};
 use crate::http::Response;
 use crate::store::Store;
 use serde_json::{json, Value};
@@ -23,6 +24,10 @@ fn status<S: Store>(c: &mut Call<'_, S>) -> Reply {
         "evictions": svc.state.evictions,
         "writes_this_hour": writes,
         "store_used": stats.map(|s| s.used_fraction()),
+        "clock": c.clock.as_str(),
+        "mode": super::diag::TRANSPORT_MODE,
+        "https": false,
+        "household_app": crate::web::bundled(),
     })))
 }
 
@@ -199,15 +204,145 @@ fn delete_status<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
     Ok(Response::ok(json!({})))
 }
 
+fn code_json<S: Store>(c: &Call<'_, S>, rec: &CodeRec, code: Option<&str>) -> Value {
+    let mut v = json!({
+        "id": rec.id.to_string(),
+        "kind": "invite",
+        "created_at": time::iso(crate::ids::millis(rec.id)),
+        "expires_at": time::iso(rec.expires_ms),
+    });
+    if let CodeKind::Reset { account_id, slot } = rec.kind {
+        v["kind"] = json!("reset");
+        v["account_id"] = json!(account_id.to_string());
+        v["username"] = json!(c.svc.state.account(slot).map(|a| a.rec.username.as_str()));
+    }
+    if let Some(code) = code {
+        v["code"] = json!(code);
+        v["url"] = json!(format!("{}/setup/{code}", c.ctx.base_url));
+    }
+    v
+}
+
+/// `POST /admin/invites` -> a one-time code and the URL to open.
+fn create_invite<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    let (rec, code) = c.svc.issue_invite(actor, c.now).map_err(fail)?;
+    Ok(Response::ok(code_json(c, &rec, Some(&code))))
+}
+
+/// `POST /admin/members/:id/reset` -> a one-time reset code. The password
+/// doesn't change until the member redeems it.
+fn create_reset<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let slot = member_slot(c, id)?;
+    let (rec, code) = c.svc.issue_reset(actor, slot, c.now).map_err(fail)?;
+    Ok(Response::ok(code_json(c, &rec, Some(&code))))
+}
+
+/// `GET /admin/codes`: live invite and reset codes (never the codes
+/// themselves, which are only stored hashed).
+fn list_codes<S: Store>(c: &Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    c.svc.require_admin(actor).map_err(fail)?;
+    let rows: Vec<Value> = c
+        .svc
+        .live_codes(c.now)
+        .map(|rec| code_json(c, rec, None))
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+fn revoke_code<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let id = c.id(id)?;
+    c.svc.revoke_code(actor, id, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
+}
+
+/// `POST /codes/redeem` with `{code, password, username?, display_name?}`.
+/// No sign-in: the code is the credential.
+fn redeem<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let p = &c.params;
+    let code = p.get("code").unwrap_or("").trim().to_string();
+    let redemption = Redemption {
+        password: p.get("password").unwrap_or("").to_string(),
+        username: p.get("username").unwrap_or("").to_string(),
+        display_name: p.get("display_name").unwrap_or("").to_string(),
+    };
+    let slot = c.svc.redeem_code(&code, redemption, c.now).map_err(fail)?;
+    member_reply(c, slot)
+}
+
+/// `POST /me/password` with `{current, new}`. Every device, this one
+/// included, is signed out and signs in again with the new password.
+fn change_password<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let slot = c.user()?;
+    let current = c.params.get("current").unwrap_or("").to_string();
+    let new = c.params.get("new").unwrap_or("").to_string();
+    c.svc
+        .change_password(slot, &current, &new, c.now)
+        .map_err(fail)?;
+    Ok(Response::ok(json!({})))
+}
+
+fn sign_out_everywhere<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let slot = c.user()?;
+    c.svc.sign_out_everywhere(slot, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
+}
+
+/// `GET /me/devices`: the member's tokens as devices, newest first.
+/// `last_used_at` is since the last restart (RAM only).
+fn devices<S: Store>(c: &Call<'_, S>) -> Reply {
+    let slot = c.user()?;
+    let mine = c.req.bearer().map(crate::auth::sha256);
+    let rows: Vec<Value> = c
+        .svc
+        .devices(slot)
+        .into_iter()
+        .map(|t| {
+            let app = c.svc.state.apps.get(&t.rec.app_id);
+            json!({
+                "id": t.rec.id.to_string(),
+                "app": {
+                    "name": app.map(|a| a.name.as_str()),
+                    "website": app.and_then(|a| a.website.as_deref()),
+                },
+                "scopes": t.rec.scopes,
+                "created_at": time::iso(crate::ids::millis(t.rec.id)),
+                "last_used_at": (t.last_used_ms > 0).then(|| time::iso(t.last_used_ms)),
+                "current": mine == Some(t.rec.hash),
+            })
+        })
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+fn revoke_device<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let slot = c.user()?;
+    let id = c.id(id)?;
+    c.svc.revoke_device(slot, id, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
+}
+
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", ["status"]) => status(c),
         ("POST", ["provision"]) => provision(c),
+        ("POST", ["codes", "redeem"]) => redeem(c),
+        ("POST", ["me", "password"]) => change_password(c),
+        ("POST", ["me", "sign_out_everywhere"]) => sign_out_everywhere(c),
+        ("GET", ["me", "devices"]) => devices(c),
+        ("DELETE", ["me", "devices", id]) => revoke_device(c, id),
+        ("POST", ["admin", "invites"]) => create_invite(c),
+        ("GET", ["admin", "codes"]) => list_codes(c),
+        ("DELETE", ["admin", "codes", id]) => revoke_code(c, id),
         ("GET", ["admin", "members"]) => members(c),
         ("POST", ["admin", "members"]) => create_member(c),
         ("POST", ["admin", "members", id, action]) => {
             let action = match *action {
                 "role" => return Some(member_role(c, id)),
+                "reset" => return Some(create_reset(c, id)),
                 "disable" => AdminAction::Disable,
                 "enable" => AdminAction::Enable,
                 "silence" => AdminAction::Silence,

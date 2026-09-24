@@ -24,7 +24,9 @@ required-features = ["esp32"]
 [features]
 default = ["desktop"]
 desktop = ["dep:tiny_http", "dep:fs2"]
-esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log"]
+esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
+# Embed the household app (mastomini_ui); needs `make web` first.
+bundled-web = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

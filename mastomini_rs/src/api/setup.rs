@@ -2,15 +2,20 @@
 //!
 //! * unprovisioned: `/` is the first-time setup form (household name, owner
 //!   username and password);
-//! * provisioned: `/` explains how to connect a Mastodon app and offers an
-//!   "add a family member" form, authorised by an admin's password.
+//! * provisioned: `/` points to the household app (`/app/`, where members and
+//!   admins do everything else) and explains how to connect a Mastodon app;
+//! * `/setup/<code>`: redeem an invite (choose a username and password) or a
+//!   reset code (choose a new password);
+//! * `/setup/password`: change your own password.
 //!
-//! No sessions and no JavaScript: every form carries what it needs.
+//! These stay server-rendered because JavaScript or a signed-in user can't be
+//! assumed here (spec/06). No sessions and no JavaScript: every form carries
+//! what it needs.
 
 use super::html::{self, page};
 use super::{Call, Reply};
-use crate::domain::records::Role;
-use crate::domain::{Error, NewMember};
+use crate::domain::records::{CodeKind, Role};
+use crate::domain::{Error, NewMember, Redemption};
 use crate::http::Response;
 use crate::store::Store;
 use crate::text::escape;
@@ -34,6 +39,11 @@ fn field(
             format!("<div class=\"hint\">{hint}</div>")
         }
     )
+}
+
+/// [`field`] without `required`.
+fn optional_field(label: &str, name: &str, value: &str, hint: &str) -> String {
+    field(label, name, "text", value, hint, "off").replace(" required>", ">")
 }
 
 fn setup_form<S: Store>(c: &Call<'_, S>, status: u16, error: Option<&str>) -> Response {
@@ -112,76 +122,16 @@ fn how_to_connect(address: &str) -> String {
     )
 }
 
-fn member_form<S: Store>(c: &Call<'_, S>, notice: Option<&str>, error: Option<&str>) -> String {
-    let p = &c.params;
-    format!(
-        "<h2>Add a family member</h2>{}{}\
-<form method=\"post\" action=\"/setup/members\">\
-{}{}\
-<p class=\"hint\">To confirm, sign in as the owner or an admin:</p>\
-{}{}\
-<div class=\"buttons\"><button class=\"approve\">Add member</button></div></form>",
-        notice.map_or(String::new(), |n| format!(
-            "<p class=\"ok\">{}</p>",
-            escape(n)
-        )),
-        html::error(error),
-        field(
-            "New member's username",
-            "username",
-            "text",
-            p.get("username").unwrap_or(""),
-            "Lowercase letters, digits and _ (up to 20).",
-            "off"
-        ),
-        field(
-            "New member's password",
-            "password",
-            "password",
-            "",
-            "Tell them this password; they can sign in right away.",
-            "new-password"
-        ),
-        field(
-            "Admin username",
-            "admin_username",
-            "text",
-            p.get("admin_username").unwrap_or(""),
-            "",
-            "username"
-        ),
-        field(
-            "Admin password",
-            "admin_password",
-            "password",
-            "",
-            "",
-            "current-password"
-        ),
-    )
-}
-
-fn landing<S: Store>(
-    c: &Call<'_, S>,
-    status: u16,
-    notice: Option<&str>,
-    error: Option<&str>,
-) -> Response {
+/// The landing page: where to go next. The admin work happens in the
+/// household app; this page stays usable without JavaScript.
+fn landing<S: Store>(c: &Call<'_, S>) -> Response {
     let server = &c.svc.state.server;
-    let members: Vec<String> = c
-        .svc
-        .state
-        .active_accounts()
-        .map(|a| format!("<code>{}</code>", escape(&a.rec.username)))
-        .collect();
     let body = format!(
-        "<p>{}</p>{}<h2>Members</h2><p>{}</p>{}",
+        "<p>{}</p><div class=\"buttons\"><a class=\"button\" href=\"/app/#/connect\">Set up my phone</a><a class=\"button\" href=\"/app/\">Household app</a></div><p class=\"hint\">The household app has your signed-in devices and password, and for admins members, invite links and settings. <a href=\"/app/#/trust\">Trust this server</a> · <a href=\"/about\">About</a></p>{}<p class=\"hint\"><a href=\"/setup/password\">Change your password</a></p>",
         escape(&server.description),
         how_to_connect(&server_address(c)),
-        members.join(", "),
-        member_form(c, notice, error),
     );
-    page(status, &server.title, &body)
+    page(200, &server.title, &body)
 }
 
 fn create_household<S: Store>(c: &mut Call<'_, S>) -> Reply {
@@ -209,7 +159,7 @@ fn create_household<S: Store>(c: &mut Call<'_, S>) -> Reply {
         Ok(_) => {
             let body = format!(
                 "<p class=\"ok\">Your household is ready and <code>{}</code> is its owner.</p>{}\
-<div class=\"buttons\"><a class=\"button\" href=\"/\">Add family members</a></div>",
+<div class=\"buttons\"><a class=\"button\" href=\"/app/#/admin/members\">Invite your family</a></div>",
                 escape(&username),
                 how_to_connect(&server_address(c))
             );
@@ -219,40 +169,199 @@ fn create_household<S: Store>(c: &mut Call<'_, S>) -> Reply {
     }
 }
 
-fn add_member<S: Store>(c: &mut Call<'_, S>) -> Reply {
-    if !c.svc.state.provisioned {
-        return Ok(Response::redirect("/"));
-    }
-    let p = &c.params;
-    let admin = p.get("admin_username").unwrap_or("").to_string();
-    let admin_password = p.get("admin_password").unwrap_or("").to_string();
-    let member = NewMember {
-        username: p.get("username").unwrap_or("").trim().to_ascii_lowercase(),
-        password: p.get("password").unwrap_or("").to_string(),
-        display_name: String::new(),
-        role: Role::Member,
+fn code_form<S: Store>(c: &Call<'_, S>, code: &str, status: u16, error: Option<&str>) -> Response {
+    let Some(kind) = c.svc.find_code(code, c.now).map(|r| r.kind) else {
+        return html::message(
+            404,
+            "Link not valid",
+            "This link has expired or has been used already. Ask an admin for a new one.",
+        );
     };
-    let actor = match c.svc.check_password(&admin, &admin_password, c.now) {
+    let p = &c.params;
+    let passwords = format!(
+        "{}{}",
+        field(
+            "Password",
+            "password",
+            "password",
+            "",
+            "At least 4 characters.",
+            "new-password"
+        ),
+        field(
+            "Password again",
+            "password_confirm",
+            "password",
+            "",
+            "",
+            "new-password"
+        ),
+    );
+    let (title, intro, fields) = match kind {
+        CodeKind::Invite => (
+            format!("Join {}", c.svc.state.server.title),
+            "You have been invited to the household's Mastodon server. Choose your username and password."
+                .to_string(),
+            format!(
+                "{}{}{passwords}",
+                field(
+                    "Username",
+                    "username",
+                    "text",
+                    p.get("username").unwrap_or(""),
+                    "Lowercase letters, digits and _ (up to 20). It cannot be changed later.",
+                    "username"
+                ),
+                optional_field(
+                    "Display name (optional)",
+                    "display_name",
+                    p.get("display_name").unwrap_or(""),
+                    ""
+                ),
+            ),
+        ),
+        CodeKind::Reset { slot, .. } => (
+            "Choose a new password".to_string(),
+            format!(
+                "Choose a new password for <code>{}</code>. Every device you are signed in on will be \
+signed out, and your earlier direct messages can no longer be read.",
+                escape(
+                    &c.svc
+                        .state
+                        .account(slot)
+                        .map_or(String::new(), |a| a.rec.username.clone())
+                )
+            ),
+            passwords,
+        ),
+    };
+    let body = format!(
+        "<p>{intro}</p>{}<form method=\"post\" action=\"/setup/{}\">{fields}\
+<div class=\"buttons\"><button class=\"approve\">Save</button></div></form>",
+        html::error(error),
+        escape(code),
+    );
+    page(status, &title, &body)
+}
+
+fn redeem<S: Store>(c: &mut Call<'_, S>, code: &str) -> Reply {
+    let p = &c.params;
+    let password = p.get("password").unwrap_or("").to_string();
+    if password != p.get("password_confirm").unwrap_or("") {
+        return Ok(code_form(
+            c,
+            code,
+            422,
+            Some("The two passwords are different."),
+        ));
+    }
+    let redemption = Redemption {
+        password,
+        username: p.get("username").unwrap_or("").to_string(),
+        display_name: p.get("display_name").unwrap_or("").to_string(),
+    };
+    let invite = c
+        .svc
+        .find_code(code, c.now)
+        .is_some_and(|r| r.kind == CodeKind::Invite);
+    match c.svc.redeem_code(code, redemption, c.now) {
+        Ok(slot) => {
+            let username = c
+                .svc
+                .state
+                .account(slot)
+                .map_or(String::new(), |a| a.rec.username.clone());
+            let done = if invite {
+                format!(
+                    "Welcome! Your account <code>{}</code> is ready.",
+                    escape(&username)
+                )
+            } else {
+                format!(
+                    "The password for <code>{}</code> is changed. Sign in again on each of your devices.",
+                    escape(&username)
+                )
+            };
+            let body = format!(
+                "<p class=\"ok\">{done}</p>{}",
+                how_to_connect(&server_address(c))
+            );
+            Ok(page(200, "All set", &body))
+        }
+        Err(e) => Ok(code_form(c, code, 422, Some(&friendly(&e)))),
+    }
+}
+
+fn password_form<S: Store>(c: &Call<'_, S>, status: u16, error: Option<&str>) -> Response {
+    let body = format!(
+        "<p>Every device you are signed in on will be signed out; sign in again with the new password.</p>{}\
+<form method=\"post\" action=\"/setup/password\">{}{}{}{}\
+<div class=\"buttons\"><button class=\"approve\">Change password</button></div></form>\
+<p class=\"hint\">Forgot it? Ask an admin for a reset link.</p>",
+        html::error(error),
+        field(
+            "Username",
+            "username",
+            "text",
+            c.params.get("username").unwrap_or(""),
+            "",
+            "username"
+        ),
+        field(
+            "Current password",
+            "current",
+            "password",
+            "",
+            "",
+            "current-password"
+        ),
+        field(
+            "New password",
+            "password",
+            "password",
+            "",
+            "At least 4 characters.",
+            "new-password"
+        ),
+        field(
+            "New password again",
+            "password_confirm",
+            "password",
+            "",
+            "",
+            "new-password"
+        ),
+    );
+    page(status, "Change your password", &body)
+}
+
+fn change_password<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let p = &c.params;
+    let username = p.get("username").unwrap_or("").to_string();
+    let current = p.get("current").unwrap_or("").to_string();
+    let new = p.get("password").unwrap_or("").to_string();
+    if new != p.get("password_confirm").unwrap_or("") {
+        return Ok(password_form(
+            c,
+            422,
+            Some("The two new passwords are different."),
+        ));
+    }
+    // The sign-in lockout applies here too.
+    let slot = match c.svc.check_password(&username, &current, c.now) {
         Ok(slot) => slot,
         Err(Error::Unauthorized) => {
-            return Ok(landing(
-                c,
-                401,
-                None,
-                Some("Wrong admin username or password."),
-            ))
+            return Ok(password_form(c, 401, Some("Wrong username or password.")))
         }
-        Err(e) => return Ok(landing(c, 422, None, Some(&friendly(&e)))),
+        Err(e) => return Ok(password_form(c, 422, Some(&friendly(&e)))),
     };
-    let username = member.username.clone();
-    match c.svc.create_member(actor, member, c.now) {
-        Ok(_) => {
-            let notice = format!("Added {username}. They can sign in now.");
-            // A fresh form, not the one just submitted.
-            c.params = Default::default();
-            Ok(landing(c, 200, Some(&notice), None))
-        }
-        Err(e) => Ok(landing(c, 422, None, Some(&friendly(&e)))),
+    match c.svc.change_password(slot, &current, &new, c.now) {
+        Ok(()) => Ok(html::message(
+            200,
+            "Password changed",
+            "Your password is changed. Sign in again on each of your devices.",
+        )),
+        Err(e) => Ok(password_form(c, 422, Some(&friendly(&e)))),
     }
 }
 
@@ -277,10 +386,14 @@ pub(crate) fn clock_not_set() -> Response {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", [] | ["setup"]) if !c.svc.state.provisioned => Ok(setup_form(c, 200, None)),
-        ("GET", []) => Ok(landing(c, 200, None, None)),
+        ("GET", []) => Ok(landing(c)),
         ("GET", ["setup"]) => Ok(Response::redirect("/")),
         ("POST", ["setup"]) => create_household(c),
-        ("POST", ["setup", "members"]) => add_member(c),
+        (_, ["setup", ..]) if !c.svc.state.provisioned => Ok(Response::redirect("/")),
+        ("GET", ["setup", "password"]) => Ok(password_form(c, 200, None)),
+        ("POST", ["setup", "password"]) => change_password(c),
+        ("GET", ["setup", code]) => Ok(code_form(c, code, 200, None)),
+        ("POST", ["setup", code]) => redeem(c, code),
         _ => return None,
     })
 }

@@ -5,31 +5,81 @@ is the **owner**. The owner can make other members **admins**. Admins add
 members, moderate, and edit the server's settings. Nobody, not even the owner,
 can read other people's [direct messages](../security/encryption.md).
 
-There is no admin web app yet. Admins use the board's own page for adding
-members, and the household API (`/api/mastomini/v1`) or a Mastodon app with
-admin features for the rest. The examples below use `curl` with an admin's
+Admins use the **household app** at `http://<board>/app/` (linked from the
+board's page): members, invite and reset links (with a QR code), moderation,
+server settings and health. Everyone can use it for their own devices and
+password. It signs in through the same page as Mastodon apps. The household
+API (`/api/mastomini/v1`) and Mastodon apps with admin features work too. The examples below use `curl` with an admin's
 access token (`$TOKEN`) and the board's address (`$BOARD`, for example
 `http://192.168.1.161`).
 
 ## Members
 
-Add a member from the board's page (**Add a family member**, confirmed with an
-admin's password), or:
+The best way to add someone is an **invite link**. In the household app, open
+**Members** and choose **Create invite link**, then send the link (or show the
+QR code) to the new member. They open it,
+choose their own username and password, and are ready to sign in. A link works
+once and expires after 7 days. Up to 8 links can be open at once; creating a
+ninth drops the oldest.
+
+With the household API:
 
 ```bash
-curl -X POST "$BOARD/api/mastomini/v1/admin/members" -H "Authorization: Bearer $TOKEN" \
-  -d username=sam -d password=changeme -d display_name=Sam
+curl -X POST "$BOARD/api/mastomini/v1/admin/invites" -H "Authorization: Bearer $TOKEN"
+# -> {"id": "...", "kind": "invite", "code": "...", "url": "http://.../setup/<code>", "expires_at": "..."}
 ```
 
 Usernames are 1–20 characters of `a-z`, `0-9` and `_`, and can't be changed
 later. A household holds up to 16 accounts.
 
-!!! warning "Initial passwords"
-    The admin who creates an account knows its first password. The member
-    should change it: until they do, that admin could sign in as them and read
-    their direct messages.
+You can also create an account with a password you choose (**Members** → "Or
+add someone with a password you choose", or
+`POST /api/mastomini/v1/admin/members` with `username`, `password`,
+`display_name`).
+
+!!! warning "Passwords you choose for someone"
+    The admin who creates an account with a password knows that password. The
+    member should change it: until they do, that admin could sign in as them
+    and read their direct messages. Invite links avoid this.
 
 List members with `GET /api/mastomini/v1/admin/members`.
+
+### Forgotten passwords
+
+Nobody sets a password for someone else. In **Members**, choose **Reset
+password** next to the member and send them the link; they choose a new
+password. Their password doesn't change until they use the
+link. Or:
+
+```bash
+curl -X POST "$BOARD/api/mastomini/v1/admin/members/<account id>/reset" -H "Authorization: Bearer $TOKEN"
+```
+
+Using a reset link signs the member out on every device, and their earlier
+direct messages can no longer be read (they were locked with the old password;
+see [encryption](../security/encryption.md)). The same rules as moderation
+apply: admins can't reset their own password (they change it instead) or the
+owner's, and only the owner can reset an admin's. A new reset link for the same
+member replaces the previous one.
+
+Open links are listed (without the codes themselves) by
+`GET /api/mastomini/v1/admin/codes`, and `DELETE /api/mastomini/v1/admin/codes/<id>`
+cancels one.
+
+### Changing your own password and devices
+
+Anyone can change their password under **My account** in the household app
+(or on the board's page, **Change your password**). It signs you out on
+every device; sign in again with the new password.
+
+With a token from the household API:
+
+| Request | Does |
+|---|---|
+| `POST /api/mastomini/v1/me/password` with `current`, `new` | Change your password; every device is signed out |
+| `POST /api/mastomini/v1/me/sign_out_everywhere` | Sign out every device |
+| `GET /api/mastomini/v1/me/devices` | Your signed-in apps: name, when signed in, last used since the last restart, and which one is making this request |
+| `DELETE /api/mastomini/v1/me/devices/<id>` | Sign one of them out |
 
 ## Rules, terms of service and the about page
 
@@ -96,6 +146,29 @@ must be suspended before the admin API will delete it.
 
 ## Health
 
-`GET /api/mastomini/v1/status` (no sign-in) shows whether the household is set
-up, the version, the number of accounts and posts, how full storage is, and
-how many old posts have been removed to make room.
+**Health** in the household app (admins) shows the clock, how full storage is
+and the date of the oldest post kept, the board's memory, uptime, reason for
+the last restart and Wi-Fi signal, and how much of each limit is in use. The
+same data is `GET /api/mastomini/v1/diag` (admin token).
+`GET /api/mastomini/v1/status` (no sign-in) has a short summary.
+
+### When the board can't get the time
+
+The board takes the time from the internet after each start. Until it has it,
+reading works but nobody can post. If the internet is down, an admin can open
+**Health** and choose **Set the board's clock**: the board uses that device's
+time until internet time is available again. It only accepts a time later than
+the newest post.
+
+## Security
+
+**Security** (owner only) shows how the board is reached (plain HTTP for now),
+members still waiting for their direct-message key (they need to sign in once),
+each member's number of signed-in devices, and the password rules. HTTPS and
+the Easy/Secure switch are not built yet (see [HTTPS](../security/https.md)).
+
+## Avatars
+
+Everyone gets a generated avatar: the first letter of their username on a
+colour chosen for them. Uploading pictures isn't supported, which keeps the
+board's small storage for posts.

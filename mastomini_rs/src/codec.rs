@@ -30,6 +30,12 @@ pub enum Kind {
     UserKey = 16,
     TokenKey = 17,
     Dm = 18,
+    Code = 19,
+    Revision = 20,
+    Poll = 21,
+    FollowRequest = 22,
+    List = 23,
+    Filter = 24,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

@@ -142,9 +142,9 @@ This part is done by the household, from a phone or any browser.
    home network (or tap **Create your household**). Enter a household name, a
    username and a password. This first account is the **owner**, who is also
    an admin.
-3. **Add the family.** The board's address now shows how to connect a Mastodon
-   app, and an **Add a family member** form, confirmed with an admin's
-   password.
+3. **Add the family.** Tap **Invite your family** (or open the board's
+   address and choose **Household app**), sign in, and create an invite link
+   for each person. They open it and choose their own username and password.
 
 The `mastomini-setup` network closes about two minutes after the household is
 created.

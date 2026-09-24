@@ -65,13 +65,19 @@ impl<S: Store> Service<S> {
             .ok_or_else(|| Error::Invalid("The household is full (16 accounts)".into()))
     }
 
-    fn insert_account(&mut self, member: NewMember, now_ms: u64) -> Result<u8> {
+    /// Everything [`Self::insert_account`] checks, without writing.
+    pub(crate) fn check_new_member(&self, member: &NewMember) -> Result<()> {
         validate_username(&member.username)?;
         validate_display_name(&member.display_name)?;
         auth::password_ok(&member.password).map_err(|m| Error::Invalid(m.into()))?;
         if self.state.account_by_username(&member.username).is_some() {
             return invalid("Validation failed: Username has already been taken");
         }
+        self.free_slot().map(|_| ())
+    }
+
+    pub(crate) fn insert_account(&mut self, member: NewMember, now_ms: u64) -> Result<u8> {
+        self.check_new_member(&member)?;
         let slot = self.free_slot()?;
         let rec = AccountRec {
             id: self.next_id(now_ms),
@@ -204,10 +210,14 @@ impl<S: Store> Service<S> {
         if *current == rec {
             return Ok(()); // nothing changed: no flash write
         }
+        let unlocked = current.locked && !rec.locked;
         self.govern(Some(slot), now_ms)?;
         self.put(Ns::Acct, &keys::account(slot), Kind::Account, &rec)?;
         if let Some(account) = self.state.accounts[slot as usize].as_mut() {
             account.rec = rec;
+        }
+        if unlocked {
+            self.authorize_all(slot)?;
         }
         Ok(())
     }
@@ -254,7 +264,7 @@ impl<S: Store> Service<S> {
         }
     }
 
-    /// Change a password and sign out every other session in one write.
+    /// Change a password and sign out every session in one write.
     pub fn change_password(
         &mut self,
         slot: u8,
@@ -267,18 +277,56 @@ impl<S: Store> Service<S> {
             return Err(Error::Forbidden("Current password is incorrect".into()));
         }
         auth::password_ok(new).map_err(|m| Error::Invalid(m.into()))?;
-        let mut rec = account.rec.clone();
+        self.govern(Some(slot), now_ms)?;
+        self.replace_password(slot, new, Some(current))
+    }
+
+    /// Set a new verifier and bump the token epoch in one write (the commit
+    /// point), then re-seal the member's key: with `current` it keeps the
+    /// same secret, without it (a reset) the member gets a new key pair.
+    pub(crate) fn replace_password(
+        &mut self,
+        slot: u8,
+        new: &str,
+        current: Option<&str>,
+    ) -> Result<()> {
+        let mut rec = self.state.account(slot).ok_or(Error::NotFound)?.rec.clone();
         rec.verifier = Verifier::new(new, self.config.password_rounds);
         rec.token_epoch = rec.token_epoch.wrapping_add(1);
-        self.govern(Some(slot), now_ms)?;
         self.put(Ns::Acct, &keys::account(slot), Kind::Account, &rec)?;
-        let epoch = rec.token_epoch;
         if let Some(a) = self.state.accounts[slot as usize].as_mut() {
             a.rec = rec;
         }
-        self.reseal_user_key(slot, current, new)?;
-        // The epoch already invalidated them; erasing is tidy-up that boot
-        // would otherwise do.
+        match current {
+            Some(current) => self.reseal_user_key(slot, current, new)?,
+            None => {
+                self.create_user_key(slot, new)?;
+            }
+        }
+        self.forget_stale_tokens(slot)
+    }
+
+    /// "Sign out everywhere": every token of the member stops working.
+    pub fn sign_out_everywhere(&mut self, slot: u8, now_ms: u64) -> Result<()> {
+        let mut rec = self.state.account(slot).ok_or(Error::NotFound)?.rec.clone();
+        rec.token_epoch = rec.token_epoch.wrapping_add(1);
+        self.govern(Some(slot), now_ms)?;
+        self.put(Ns::Acct, &keys::account(slot), Kind::Account, &rec)?;
+        if let Some(a) = self.state.accounts[slot as usize].as_mut() {
+            a.rec = rec;
+        }
+        self.forget_stale_tokens(slot)
+    }
+
+    /// Erase tokens from an older epoch. The epoch already invalidated
+    /// them; erasing is tidy-up that boot would otherwise do.
+    fn forget_stale_tokens(&mut self, slot: u8) -> Result<()> {
+        let epoch = self
+            .state
+            .account(slot)
+            .ok_or(Error::NotFound)?
+            .rec
+            .token_epoch;
         let stale: Vec<[u8; 32]> = self
             .state
             .tokens

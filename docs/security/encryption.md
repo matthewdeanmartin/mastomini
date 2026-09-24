@@ -47,10 +47,15 @@ message, the server opens that device's copy of the reader's key with the
 app's token, decrypts, answers, and wipes the key from memory when the request
 ends. Nothing decrypted is ever written to flash.
 
+**Edits stay encrypted.** An edited direct message is encrypted again, and no
+earlier version is kept (edit history of other posts is stored as plain text).
+Polls can't be added to direct messages, because their options would not be
+encrypted.
+
 **A password change keeps old messages readable:** the secret key is encrypted
 again under the new password. There is no other way back in: a member who
-loses their password (once password reset exists) loses their old direct
-messages.
+forgets their password and uses a reset link gets a new key, and their old
+direct messages can't be read any more.
 
 ## Limitations
 
@@ -69,11 +74,12 @@ guessed, their key opens and so do their direct messages.
 **Encryption at rest is only as strong as the weakest password in the
 conversation.** Members who care should use a long passphrase.
 
-### The admin who creates an account knows its first password
+### An admin who chooses someone's password knows it
 
-Until invite and reset codes exist, an admin creates each account with a
-password they choose. Until the member changes it, that admin could sign in as
-them. Members should change their password after their first sign-in.
+Invite and reset links let members choose their own passwords. An admin can
+still create an account with a password they choose; until the member changes
+it, that admin could sign in as them. Invite members with a link, or have them
+change their password after their first sign-in.
 
 ### The server has to decrypt to serve apps
 

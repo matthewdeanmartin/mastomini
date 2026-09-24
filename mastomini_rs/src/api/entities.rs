@@ -4,15 +4,16 @@
 use super::time::{date, iso, iso_day};
 use super::Ctx;
 use crate::domain::query::Entry;
-use crate::domain::records::{BoostRec, CollectionRec, ReportRec, Role};
+use crate::domain::records::{BoostRec, CollectionRec, PollRec, ReportRec, Role};
 use crate::domain::{bit, Account, Notification, NotificationKind, Service, Status};
 use crate::ids;
 use crate::store::Store;
 use crate::text::{self, MentionTarget};
 use serde_json::{json, Value};
 
-pub fn avatar_url(ctx: &Ctx) -> String {
-    format!("{}/avatars/original/missing.png", ctx.base_url)
+/// The generated avatar ([`crate::avatar`]).
+pub fn avatar_url(ctx: &Ctx, account_id: u64) -> String {
+    format!("{}/avatars/{account_id}.png", ctx.base_url)
 }
 
 pub fn header_url(ctx: &Ctx) -> String {
@@ -51,8 +52,8 @@ pub fn account<S: Store>(svc: &Service<S>, ctx: &Ctx, account: &Account) -> Valu
         "note": text::render_plain(&rec.note),
         "url": url,
         "uri": url,
-        "avatar": avatar_url(ctx),
-        "avatar_static": avatar_url(ctx),
+        "avatar": avatar_url(ctx, rec.id),
+        "avatar_static": avatar_url(ctx, rec.id),
         "header": header_url(ctx),
         "header_static": header_url(ctx),
         "followers_count": followers,
@@ -114,7 +115,12 @@ pub fn credential_account<S: Store>(svc: &Service<S>, ctx: &Ctx, a: &Account) ->
         "language": rec.language,
         "note": rec.note,
         "fields": fields,
-        "follow_requests_count": 0,
+        "follow_requests_count": svc
+            .state
+            .follow_requests
+            .keys()
+            .filter(|(_, dst)| *dst == a.slot)
+            .count(),
         "discoverable": rec.discoverable,
         "indexable": false,
         "hide_collections": false,
@@ -140,6 +146,43 @@ fn resolver<'a, S: Store>(
 
 fn status_url(ctx: &Ctx, username: &str, id: u64) -> String {
     format!("{}/@{}/{}", ctx.base_url, username, id)
+}
+
+/// Status text as Mastodon HTML.
+pub fn render_text<S: Store>(svc: &Service<S>, ctx: &Ctx, text: &str) -> String {
+    text::render(text, &resolver(svc, ctx), &format!("{}/tags", ctx.base_url))
+}
+
+/// `Poll`, as `viewer` sees it. Totals stay hidden until the end when the
+/// author asked for that, from the author too (as on Mastodon).
+pub fn poll<S: Store>(svc: &Service<S>, id: u64, poll: &PollRec, viewer: Option<u8>) -> Value {
+    let expired = poll.expires_ms <= svc.state.now_ms;
+    let show = expired || !poll.hide_totals;
+    let voters = poll.voters();
+    let author = svc.state.statuses.get(&id).map(|s| s.rec.author);
+    let options: Vec<Value> = poll
+        .options
+        .iter()
+        .zip(&poll.votes)
+        .map(|(title, votes)| json!({ "title": title, "votes_count": show.then(|| votes.count_ones()) }))
+        .collect();
+    let own: Vec<usize> = viewer.map_or_else(Vec::new, |v| {
+        (0..poll.votes.len())
+            .filter(|i| poll.votes[*i] & bit(v) != 0)
+            .collect()
+    });
+    json!({
+        "id": id.to_string(),
+        "expires_at": iso(poll.expires_ms),
+        "expired": expired,
+        "multiple": poll.multiple,
+        "votes_count": poll.votes.iter().map(|v| v.count_ones()).sum::<u32>(),
+        "voters_count": poll.multiple.then(|| voters.count_ones()),
+        "options": options,
+        "emojis": [],
+        "voted": viewer.is_some_and(|v| Some(v) == author || voters & bit(v) != 0),
+        "own_votes": own,
+    })
 }
 
 /// A status as `viewer` sees it.
@@ -198,7 +241,7 @@ pub fn status<S: Store>(svc: &Service<S>, ctx: &Ctx, s: &Status, viewer: Option<
         "emojis": [],
         "media_attachments": [],
         "card": null,
-        "poll": null,
+        "poll": svc.state.polls.get(&rec.id).map(|p| poll(svc, rec.id, p, viewer)),
         "quote": null,
         "replies_count": s.replies,
         "reblogs_count": s.boosted.count_ones(),
@@ -290,8 +333,8 @@ pub fn relationship<S: Store>(svc: &Service<S>, viewer: u8, target: &Account) ->
         "muting": mute.is_some(),
         "muting_notifications": mute.is_some_and(|m| m.notifications),
         "muting_expires_at": mute.and_then(|m| m.expires_ms).map(iso),
-        "requested": false,
-        "requested_by": false,
+        "requested": svc.state.follow_requests.contains_key(&(viewer, target.slot)),
+        "requested_by": svc.state.follow_requests.contains_key(&(target.slot, viewer)),
         "domain_blocking": false,
         "endorsed": false,
         "note": "",

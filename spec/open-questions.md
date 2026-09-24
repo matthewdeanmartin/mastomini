@@ -12,10 +12,11 @@ someone overrides it.
 | 10 | OTA updates over Wi-Fi? | Not in v1 (needs a second 4 MiB app slot, which would come out of `store`). USB deploys as in nanacoin | 01 |
 | 11 | Export format for posts before they roll off | JSON (Mastodon `Status` array) + a static HTML page, streamed | roadmap Phase 6 |
 | 12 | Flash + NVS encryption? | Not in v1. Revisit once USB recovery flows are settled | 05 |
-| 13 | Polls in scope at all? | Later phase. Cheap with bitmask votes, and fun for "what's for dinner" | 04 |
+| 13 (resolved) | Polls in scope at all? | **Yes, built** (04 "Polls"). Cheap with bitmask votes, and fun for "what's for dinner" | 04 |
 | 14 | Streaming: worth a TLS socket or two? | Later. Measure what the chosen clients do without it first | 04 |
 | 15 | May admins see a direct message someone *reported*? Mastodon shows reported posts to moderators; spec/04 says DMs are never shown to an admin through any API | No for now: `Admin::Report.statuses` omits DMs the admin isn't part of, so a reported DM shows up as a report with a comment but no post | 04 |
 | 16 | Collections are Mastodon API version 10 (4.6). Advertise `api_versions.mastodon: 10` so clients show them? | Not yet: it would also claim quotes and other 4.4+ features clients may then try. Revisit once a client actually uses collections | 04 |
+| 17 (resolved) | Avatars and headers: 3 MiB LittleFS partition, 48 KiB avatar / 96 KiB header (02)? The owner is uneasy about the space and about people uploading large images | Proposed: no headers at all; avatars optional and tiny (128×128, ≤ 16 KiB), uploaded only from the household app, which resizes in the browser. Native-app uploads get `422` pointing there. Default: a generated avatar (initials on a per-member colour), which costs no flash. **Decided: generated avatars by default (built, 02); uploads not now** | 02, 03, 06 |
 
 ## Resolved
 

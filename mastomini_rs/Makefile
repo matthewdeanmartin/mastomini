@@ -5,7 +5,7 @@ CARGO ?= cargo
 UV ?= uv
 ESP_PYTHON ?= /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
 
-.PHONY: help run build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check firmware deploy install boot-log probe-board
+.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check firmware deploy install boot-log probe-board
 
 help:
 	@printf '%s\n' \
@@ -14,7 +14,7 @@ help:
 	  'make test         Rust unit and integration tests' \
 	  'make lint         Clippy with warnings as errors' \
 	  'make fmt          Format Rust source' \
-	  'make smoke        OAuth + posting smoke test against the real binary' \
+	  'make smoke        OAuth + posting smoke test against the real binary' 	  'make web          Build the household app (../mastomini_ui) for embedding' 	  'make run-web      Desktop server with the household app at /app/' 	  'make ui-test      Household app unit tests (vitest)' 	  'make web-check    Rust tests with the household app embedded' \
 	  'make client-test  Mastodon.py suite against the real binary (uv)' 	  'make conformance  mastodon_mock contract suite against the real binary' 	  'make conformance-sync  Re-copy the contract tests from ../../mimb/mastodon_mock' \
 	  'make docs         Build the docs site strictly (mkdocs, as Read the Docs does)' 	  'make docs-serve   Preview the docs at http://127.0.0.1:8000' 	  'make check        All quality gates' \
 	  'make firmware                   Build the ESP32-S3 images (no board access)' \
@@ -67,7 +67,19 @@ conformance-sync:
 scripts-check:
 	$(UV) run --project clienttests python -m py_compile scripts/board.py scripts/boot-log.py 	  scripts/deploy.py scripts/firmware-image.py scripts/install.py scripts/probe-board.py 	  clienttests/conftest.py clienttests/harness.py clienttests/smoke.py clienttests/test_mastodon_py.py 	  conformance/conftest.py conformance/deviations.py conformance/sync_upstream.py
 
-check: fmt-check lint scripts-check docs test smoke client-test conformance
+check: fmt-check lint scripts-check docs test ui-test web-check smoke client-test conformance
+
+web:
+	bash scripts/build-web.sh
+
+run-web: web
+	$(CARGO) run --locked --features bundled-web
+
+ui-test:
+	cd ../mastomini_ui && npm test
+
+web-check: web
+	$(CARGO) test --locked --features bundled-web
 
 firmware:
 	bash scripts/build-esp32.sh

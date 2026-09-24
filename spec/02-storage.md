@@ -131,7 +131,9 @@ base32 snowflake.
 | `mm_tok` | `t` + 14-char hash prefix | token: sha256(token), account slot, app id, scopes, epoch at issue, created_at | token issue/revoke |
 | `mm_stat` | `s` + `ID` | status: author slot, text, CW, visibility, language, reply-to, mentions bitmask, flags, edited_at | post/edit/delete/evict |
 | `mm_stat` | `r` + `ID` | boost: booster slot, target status id | boost/unboost |
-| `mm_hist` | `h` + `ID` + rev (0–2) | previous revision of an edited status | edit |
+| `mm_hist` | `h` + `ID` + rev (0–2) | previous revision of an edited status: text, CW, sensitive, and when that version was published. Never for direct messages (schema 4) | edit |
+| `mm_stat` | `o` + `ID` | poll: options, end time, multiple, hide totals, one `u16` vote bitmask per option. Written before its status, like a DM envelope (schema 4) | post/edit/vote |
+| `mm_rel` | `Q` + `A` + `A` | follow request (requester, locked account), same shape as a follow (schema 4) | request/answer |
 | `mm_rx` | `f`/`b`/`p` + `ID` + `A` | favourite / bookmark / pin: record id (snowflake, used as the notification id) | toggle |
 | `mm_rx` | `m` + `ID` + `A` | conversation mute, same shape as a favourite (schema 2) | toggle |
 | `mm_rel` | `F`/`B`/`M` + `A` + `A` | follow (record id, `notify`, `reblogs`) / block (record id) / mute (record id, `notifications`, expiry) edge. `B` and `M` since schema 2 | toggle |
@@ -142,13 +144,20 @@ base32 snowflake.
 | `mm_key` | `w` + token key suffix | the member's secret sealed for one signed-in device (token-derived key) | token issue/revoke |
 | `mm_cfg` | `terms` | admin-written terms of service and the date they took effect; absent means generated terms | admin |
 | `mm_coll` | `c` + `ID` | collection: curator slot, name, description, flags, language, tag, items inline (item id, account id, revoked) | edit |
-| `mm_list` | `l` + `A` + n | list: title, members bitmask, replies policy | edit |
-| `mm_filt` | `x` + `A` + n | filter: title, context flags, action, keywords | edit |
+| `mm_list` | `l` + `A` + n | list: id, title, replies policy, exclusive, member **account ids** (not a slot bitmask, so a reused slot inherits nothing) (schema 4) | edit |
+| `mm_filt` | `x` + `A` + n | filter: id, title, context flags, action, expiry, keywords inline (id, text, whole word), statuses inline (id, status id) (schema 4) | edit |
 | `mm_tag` | `g` + `A` + n | followed hashtag | toggle |
-| `mm_inv` | `i` + n | invite / password-reset code hash, target slot, expiry | admin |
+| `mm_inv` | `i` + `ID` | invite / password-reset code: sha256(code), kind (invite, or reset with target slot + account id), expiry (schema 3) | issue/redeem/revoke |
 
 **Schema 2** added the `B`/`M`/`m` keys and the `mm_mod` and `mm_coll`
-namespaces, as new record kinds. No existing record changed layout (postcard is
+namespaces, as new record kinds. **Schema 3** added the `mm_inv` namespace the
+same way; **schema 4** the history, poll, follow-request, list and filter records and the
+`mm_list` and `mm_filt` namespaces.
+Boot drops reset codes whose account id no longer matches the slot, polls and
+revisions without their status, a revision that isn't older than the current
+version (an interrupted edit), follow requests whose follow exists (an
+interrupted authorize) or that cross a block, and lists and filters of missing
+accounts. It also clears a tombstoned member's votes, which are bits by slot. No existing record changed layout (postcard is
 not self-describing, so a changed struct would misread every stored record).
 Boot rewrites a schema-1 marker to 2, which is the only write needed; firmware
 that only knows schema 1 then refuses the store instead of misreading it.
@@ -265,6 +274,15 @@ Eviction policy:
 - Export (roadmap, later) lets the household keep an archive before posts roll off.
 
 ## Avatars and headers (LittleFS)
+
+**Decision (open question 17): generated avatars, no uploads for now.** Every
+account's avatar is `/avatars/<account id>.png`, drawn on request
+(`src/avatar.rs`): the username's first character from a 5×7 bitmap font on a
+colour derived from the account id, as a ~2 KiB 1-bit PNG. Nothing is stored.
+Headers stay the grey `missing.png`. `update_credentials` with files still
+answers `422`. The design below is kept for if uploads are ever wanted; the
+`media` partition stays in the layout (changing partitions needs a reviewed
+migration) but is unused.
 
 - `media` partition, LittleFS via the `joltwallet/littlefs` ESP-IDF component,
   mounted with **no format on failure**.

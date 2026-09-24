@@ -301,3 +301,147 @@ pub struct CollectionRec {
     pub items: Vec<CollectionItemRec>,
     pub updated_ms: u64,
 }
+
+/// What a one-time code does when redeemed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CodeKind {
+    /// Create a new member, who chooses their username and password.
+    Invite,
+    /// Set a new password for an existing member. The account id guards
+    /// against the slot being reused after the member is deleted.
+    Reset { slot: u8, account_id: u64 },
+}
+
+/// An invite or password-reset code (`i` + id in `mm_inv`). Only the hash
+/// of the code is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodeRec {
+    pub id: u64,
+    pub hash: [u8; 32],
+    pub kind: CodeKind,
+    pub expires_ms: u64,
+}
+
+/// A previous version of an edited status (`h` + status id + 0–2 in
+/// `mm_hist`). Direct messages keep no history: it would sit unencrypted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionRec {
+    pub text: String,
+    pub spoiler_text: String,
+    pub sensitive: bool,
+    /// When this version was published: the post's creation or an edit.
+    pub created_ms: u64,
+}
+
+/// A poll on a status (`o` + status id in `mm_stat`). Votes are one bit per
+/// account slot for each option (spec/04 "Polls").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollRec {
+    pub options: Vec<String>,
+    pub expires_ms: u64,
+    pub multiple: bool,
+    pub hide_totals: bool,
+    pub votes: Vec<u16>,
+}
+
+impl PollRec {
+    /// Slots that voted for anything.
+    pub fn voters(&self) -> u16 {
+        self.votes.iter().fold(0, |m, v| m | v)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RepliesPolicy {
+    /// Replies to anyone the list owner follows.
+    Followed,
+    /// Replies to list members.
+    List,
+    None,
+}
+
+impl RepliesPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RepliesPolicy::Followed => "followed",
+            RepliesPolicy::List => "list",
+            RepliesPolicy::None => "none",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RepliesPolicy> {
+        match text {
+            "followed" => Some(RepliesPolicy::Followed),
+            "list" => Some(RepliesPolicy::List),
+            "none" => Some(RepliesPolicy::None),
+            _ => None,
+        }
+    }
+}
+
+/// A list (`l` + owner slot + 0–7 in `mm_list`). Members are account ids,
+/// so a reused slot never inherits a membership.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListRec {
+    pub id: u64,
+    pub title: String,
+    pub replies_policy: RepliesPolicy,
+    /// Members' posts appear only in the list, not on home.
+    pub exclusive: bool,
+    pub members: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FilterAction {
+    Warn,
+    Hide,
+    Blur,
+}
+
+impl FilterAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FilterAction::Warn => "warn",
+            FilterAction::Hide => "hide",
+            FilterAction::Blur => "blur",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<FilterAction> {
+        match text {
+            "warn" => Some(FilterAction::Warn),
+            "hide" => Some(FilterAction::Hide),
+            "blur" => Some(FilterAction::Blur),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilterKeywordRec {
+    pub id: u64,
+    pub keyword: String,
+    pub whole_word: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilterStatusRec {
+    pub id: u64,
+    pub status_id: u64,
+}
+
+/// A content filter (`x` + owner slot + 0–7 in `mm_filt`), Mastodon's v2
+/// shape. `context` is a bit set of [`FILTER_CONTEXTS`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilterRec {
+    pub id: u64,
+    pub title: String,
+    pub context: u8,
+    pub action: FilterAction,
+    pub expires_ms: Option<u64>,
+    pub keywords: Vec<FilterKeywordRec>,
+    pub statuses: Vec<FilterStatusRec>,
+}
+
+/// Filter contexts, in bit order.
+pub const FILTER_CONTEXTS: [&str; 5] = ["home", "notifications", "public", "thread", "account"];

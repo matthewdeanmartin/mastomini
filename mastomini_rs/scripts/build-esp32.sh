@@ -46,6 +46,8 @@ export ESP_IDF_SDKCONFIG_DEFAULTS="$(pwd)/.embuild/board.defaults"
 if command -v cygpath >/dev/null 2>&1; then
   export ESP_IDF_SDKCONFIG_DEFAULTS="$(cygpath -m "$ESP_IDF_SDKCONFIG_DEFAULTS")"
 fi
+# The firmware carries the household app (feature bundled-web).
+bash scripts/build-web.sh
 cargo +esp build --locked --release --no-default-features --features esp32 \
   --bin mastomini-esp32 --target xtensa-esp32s3-espidf -Z build-std=std,panic_abort "$@"
 esp_python="${MASTOMINI_ESPTOOL_PYTHON:-python}"

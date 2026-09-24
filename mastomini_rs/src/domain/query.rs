@@ -269,10 +269,19 @@ impl<S: Store> Service<S> {
 
     pub fn home(&self, viewer: u8, q: &PageQuery) -> Vec<(u64, Entry)> {
         let hidden = self.state.hidden_mask(viewer);
+        // Members of exclusive lists appear only in those lists.
+        let exclusive = self.exclusive_mask(viewer) & !bit(viewer);
+        let off_home = move |e: Entry| -> bool {
+            let who = match e {
+                Entry::Status(id) => self.state.statuses.get(&id).map(|s| s.rec.author),
+                Entry::Boost { id, .. } => self.state.boosts.get(&id).map(|b| b.booster),
+            };
+            who.is_some_and(|s| bit(s) & exclusive != 0)
+        };
         paginate(q, |bounds, asc| {
             Box::new(
                 self.entries(bounds, asc)
-                    .filter(move |(_, e)| self.in_home_masked(viewer, *e, hidden)),
+                    .filter(move |(_, e)| self.in_home_masked(viewer, *e, hidden) && !off_home(*e)),
             )
         })
     }
@@ -412,6 +421,7 @@ impl<S: Store> Service<S> {
                 && from.is_none_or(|f| n.from == f)
                 && self.state.account(n.from).is_some()
                 && (n.kind == NotificationKind::AdminReport
+                    || (n.kind == NotificationKind::Poll && n.from == viewer)
                     || self.wants_notification(viewer, n.from, n.status))
                 && n.status
                     .is_none_or(|s| self.visible(Some(viewer), s).is_some())
