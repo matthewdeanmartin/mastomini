@@ -26,6 +26,31 @@ pub struct UserKeyRec {
 #[derive(Clone)]
 pub struct Held(pub SecretKey);
 
+/// Request-only, lazy device unsealing and bounded plaintext memoization.
+/// Neither bearer tokens nor decrypted text appears in Debug output.
+type Plaintext = (zeroize::Zeroizing<String>, zeroize::Zeroizing<String>);
+
+pub struct Session {
+    slot: u8,
+    account_id: u64,
+    token: zeroize::Zeroizing<String>,
+    sealed: crypto::Sealed,
+    secret: std::cell::OnceCell<Option<Held>>,
+    plaintext: std::cell::RefCell<BTreeMap<u64, Plaintext>>,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Session(..)")
+    }
+}
+
+impl Session {
+    pub(crate) fn clear_cache(&self) {
+        self.plaintext.borrow_mut().clear();
+    }
+}
+
 impl fmt::Debug for Held {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Held(..)")
@@ -121,12 +146,19 @@ impl<S: Store> Service<S> {
         let Some(account_id) = self.state.account(slot).map(|a| a.rec.id) else {
             return;
         };
-        let secret = self
+        let sealed = self
             .state
             .token_seals
             .get(&keys::token_seal(&auth::sha256(token)))
-            .and_then(|sealed| crypto::open_with_token(sealed, token, account_id));
-        self.state.session = secret.map(|s| (slot, Held(s)));
+            .cloned();
+        self.state.session = sealed.map(|sealed| Session {
+            slot,
+            account_id,
+            token: zeroize::Zeroizing::new(token.to_string()),
+            sealed,
+            secret: Default::default(),
+            plaintext: Default::default(),
+        });
     }
 
     /// Forget the unlocked secret (zeroed on drop).
@@ -163,14 +195,37 @@ impl<S: Store> Service<S> {
     /// `(text, spoiler_text)` of a direct message, if `viewer` is the
     /// member whose key this request unlocked and a participant.
     pub fn dm_text(&self, viewer: Option<u8>, status_id: u64) -> Option<(String, String)> {
-        let (slot, Held(secret)) = self.state.session.as_ref()?;
-        if viewer != Some(*slot) {
+        let session = self.state.session.as_ref()?;
+        if viewer != Some(session.slot) {
             return None;
         }
-        let account_id = self.state.account(*slot)?.rec.id;
+        if let Some((text, spoiler)) = session.plaintext.borrow().get(&status_id) {
+            return Some((text.to_string(), spoiler.to_string()));
+        }
+        let Held(secret) = session
+            .secret
+            .get_or_init(|| {
+                crypto::open_with_token(&session.sealed, &session.token, session.account_id)
+                    .map(Held)
+            })
+            .as_ref()?;
+        let account_id = self.state.account(session.slot)?.rec.id;
         let envelope = self.state.dms.get(&status_id)?;
-        let plain = crypto::decrypt(envelope, status_id, account_id, secret)?;
-        postcard::from_bytes(&plain).ok()
+        let plain =
+            zeroize::Zeroizing::new(crypto::decrypt(envelope, status_id, account_id, secret)?);
+        let (text, spoiler): (String, String) = postcard::from_bytes(&plain).ok()?;
+        let mut cache = session.plaintext.borrow_mut();
+        let bytes: usize = cache.values().map(|(a, b)| a.len() + b.len()).sum();
+        if cache.len() < 64 && bytes + text.len() + spoiler.len() <= 32768 {
+            cache.insert(
+                status_id,
+                (
+                    zeroize::Zeroizing::new(text.clone()),
+                    zeroize::Zeroizing::new(spoiler.clone()),
+                ),
+            );
+        }
+        Some((text, spoiler))
     }
 
     /// Text and spoiler as `viewer` may read them: plain for ordinary

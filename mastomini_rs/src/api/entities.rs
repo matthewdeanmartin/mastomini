@@ -34,6 +34,15 @@ fn fields_json(account: &Account) -> Vec<Value> {
 }
 
 pub fn account<S: Store>(svc: &Service<S>, ctx: &Ctx, account: &Account) -> Value {
+    if let Some(value) = svc
+        .state
+        .rendered_accounts
+        .borrow()
+        .as_ref()
+        .and_then(|c| c.get(&account.slot))
+    {
+        return value.clone();
+    }
     let rec = &account.rec;
     let (followers, following) = svc.follower_counts(account.slot);
     let url = profile_url(ctx, &rec.username);
@@ -82,6 +91,9 @@ pub fn account<S: Store>(svc: &Service<S>, ctx: &Ctx, account: &Account) -> Valu
         value["followers_count"] = json!(0);
         value["following_count"] = json!(0);
         value["last_status_at"] = Value::Null;
+    }
+    if let Some(cache) = svc.state.rendered_accounts.borrow_mut().as_mut() {
+        cache.insert(account.slot, value.clone());
     }
     value
 }
@@ -337,7 +349,7 @@ pub fn relationship<S: Store>(svc: &Service<S>, viewer: u8, target: &Account) ->
         "requested_by": svc.state.follow_requests.contains_key(&(target.slot, viewer)),
         "domain_blocking": false,
         "endorsed": false,
-        "note": "",
+        "note": svc.account_note(viewer, target.slot),
     })
 }
 
@@ -351,7 +363,7 @@ pub fn notification<S: Store>(svc: &Service<S>, ctx: &Ctx, n: &Notification) -> 
         "id": n.id.to_string(),
         "type": n.kind.as_str(),
         "created_at": iso(ids::millis(n.id)),
-        "group_key": format!("ungrouped-{}", n.id),
+        "group_key": super::notification_groups::key(n),
         "account": from.map(|a| account(svc, ctx, a)),
         "status": status,
     });

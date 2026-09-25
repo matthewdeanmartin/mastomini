@@ -18,7 +18,7 @@ fn target<'s, S: Store>(c: &'s Call<'_, S>, id: &str) -> Result<&'s Account, Res
         .ok_or_else(|| fail(Error::NotFound))
 }
 
-fn verify_credentials<S: Store>(c: &Call<'_, S>) -> Reply {
+pub(super) fn verify_credentials<S: Store>(c: &Call<'_, S>) -> Reply {
     let slot = c
         .user_scoped("read:accounts")
         .or_else(|_| c.user_scoped("profile"))?;
@@ -32,8 +32,8 @@ fn verify_credentials<S: Store>(c: &Call<'_, S>) -> Reply {
     )))
 }
 
-fn update_credentials<S: Store>(c: &mut Call<'_, S>) -> Reply {
-    let slot = c.user()?;
+pub(super) fn update_credentials<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let slot = c.user_scoped("write:accounts")?;
     if !c.params.files.is_empty() {
         return Err(Response::error(
             422,
@@ -262,7 +262,7 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("GET", [id, "statuses"]) => statuses(c, id),
         ("GET", [id, "followers"]) => follow_list(c, id, true),
         ("GET", [id, "following"]) => follow_list(c, id, false),
-        ("GET", [_, "featured_tags" | "lists" | "identity_proofs" | "endorsements"]) => {
+        ("GET", [_, "lists" | "identity_proofs" | "endorsements"]) => {
             c.user().map(|_| Response::ok(json!([])))
         }
         ("POST", [id, "follow"]) => set_follow(c, id, true),

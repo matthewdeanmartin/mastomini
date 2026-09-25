@@ -439,5 +439,6 @@ mod codes;
 mod collections;
 mod dm;
 mod edits;
+mod local_features;
 mod moderation;
 mod social;

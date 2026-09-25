@@ -12,6 +12,14 @@ pub const MAX_LIMIT: usize = 40;
 const MAX_ANCESTORS: usize = 40;
 const MAX_DESCENDANTS: usize = 60;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct AccountStats {
+    statuses: usize,
+    last_ms: Option<u64>,
+    followers: usize,
+    following: usize,
+}
+
 /// Mastodon cursor parameters.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageQuery {
@@ -240,7 +248,10 @@ impl<S: Store> Service<S> {
                 };
                 let author = s.rec.author;
                 if author != viewer && !self.state.follows(viewer, author) {
-                    return s.rec.visibility == Visibility::Direct && s.mentions & bit(viewer) != 0;
+                    return (s.rec.visibility == Visibility::Direct
+                        && s.mentions & bit(viewer) != 0)
+                        || (self.follows_tag(viewer, &s.tags)
+                            && self.on_public(viewer, s, hidden));
                 }
                 match s
                     .rec
@@ -314,7 +325,7 @@ impl<S: Store> Service<S> {
         })
     }
 
-    fn status_page(
+    pub(crate) fn status_page(
         &self,
         q: &PageQuery,
         keep: impl Fn(&Status) -> bool + Copy,
@@ -551,35 +562,33 @@ impl<S: Store> Service<S> {
     }
 
     pub fn statuses_count(&self, slot: u8) -> usize {
-        self.state
-            .statuses
-            .values()
-            .filter(|s| s.rec.author == slot && s.rec.visibility != Visibility::Direct)
-            .count()
+        self.account_stats(slot).statuses
     }
 
     pub fn last_status_ms(&self, slot: u8) -> Option<u64> {
-        self.state
-            .statuses
-            .values()
-            .rev()
-            .find(|s| s.rec.author == slot)
-            .map(|s| ids::millis(s.rec.id))
+        self.account_stats(slot).last_ms
     }
 
     pub fn follower_counts(&self, slot: u8) -> (usize, usize) {
-        let followers = self
-            .state
-            .follows
-            .keys()
-            .filter(|(_, d)| *d == slot)
-            .count();
-        let following = self
-            .state
-            .follows
-            .keys()
-            .filter(|(s, _)| *s == slot)
-            .count();
-        (followers, following)
+        let stats = self.account_stats(slot);
+        (stats.followers, stats.following)
+    }
+
+    fn account_stats(&self, slot: u8) -> AccountStats {
+        let mut cache = self.state.account_stats.borrow_mut();
+        let stats = cache.get_or_insert_with(|| {
+            let mut stats = [AccountStats::default(); MAX_ACCOUNTS];
+            for s in self.state.statuses.values() {
+                let a = &mut stats[s.rec.author as usize];
+                a.statuses += usize::from(s.rec.visibility != Visibility::Direct);
+                a.last_ms = Some(ids::millis(s.rec.id));
+            }
+            for (src, dst) in self.state.follows.keys() {
+                stats[*src as usize].following += 1;
+                stats[*dst as usize].followers += 1;
+            }
+            stats
+        });
+        stats.get(slot as usize).copied().unwrap_or_default()
     }
 }

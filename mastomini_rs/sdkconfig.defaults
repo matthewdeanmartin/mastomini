@@ -20,6 +20,16 @@ CONFIG_HTTPD_MAX_URI_LEN=1024
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
 CONFIG_LWIP_MAX_SOCKETS=16
 CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
+# HTTPS on 443 next to HTTP on 80 (docs/security/https.md).
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+# TLS sessions allocate from PSRAM, leaving internal RAM for Wi-Fi and task
+# stacks. That keeps full 16 KiB TLS records: browsers send avatar uploads
+# in them. (nanacoin shrank its input buffer to 4 KiB instead, which only
+# works because its request bodies are 1 KiB.)
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# A TLS handshake (RSA-2048 signature, software ECDHE P-256) took about 1.5 s
+# at the default 160 MHz. The board is mains powered: run at full speed.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
 # Boot logs also on the USB port, so deploys can read boot evidence.

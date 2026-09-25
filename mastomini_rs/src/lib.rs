@@ -15,4 +15,5 @@ pub mod http;
 pub mod ids;
 pub mod store;
 pub mod text;
+pub mod tls;
 pub mod web;

@@ -7,8 +7,8 @@ import { Security } from '../api/models';
 
 /**
  * The owner's view of how the household is protected (spec/06
- * `/admin/security`). HTTPS, the Easy/Secure switch and certificates arrive
- * with Sprint 8; until then this shows the transport as it is.
+ * `/admin/security`): the transport and certificates (docs/security/https.md),
+ * direct-message keys, and members' devices.
  */
 @Component({
   selector: 'app-security',
@@ -25,13 +25,50 @@ import { Security } from '../api/models';
           <p><strong>Plain HTTP only.</strong> Passwords and posts cross the home Wi-Fi
             unencrypted, and many phone apps won't connect.</p>
           <p class="muted small">
-            HTTPS is planned: a household certificate each device trusts once (see
-            <a routerLink="/trust">Trust</a>), or a real domain name with a public certificate for
-            Android. Then you'll be able to switch to Secure mode here, which turns plain HTTP off
-            except for the pages new devices need.
+            This firmware was built without a certificate. On the build computer, run make certs
+            and deploy again: the board then serves HTTPS too, with a household certificate each
+            device trusts once (see <a routerLink="/trust">Trust</a>).
           </p>
         } @else {
-          <p>Mode: {{ s.transport.mode }}</p>
+          <p><strong>HTTPS and plain HTTP</strong> (Easy mode): both serve everything.</p>
+          @if (s.transport.this_connection === 'http') {
+            <p class="error">
+              You're using plain HTTP right now. Once this device trusts the household
+              certificate, use <a [href]="s.certificate?.https_url + '/app/'">{{ s.certificate?.https_url }}</a>.
+            </p>
+          }
+          <p class="muted small">
+            Devices still using http:// addresses send passwords and posts unencrypted. Move each
+            device to HTTPS from the <a routerLink="/trust">Trust</a> page. Secure mode, which turns
+            plain HTTP off except for the pages new devices need, isn't built yet.
+          </p>
+          @if (s.household_ca; as ca) {
+            <h3>Household certificate authority</h3>
+            <p>{{ ca.name }}</p>
+            <p class="muted small">SHA-256 fingerprint, to compare on each device:</p>
+            <p class="link-box">{{ ca.fingerprint_sha256 }}</p>
+            <p class="muted small">
+              @if (ca.name_constrained) {
+                It can only vouch for household names and private addresses, never for public
+                websites.
+              } @else {
+                It has no name limits: a device that trusts it believes anything it signs.
+              }
+            </p>
+          }
+          @if (s.certificate; as cert) {
+            <h3>The board's certificate</h3>
+            <p>
+              For {{ cert.names.join(', ') }}. Expires {{ cert.not_after.slice(0, 10) }}
+              ({{ daysLeft(cert.not_after) }} days).
+            </p>
+            @if (daysLeft(cert.not_after) < 60) {
+              <p class="error">
+                Renew it soon: on the build computer run make reissue-cert, then deploy. Devices
+                keep trusting the same household certificate.
+              </p>
+            }
+          }
         }
       </section>
 
@@ -96,6 +133,10 @@ export class SecurityPage implements OnInit {
     } catch (e) {
       this.error.set(describe(e));
     }
+  }
+
+  protected daysLeft(iso: string): number {
+    return Math.floor((Date.parse(iso) - Date.now()) / 86_400_000);
   }
 
   protected withoutKeys(s: Security): string[] {

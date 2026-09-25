@@ -6,7 +6,6 @@ use super::{entities, fail, Call, Reply};
 use crate::domain::query::Entry;
 use crate::domain::{Error, Notification, ReactionKind};
 use crate::http::Response;
-use crate::ids;
 use crate::store::Store;
 use serde_json::{json, Map, Value};
 
@@ -38,6 +37,17 @@ fn home<S: Store>(c: &Call<'_, S>) -> Reply {
     Ok(entries(c, page, viewer, q.limit(), "home"))
 }
 
+fn direct<S: Store>(c: &Call<'_, S>) -> Reply {
+    let viewer = c.user_scoped("read:statuses")?;
+    let q = c.page_query();
+    let page = c.svc.status_page(&q, |s| {
+        s.rec.visibility == crate::domain::records::Visibility::Direct
+            && c.svc.can_see(Some(viewer), s)
+            && !c.svc.state.hides(viewer, s.rec.author)
+    });
+    Ok(entries(c, page, viewer, q.limit(), "home"))
+}
+
 fn public<S: Store>(c: &Call<'_, S>) -> Reply {
     let viewer = c.user_scoped("read:statuses")?;
     let q = c.page_query();
@@ -55,7 +65,10 @@ fn tag<S: Store>(c: &Call<'_, S>, name: &str) -> Reply {
     if c.params.flag("remote") || c.params.flag("only_media") {
         return Ok(Response::ok(json!([])));
     }
-    let page = c.svc.tag_timeline(viewer, name, &q);
+    let name = percent_encoding::percent_decode_str(name)
+        .decode_utf8()
+        .map_err(|_| Response::error(400, "Invalid UTF-8 tag"))?;
+    let page = c.svc.tag_timeline(viewer, &name, &q);
     Ok(entries(c, page, viewer, q.limit(), "public"))
 }
 
@@ -123,104 +136,6 @@ fn notifications<S: Store>(c: &Call<'_, S>) -> Reply {
         .collect();
     let body = super::filters::annotate(c, viewer, "notifications", body);
     Ok(c.paged(Value::Array(body), &ids, limit))
-}
-
-/// Grouped notifications (`/api/v2/notifications`). mastomini does not
-/// group: every notification is its own group, which is valid Mastodon
-/// output and keeps the server free of grouping state.
-fn notifications_v2<S: Store>(c: &Call<'_, S>) -> Reply {
-    let NotificationPage {
-        viewer,
-        rows,
-        limit,
-    } = notifications_page(c)?;
-    let ids: Vec<u64> = rows.iter().map(|(id, _)| *id).collect();
-    Ok(c.paged(grouped(c, viewer, &rows), &ids, limit))
-}
-
-/// `GroupedNotificationsResults` for the given notifications.
-fn grouped<S: Store>(c: &Call<'_, S>, viewer: u8, rows: &[(u64, Notification)]) -> Value {
-    let mut accounts: Vec<Value> = Vec::new();
-    let mut statuses: Vec<Value> = Vec::new();
-    let mut seen_accounts: Vec<u8> = Vec::new();
-    let mut seen_statuses: Vec<u64> = Vec::new();
-    let mut groups = Vec::new();
-    for (_, n) in rows {
-        let Some(from) = c.svc.state.account(n.from) else {
-            continue;
-        };
-        if !seen_accounts.contains(&n.from) {
-            seen_accounts.push(n.from);
-            accounts.push(entities::account(c.svc, c.ctx, from));
-        }
-        if let Some(sid) = n.status {
-            if !seen_statuses.contains(&sid) {
-                if let Some(s) = c.svc.state.statuses.get(&sid) {
-                    seen_statuses.push(sid);
-                    statuses.push(entities::status(c.svc, c.ctx, s, Some(viewer)));
-                }
-            }
-        }
-        groups.push(json!({
-            "group_key": format!("ungrouped-{}", n.id),
-            "notifications_count": 1,
-            "type": n.kind.as_str(),
-            "most_recent_notification_id": n.id.to_string(),
-            "page_min_id": n.id.to_string(),
-            "page_max_id": n.id.to_string(),
-            "latest_page_notification_at": iso(ids::millis(n.id)),
-            "sample_account_ids": [from.rec.id.to_string()],
-            "status_id": n.status.map(|s| s.to_string()),
-        }));
-    }
-    json!({
-        "accounts": accounts,
-        "statuses": statuses,
-        "notification_groups": groups,
-    })
-}
-
-/// Every notification is its own group, keyed `ungrouped-<id>`.
-fn group_id<S: Store>(c: &Call<'_, S>, key: &str) -> Result<u64, Response> {
-    let id = key.strip_prefix("ungrouped-").unwrap_or(key);
-    c.id(id)
-}
-
-/// `GET /api/v2/notifications/:group_key`: the grouped shape for one group.
-fn group<S: Store>(c: &Call<'_, S>, key: &str) -> Reply {
-    let viewer = c.user_scoped("read:notifications")?;
-    let id = group_id(c, key)?;
-    let n = c
-        .svc
-        .state
-        .notifications
-        .iter()
-        .find(|n| n.id == id && n.to == viewer)
-        .copied()
-        .ok_or_else(|| fail(Error::NotFound))?;
-    Ok(Response::ok(grouped(c, viewer, &[(n.id, n)])))
-}
-
-/// `GET /api/v2/notifications/:group_key/accounts`.
-fn group_accounts<S: Store>(c: &Call<'_, S>, key: &str) -> Reply {
-    let viewer = c.user_scoped("read:notifications")?;
-    let id = group_id(c, key)?;
-    let from = c
-        .svc
-        .state
-        .notifications
-        .iter()
-        .find(|n| n.id == id && n.to == viewer)
-        .map(|n| n.from)
-        .ok_or_else(|| fail(Error::NotFound))?;
-    let rows: Vec<Value> = c
-        .svc
-        .state
-        .account(from)
-        .map(|a| entities::account(c.svc, c.ctx, a))
-        .into_iter()
-        .collect();
-    Ok(Response::ok(Value::Array(rows)))
 }
 
 fn notification<S: Store>(c: &Call<'_, S>, id: &str) -> Reply {
@@ -301,7 +216,7 @@ fn markers_set<S: Store>(c: &mut Call<'_, S>) -> Reply {
     Ok(Response::ok(Value::Object(out)))
 }
 
-fn search<S: Store>(c: &Call<'_, S>) -> Reply {
+pub(super) fn search<S: Store>(c: &Call<'_, S>) -> Reply {
     let viewer = c.user_scoped("read:search")?;
     let q = c.params.get("q").unwrap_or("").trim().to_string();
     let kind = c.params.get("type").unwrap_or("");
@@ -353,13 +268,16 @@ fn search<S: Store>(c: &Call<'_, S>) -> Reply {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", ["api", "v1", "timelines", "home"]) => home(c),
+        ("GET", ["api", "v1", "timelines", "direct"]) => direct(c),
         ("GET", ["api", "v1", "timelines", "public"]) => public(c),
         ("GET", ["api", "v1", "timelines", "tag", name]) => tag(c, name),
         ("GET", ["api", "v1", "favourites"]) => reactions(c, ReactionKind::Favourite),
         ("GET", ["api", "v1", "bookmarks"]) => reactions(c, ReactionKind::Bookmark),
         ("GET", ["api", "v1", "notifications"]) => notifications(c),
-        ("GET", ["api", "v1", "notifications", "unread_count"])
-        | ("GET", ["api", "v2", "notifications", "unread_count"]) => unread_count(c),
+        ("GET", ["api", "v1", "notifications", "unread_count"]) => unread_count(c),
+        ("GET", ["api", "v2", "notifications", "unread_count"]) => {
+            super::notification_groups::unread(c)
+        }
         ("GET", ["api", "v1", "notifications", "requests"]) => {
             c.user().map(|_| Response::ok(json!([])))
         }
@@ -367,13 +285,16 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", ["api", "v1", "notifications", "clear"]) => clear(c),
         ("POST", ["api", "v1", "notifications", "dismiss"]) => dismiss(c, None),
         ("POST", ["api", "v1", "notifications", id, "dismiss"]) => dismiss(c, Some(id)),
-        ("GET", ["api", "v2", "notifications"]) => notifications_v2(c),
-        ("GET", ["api", "v2", "notifications", key]) if *key != "policy" => group(c, key),
-        ("GET", ["api", "v2", "notifications", key, "accounts"]) => group_accounts(c, key),
-        ("POST", ["api", "v2", "notifications", key, "dismiss"]) => match group_id(c, key) {
-            Ok(id) => dismiss(c, Some(&id.to_string())),
-            Err(e) => Err(e),
-        },
+        ("GET", ["api", "v2", "notifications"]) => super::notification_groups::list(c),
+        ("GET", ["api", "v2", "notifications", key]) if *key != "policy" => {
+            super::notification_groups::show(c, key)
+        }
+        ("GET", ["api", "v2", "notifications", key, "accounts"]) => {
+            super::notification_groups::accounts(c, key)
+        }
+        ("POST", ["api", "v2", "notifications", key, "dismiss"]) => {
+            super::notification_groups::dismiss(c, key)
+        }
         ("GET", ["api", "v1", "markers"]) => markers_get(c),
         ("POST", ["api", "v1", "markers"]) => markers_set(c),
         ("GET", ["api", "v2", "search"]) => search(c),

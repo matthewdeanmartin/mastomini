@@ -12,6 +12,9 @@ setting up third-party clients.
 
 | File | Contents |
 |---|---|
+| [api-audit.md](api-audit.md) | Current REST gaps, priorities, and how to maintain the checked endpoint ledger |
+| [api-coverage.md](api-coverage.md) | Generated per-endpoint implementation / partial / stub / missing / excluded inventory |
+| [08-performance.md](08-performance.md) | Latency findings, burst benchmark, caching and transport tuning options |
 | [roadmap.md](roadmap.md) | Sprint plan, quality gates, exit criteria, risks |
 | [sprints.md](sprints.md) | What each finished sprint delivered, evidence, known gaps |
 | [01-overview.md](01-overview.md) | Goals, non-goals, architecture, hardware, partition table, code reuse |

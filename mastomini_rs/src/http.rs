@@ -12,6 +12,64 @@ pub const BODY_LIMIT: usize = 4 * 1024;
 /// `update_credentials` may carry avatar/header images.
 pub const UPLOAD_BODY_LIMIT: usize = 160 * 1024;
 
+/// Log only fixed route segments, never account IDs, tag names or query values.
+pub fn route_label(path: &str) -> String {
+    const FIXED: &[&str] = &[
+        "api",
+        "v1",
+        "v2",
+        "mastomini",
+        "accounts",
+        "verify_credentials",
+        "update_credentials",
+        "statuses",
+        "timelines",
+        "home",
+        "public",
+        "tag",
+        "tags",
+        "featured_tags",
+        "followed_tags",
+        "suggestions",
+        "notifications",
+        "unread_count",
+        "policy",
+        "conversations",
+        "lists",
+        "filters",
+        "announcements",
+        "admin",
+        "instance",
+        "rules",
+        "preferences",
+        "markers",
+        "search",
+        "oauth",
+        "authorize",
+        "token",
+        "revoke",
+        "userinfo",
+        "profile",
+        "diag",
+        "health",
+        "trust",
+        "ca",
+        "app",
+        "setup",
+    ];
+    format!(
+        "/{}",
+        path.split('?')
+            .next()
+            .unwrap_or("")
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| if FIXED.contains(&s) { s } else { ":arg" })
+            .collect::<Vec<_>>()
+            .join("/")
+    )
+}
+
 /// Request headers the board passes to [`crate::api::handle`]. The desktop
 /// server passes every header, so a name missing here only breaks on the
 /// board; a test checks that every header the code reads is listed.
@@ -34,6 +92,8 @@ pub struct Request {
     pub query: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Arrived over HTTPS.
+    pub secure: bool,
 }
 
 impl Request {
@@ -127,6 +187,21 @@ impl Response {
 
     pub fn with_header(mut self, name: &str, value: &str) -> Response {
         self.headers.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    /// ESP-IDF replaces repeated header names; combine timing metrics first.
+    pub fn with_timing(mut self, value: &str) -> Response {
+        if let Some((_, old)) = self
+            .headers
+            .iter_mut()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Server-Timing"))
+        {
+            old.push_str(", ");
+            old.push_str(value);
+        } else {
+            self.headers.push(("Server-Timing".into(), value.into()));
+        }
         self
     }
 

@@ -108,7 +108,7 @@ JSON, bearer token, same error shape as the Mastodon API. Every mutation takes a
 
 | Method & path | Role | Notes |
 |---|---|---|
-| `GET /status` | anyone | **done.** provisioned?, server name, version, `clock` (`synced`/`manual`/`unset`), `mode` (`http` until Sprint 8), `https`, primary hostname, `household_app`, counts |
+| `GET /status` | anyone | **done.** provisioned?, server name, version, `clock` (`synced`/`manual`/`unset`), `mode` (`http` without a certificate, else `easy`), `https`, `secure` (this request), `https_url`, `ca_fingerprint`, primary hostname, `household_app`, counts |
 | `POST /provision` | anyone, only while unprovisioned | creates the owner + first-party app. Single use |
 | `POST /codes/redeem` | anyone with code | **done.** `{code, password, username?, display_name?}` → the member (as in `GET /admin/members`). The code is erased before the account is created or the password set, so a power cut can lose a code but never allow a second use. A reset gives the member a new key pair (old DMs unreadable) and signs out every device |
 | `POST /me/password` | member | **done.** `{current, new}`. Always signs out every device, this one included: a committed password change never leaves an old session alive (the `sign_out_everywhere` flag was dropped) |
@@ -128,5 +128,5 @@ JSON, bearer token, same error shape as the Mastodon API. Every mutation takes a
 | `POST /tls`, `DELETE /tls` | owner, HTTPS only | upload/remove real-domain certificate |
 | `POST /clock` | admin | **done.** `{ms}`; `409` once synced, `422` if not later than the newest record (05 "Time") |
 | `GET /diag` | admin | **done.** Platform (target, uptime, internal/PSRAM heap free and low-water, reset reason, Wi-Fi RSSI; the board fills these through `Ctx::platform`), clock, store (entries, watermark, evictions, oldest post, boot repairs), record counts against limits, governor. The public summary is `GET /status`; no separate `/diag/static` |
-| `GET /admin/security` | owner | **done.** Transport (mode, https), certificate and CA (`null` until Sprint 8), password policy, app/token use, per member: role, devices, whether they have a DM key |
+| `GET /admin/security` | owner | **done.** Transport (mode, https, this connection), certificate (names, expiry) and household CA (name, fingerprint, name constraints), password policy, app/token use, per member: role, devices, whether they have a DM key |
 | `GET /admin/export` (later) | owner | streaming JSON (or HTML) archive of all retained posts for keeping before eviction |

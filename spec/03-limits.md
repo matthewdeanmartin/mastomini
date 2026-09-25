@@ -24,6 +24,8 @@ Byte limits are **UTF-8 bytes**. Character limits use Mastodon's counting rules
 | Report comment | 1,000 chars | 500 chars | 1,000 B |
 | Collection name / description | 40 / 100 chars | 40 / 100 chars | 160 B / 400 B |
 | Hashtag | — | 40 B | |
+| Private account note | — | 2000 B per viewer/target | |
+| Announcement | — | 2048 B plain text | |
 | Server name / description | — | 40 B / 280 B | |
 | Server rules | — | 8 × 140 B | |
 | OAuth app name / website | — | 60 B / 120 B (longer is truncated, not rejected: clients don't expect rejection) | |
@@ -62,6 +64,13 @@ and the server agree:
 | Access tokens | 8 per account, 64 total | issuing a 9th revokes that account's oldest token |
 | Pending authorization codes | 16, 60 s, single use | `503` try again |
 | Lists | 8 per account | `422` |
+| Followed / featured tags | 32 / 10 per account | `422`; normalized names, idempotent writes |
+| Announcements | 16 household-wide | `422`; admin deletes old notices |
+| Announcement reactions | 8 types, 32 B per emoji, at most 16 members each | `422` |
+| Private account notes | at most 16 × 16 pairs | cleared when either account is deleted |
+| Derived account statistics | 16 RAM entries | invalidated on relevant mutations; lazy rebuild |
+| Rendered account cache | at most 16 entries per request | discarded after response construction |
+| Decrypted message cache | at most 64 entries / 32 KiB per authenticated request | excess results not cached; zeroized on drop |
 | Filters (v2) | 8 per account × 4 keywords and 4 statuses | `422` |
 | Followed hashtags | 16 per account | `422` |
 | Blocks, mutes | one edge per ordered pair of accounts (≤ 240 each) | — |

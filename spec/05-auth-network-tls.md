@@ -75,8 +75,16 @@ Inherited from nanacoin's `CONNECTION_SECURITY.md`, with the same two modes:
 
 - **Easy mode** (default): HTTPS on 443 and plain HTTP on 80 both serve everything.
   Native Mastodon apps will use HTTPS anyway. HTTP exists so a new device can load
-  `/trust`.
-- **Secure mode** (owner switches it on over HTTPS once all devices trust the
+  `/trust`. **Built** (Sprint 8 first slice; user guide `docs/security/https.md`):
+  two `EspHttpServer`s share the service (`src/bin/esp32.rs`, 5 TLS + 4 HTTP
+  sockets); `Request::secure` marks the TLS listener. OAuth discovery and
+  pagination links use the origin the client connected with
+  (`Call::origin`), so an app on HTTPS is never sent to an HTTP sign-in page;
+  identity URLs (accounts, posts) keep the configured base URL, which on the
+  board now defaults to `https://mastomini.local`. HTTPS responses keep the
+  connection open (a handshake costs about 1.1 s at 240 MHz; a request on an
+  open connection about 0.05 s); HTTP responses still close it.
+- **Secure mode** (not built yet; owner switches it on over HTTPS once all devices trust the
   certificate): HTTP serves only `/`, `/trust`, `/ca`. Switching modes bumps every
   account's token epoch, so everyone signs in again (the same as nanacoin's
   session revocation).
@@ -87,10 +95,25 @@ Inherited from nanacoin's `CONNECTION_SECURITY.md`, with the same two modes:
 
 ### Model A — household CA + `mastomini.local` (default, offline)
 
-- Generated on the build PC by the scripts from nanacoin (`dev-certs.sh`,
-  `test-certs.sh`, `rotate-certs.sh`). 100-year RSA CA and leaf, with SAN
-  `mastomini.local` (+ optional LAN IP). The CA private key never leaves the PC.
-- `/trust` has per-platform instructions and `/ca` serves the DER certificate.
+- Generated on the build PC by `scripts/certs.sh` (`make certs`, `make
+  reissue-cert`), `scripts/certs-check.sh` and `scripts/rotate-certs.sh`,
+  ported from nanacoin's `dev-certs.sh`, `test-certs.sh` and
+  `rotate-certs.sh`. RSA-3072 CA for 100 years; RSA-2048 leaf for **820
+  days**, not nanacoin's 100 years, because Apple refuses server certificates
+  valid for more than 825 days even under a user-installed CA. Renewal
+  reissues the leaf from the same CA, so devices keep their trust. Both
+  certificates start a day early (signed with `openssl ca -startdate`, the
+  only way OpenSSL 3.2 can): made in a US evening, a start of "now" showed as
+  tomorrow's date, and slow device clocks would reject it. SAN
+  `mastomini.local`, `localhost`, `127.0.0.1`, plus `MASTOMINI_CERT_NAMES` /
+  `MASTOMINI_CERT_IPS`. The CA private key never leaves the PC.
+- The CA carries **name constraints**: household names (`local`,
+  `localhost`, `lan`, `home.arpa`, `internal`) and private IPv4 ranges only,
+  so trusting it can't expose public sites even if its key leaks
+  (`MASTOMINI_CA_NAME_CONSTRAINTS=0` to omit).
+- `/trust` (server-rendered, no JavaScript, both listeners) has per-platform
+  instructions and the CA fingerprint; `/ca` serves the DER certificate and
+  `/ca.pem` the PEM.
 - **Works for**: desktop browsers, iOS/iPadOS (after "full trust" in Certificate
   Trust Settings), and so iOS apps such as Ivory, Ice Cubes, Mona and Mastodon.
   Also macOS apps.
@@ -128,16 +151,18 @@ Inherited from nanacoin's `CONNECTION_SECURITY.md`, with the same two modes:
 
 ### Bring-your-own household CA
 
-By default `make certs` creates a CA dedicated to mastomini. To reuse an existing
-household CA (nanacoin's, or any other one kept on the build PC), set
-`MASTOMINI_CA_DIR` to the directory holding its certificate and private key:
+By default `make certs` creates a CA dedicated to mastomini in
+`mastomini_rs/.local/ca`. To reuse an existing household CA (nanacoin's,
+mkcert's, or any other one kept on the build PC), set `MASTOMINI_CA_DIR` to
+the directory holding its `rootCA.pem` and `rootCA-key.pem`:
 
 ```bash
-MASTOMINI_CA_DIR=../nanacoin/nanacoin_rs/.local/ca make certs
+MASTOMINI_CA_DIR=../../nanacoin/nanacoin_rs/.local/ca make reissue-cert
 ```
 
-The script then only signs a new `mastomini.local` leaf with that CA. It never
-copies the CA private key into this repo or the firmware. Devices that already
+The script then only signs a new `mastomini.local` leaf with that CA (an empty
+directory gets a new CA). It never copies the CA private key into this repo or
+the firmware, and `rotate-certs` leaves a shared CA alone. Devices that already
 trust that CA work with no `/trust` step. `certs-check` validates the leaf
 against whichever CA was used, and `/ca` serves that CA's public certificate.
 

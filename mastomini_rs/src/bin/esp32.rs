@@ -1,8 +1,9 @@
 //! ESP32-S3 firmware: the same API as the desktop build, persisted in NVS.
 //!
-//! Sprint 6 bring-up slice: Wi-Fi (with a setup network for first boot, see
-//! `net.rs`), SNTP, mDNS and plain HTTP on port 80 ("Easy mode", spec/05).
-//! HTTPS and the household CA are Sprint 8.
+//! Wi-Fi (with a setup network for first boot, see `net.rs`), SNTP, mDNS,
+//! and the API on HTTPS port 443 and plain HTTP port 80, both serving
+//! everything ("Easy mode", spec/05). The certificate comes from `certs/`
+//! (`make certs`, docs/security/https.md); the CA's private key never does.
 
 #[cfg(not(target_os = "espidf"))]
 compile_error!(
@@ -20,16 +21,19 @@ use esp_idf_svc::{
     mdns::EspMdns,
     nvs::{EspDefaultNvsPartition, EspNvs, EspNvsPartition, NvsCustom},
     sntp::{EspSntp, SntpConf},
+    sys::EspError,
+    tls::X509,
     wifi::{BlockingWifi, EspWifi},
 };
 use mastomini::{
     api::{self, diag::Platform, Ctx},
     domain::{Config, Service},
     http::{Request, Response, FORWARDED_HEADERS, UPLOAD_BODY_LIMIT},
+    tls::Tls,
 };
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[path = "esp32/net.rs"]
@@ -43,6 +47,16 @@ const HOSTNAME: &str = match option_env!("MASTOMINI_HOSTNAME") {
     Some(name) => name,
     None => "mastomini",
 };
+
+/// `scripts/certs.sh` output. build.rs refuses to build without it, and
+/// `scripts/certs-check.sh` has vetted it. The server key is necessarily in
+/// the firmware; the CA's key is not.
+const SERVER_CERT: &str = concat!(include_str!("../../certs/mastomini.crt"), "\0");
+const SERVER_KEY: &str = concat!(include_str!("../../certs/mastomini.key"), "\0");
+const CA_DER: &[u8] = include_bytes!("../../certs/household-ca.der");
+const CERT_INFO: &str = include_str!("../../certs/certificate.json");
+
+type Shared = Arc<Mutex<Service<NvsStore>>>;
 
 /// Before this instant the RTC has not been set by SNTP (2024-01-01).
 const CLOCK_VALID_AFTER_MS: u128 = 1_704_067_200_000;
@@ -123,10 +137,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let base_url = option_env!("MASTOMINI_BASE_URL")
         .map(str::to_string)
-        .unwrap_or_else(|| format!("http://{HOSTNAME}.local"));
+        .unwrap_or_else(|| format!("https://{HOSTNAME}.local"));
+    let https_url = if base_url.starts_with("https://") {
+        base_url.clone()
+    } else {
+        format!("https://{HOSTNAME}.local")
+    };
     let ctx = Arc::new(Ctx {
         platform,
         uptime_ms,
+        tls: Some(Tls::new(CA_DER.to_vec(), CERT_INFO, &https_url)?),
         ..Ctx::new(&base_url)
     });
     let config = Config {
@@ -185,18 +205,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _sntp = EspSntp::new(&time_config)?;
 
-    let mut server = EspHttpServer::new(&HttpConfiguration {
+    // Two listeners, one service (spec/05 "Easy mode"). Sockets: each httpd
+    // takes its open sockets plus a listening and a control socket, and both
+    // together must fit CONFIG_LWIP_MAX_SOCKETS (16) with the captive DNS
+    // socket: (5 + 2) + (4 + 2) + 1 = 14. Measured (spec/04 "Streaming"):
+    // stalls come from the listen backlog at 8+ simultaneous connects, not
+    // from the socket count, and least-recently-used purging keeps clients
+    // moving. TLS sessions' buffers live in PSRAM (sdkconfig.defaults).
+    let mut https = EspHttpServer::new(&HttpConfiguration {
+        https_port: 443,
+        // Distinct from the HTTP server's default 32768.
+        ctrl_port: 32769,
+        core: Some(Core::Core1),
+        // serde_json rendering, plus the TLS handshake's frames.
+        stack_size: 32 * 1024,
+        max_open_sockets: 5,
+        max_sessions: 5,
+        lru_purge_enable: true,
+        max_uri_handlers: 8,
+        uri_match_wildcard: true,
+        session_timeout: Duration::from_secs(10),
+        server_certificate: Some(X509::pem_until_nul(SERVER_CERT.as_bytes())),
+        private_key: Some(X509::pem_until_nul(SERVER_KEY.as_bytes())),
+        ..Default::default()
+    })?;
+    register(&mut https, true, &shared, &ctx, &net)?;
+    let mut http = EspHttpServer::new(&HttpConfiguration {
         http_port: 80,
         core: Some(Core::Core1),
-        // serde_json rendering plus the httpd frames; measured headroom is a
-        // Sprint 6 follow-up.
         stack_size: 32 * 1024,
-        // Measured (spec/04 "Streaming"): 10 sockets instead of 6 did not
-        // change latency under bursts; stalls come from the listen backlog at
-        // 8+ simultaneous connects. Keep 6: each socket will cost a TLS
-        // session's RAM once HTTPS exists.
-        max_open_sockets: 6,
-        max_sessions: 6,
+        max_open_sockets: 4,
+        max_sessions: 4,
         // Evict the least recently used connection instead of refusing.
         lru_purge_enable: true,
         max_uri_handlers: 8,
@@ -204,86 +243,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_timeout: Duration::from_secs(10),
         ..Default::default()
     })?;
-    for (method, name) in [
-        (Method::Get, "GET"),
-        (Method::Head, "HEAD"),
-        (Method::Post, "POST"),
-        (Method::Put, "PUT"),
-        (Method::Patch, "PATCH"),
-        (Method::Delete, "DELETE"),
-        (Method::Options, "OPTIONS"),
-    ] {
-        let shared = Arc::clone(&shared);
-        let ctx = Arc::clone(&ctx);
-        let net = Arc::clone(&net);
-        server.fn_handler::<esp_idf_svc::io::EspIOError, _>("/*", method, move |mut req| {
-            let head = name == "HEAD";
-            let mut request = Request::new(if head { "GET" } else { name }, req.uri());
-            for header in FORWARDED_HEADERS {
-                if let Some(value) = req.header(header) {
-                    request
-                        .headers
-                        .push((header.to_string(), value.to_string()));
-                }
-            }
-            let length = req
-                .header("Content-Length")
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(0);
-            let reply = if length > UPLOAD_BODY_LIMIT {
-                Response::error(413, "Request body is too large")
-            } else {
-                let mut body = vec![0; length];
-                if req.read_exact(&mut body).is_err() {
-                    Response::error(400, "Request body ended early")
-                } else {
-                    request.body = body;
-                    // Never hold the network and service locks together.
-                    let (setup, joined) = {
-                        let net = net.lock().unwrap();
-                        (net.setup_mode, net.sta_ip.is_some())
-                    };
-                    if request.path == "/setup/wifi" {
-                        let provisioned = shared.lock().unwrap().state.provisioned;
-                        net.lock().unwrap().page(&request, provisioned)
-                    } else if let Some(to) =
-                        setup.then(|| net::captive(&request.path, joined)).flatten()
-                    {
-                        Response::redirect(&format!("http://{}{to}", net::AP_IP))
-                    } else {
-                        let mut service = shared.lock().unwrap();
-                        api::handle(&mut service, &ctx, &request, now_ms())
-                    }
-                }
-            };
-            log::info!("{} {} -> {}", name, request.path, reply.status);
-            let mut headers: Vec<(&str, &str)> = reply
-                .headers
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()))
-                .collect();
-            // Free the socket promptly: the board has few of them.
-            headers.push(("Connection", "close"));
-            let mut response = req.into_response(reply.status, None, &headers)?;
-            if !head {
-                response.write_all(&reply.body)?;
-            }
-            Ok(())
-        })?;
-    }
+    register(&mut http, false, &shared, &ctx, &net)?;
 
     let mut mdns = EspMdns::take()?;
     mdns.set_hostname(HOSTNAME)?;
     mdns.set_instance_name("mastomini household Mastodon server")?;
     mdns.add_service(
         Some("mastomini"),
+        "_https",
+        "_tcp",
+        443,
+        &[("path", "/api/v1/instance")],
+    )?;
+    // Plain HTTP: where a new device finds /trust.
+    mdns.add_service(
+        Some("mastomini setup"),
         "_http",
         "_tcp",
         80,
-        &[("path", "/api/v1/instance")],
+        &[("path", "/trust")],
     )?;
     match ip {
-        Some(ip) => log::info!("Ready at {base_url} (http://{ip}/)"),
+        Some(ip) => log::info!("Ready at {base_url} (https://{ip}/ and http://{ip}/)"),
         None => log::info!(
             "Setup network {} is up: join it and open http://{}/",
             net::AP_SSID,
@@ -319,4 +300,100 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     }
+}
+
+/// Route every method on one listener to the API. `secure`: this is the
+/// HTTPS listener.
+fn register(
+    server: &mut EspHttpServer<'static>,
+    secure: bool,
+    shared: &Shared,
+    ctx: &Arc<Ctx>,
+    net: &Arc<Mutex<Net>>,
+) -> Result<(), EspError> {
+    for (method, name) in [
+        (Method::Get, "GET"),
+        (Method::Head, "HEAD"),
+        (Method::Post, "POST"),
+        (Method::Put, "PUT"),
+        (Method::Patch, "PATCH"),
+        (Method::Delete, "DELETE"),
+        (Method::Options, "OPTIONS"),
+    ] {
+        let shared = Arc::clone(shared);
+        let ctx = Arc::clone(ctx);
+        let net = Arc::clone(net);
+        server.fn_handler::<esp_idf_svc::io::EspIOError, _>("/*", method, move |mut req| {
+            let started = Instant::now();
+            let mut body_ms = 0.0;
+            let mut lock_ms = 0.0;
+            let head = name == "HEAD";
+            let mut request = Request::new(if head { "GET" } else { name }, req.uri());
+            request.secure = secure;
+            for header in FORWARDED_HEADERS {
+                if let Some(value) = req.header(header) {
+                    request
+                        .headers
+                        .push((header.to_string(), value.to_string()));
+                }
+            }
+            let length = req
+                .header("Content-Length")
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0);
+            let reply = if length > UPLOAD_BODY_LIMIT {
+                Response::error(413, "Request body is too large")
+            } else {
+                let mut body = vec![0; length];
+                if req.read_exact(&mut body).is_err() {
+                    Response::error(400, "Request body ended early")
+                } else {
+                    request.body = body;
+                    body_ms = started.elapsed().as_secs_f64()*1000.0;
+                    // Never hold the network and service locks together.
+                    let (setup, joined) = {
+                        let net = net.lock().unwrap();
+                        (net.setup_mode, net.sta_ip.is_some())
+                    };
+                    if request.path == "/setup/wifi" {
+                        let provisioned = shared.lock().unwrap().state.provisioned;
+                        net.lock().unwrap().page(&request, provisioned)
+                    } else if let Some(to) =
+                        setup.then(|| net::captive(&request.path, joined)).flatten()
+                    {
+                        Response::redirect(&format!("http://{}{to}", net::AP_IP))
+                    } else {
+                        let waiting = Instant::now();
+                        let mut service = shared.lock().unwrap();
+                        lock_ms = waiting.elapsed().as_secs_f64()*1000.0;
+                        api::handle(&mut service, &ctx, &request, now_ms())
+                    }
+                }
+            };
+            let reply = reply.with_timing(&format!("body;dur={body_ms:.3}, lock;dur={lock_ms:.3}"));
+            let mut headers: Vec<(&str, &str)> = reply
+                .headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            // Plain HTTP: free the socket promptly, the board has few. HTTPS:
+            // keep it, because a new TLS handshake costs about a second of
+            // CPU and a request on an open connection about 0.1 s (measured
+            // on the board); least-recently-used purging reclaims idle ones.
+            if !secure {
+                headers.push(("Connection", "close"));
+            }
+            let sending = Instant::now();
+            let mut response = req.into_response(reply.status, None, &headers)?;
+            if !head {
+                response.write_all(&reply.body)?;
+            }
+            if started.elapsed().as_millis() >= 250 || option_env!("MASTOMINI_TRACE_TIMING")==Some("1") {
+                log::info!("timing method={} route={} status={} bytes={} body_ms={body_ms:.3} lock_ms={lock_ms:.3} send_ms={:.3} accepted_total_ms={:.3}",
+                    name,mastomini::http::route_label(&request.path),reply.status,reply.body.len(),sending.elapsed().as_secs_f64()*1000.0,started.elapsed().as_secs_f64()*1000.0);
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
 }

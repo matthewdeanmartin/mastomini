@@ -1,0 +1,10 @@
+{
+  "address": "192.168.1.161",
+  "stage": "after relocation, before confirming current IP",
+  "http_completed_samples": 3,
+  "http_results": "3 ConnectTimeout at approximately 10000 ms; interrupted further testing because host unreachable",
+  "ping": "10 requests: 9 timed out, 1 destination-host-unreachable reply from client 192.168.1.48; no replies from board",
+  "arp": "Incomplete; 00-00-00-00-00-00",
+  "dns": "mastomini.local not found",
+  "interpretation": "Availability/address diagnostic, not a successful latency comparison."
+}

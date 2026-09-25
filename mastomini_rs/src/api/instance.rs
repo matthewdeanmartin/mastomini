@@ -44,7 +44,7 @@ fn polls_config() -> Value {
 }
 
 fn accounts_config() -> Value {
-    json!({ "max_featured_tags": 0, "max_pinned_statuses": MAX_PINS })
+    json!({ "max_featured_tags": crate::domain::social::MAX_FEATURED_TAGS, "max_pinned_statuses": MAX_PINS })
 }
 
 fn rules<S: Store>(c: &Call<'_, S>) -> Value {
@@ -144,8 +144,11 @@ fn terms_of_service<S: Store>(c: &Call<'_, S>) -> Value {
     })
 }
 
+/// RFC 8414 metadata. The issuer and endpoints are where this client
+/// connected ([`Call::origin`]): the RFC wants the issuer to match the URL the
+/// metadata came from, and apps on HTTPS refuse an HTTP sign-in page.
 fn oauth_metadata<S: Store>(c: &Call<'_, S>) -> Value {
-    let base = &c.ctx.base_url;
+    let base = c.origin();
     json!({
         "issuer": format!("{base}/"),
         "service_documentation": "https://docs.joinmastodon.org/",

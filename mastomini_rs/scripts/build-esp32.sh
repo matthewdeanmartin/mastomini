@@ -46,6 +46,9 @@ export ESP_IDF_SDKCONFIG_DEFAULTS="$(pwd)/.embuild/board.defaults"
 if command -v cygpath >/dev/null 2>&1; then
   export ESP_IDF_SDKCONFIG_DEFAULTS="$(cygpath -m "$ESP_IDF_SDKCONFIG_DEFAULTS")"
 fi
+# The firmware embeds the HTTPS certificate: create it if missing (never
+# replaces one), and check it either way (docs/security/https.md).
+bash scripts/certs.sh
 # The firmware carries the household app (feature bundled-web).
 bash scripts/build-web.sh
 cargo +esp build --locked --release --no-default-features --features esp32 \

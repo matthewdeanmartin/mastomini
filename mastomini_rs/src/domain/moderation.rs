@@ -590,6 +590,7 @@ impl<S: Store> Service<S> {
     }
 
     fn purge_account(&mut self, slot: u8, account_id: u64) -> Result<()> {
+        self.purge_social(slot, account_id)?;
         let statuses: Vec<u64> = self
             .state
             .statuses

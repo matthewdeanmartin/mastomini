@@ -80,9 +80,16 @@ export interface Status {
   store_used: number | null;
   /** `synced`, `manual` (set from a browser) or `unset`. */
   clock: 'synced' | 'manual' | 'unset';
-  /** `http` until HTTPS exists (Sprint 8): then `easy` or `secure`. */
+  /** `http` (no certificate) or `easy` (HTTPS and HTTP); later `secure`. */
   mode: string;
+  /** The server has HTTPS (the household certificate). */
   https: boolean;
+  /** This request came over HTTPS. */
+  secure: boolean;
+  /** Where to use HTTPS, e.g. `https://mastomini.local`. */
+  https_url: string | null;
+  /** The household CA's SHA-256 fingerprint, to compare on each device. */
+  ca_fingerprint: string | null;
   household_app: boolean;
 }
 
@@ -127,9 +134,15 @@ export interface Diag {
 
 /** `GET /api/mastomini/v1/admin/security`. */
 export interface Security {
-  transport: { mode: string; https: boolean; secure_mode_available: boolean };
-  certificate: unknown;
-  household_ca: unknown;
+  transport: {
+    mode: string;
+    https: boolean;
+    secure_mode_available: boolean;
+    this_connection: 'http' | 'https';
+  };
+  /** The board's HTTPS certificate; null without HTTPS. */
+  certificate: { names: string[]; not_after: string; https_url: string } | null;
+  household_ca: { name: string; fingerprint_sha256: string; name_constrained: boolean } | null;
   passwords: { min_length: number; rounds: number; lockout_failures: number; lockout_minutes: number };
   apps: Usage;
   tokens: Usage;

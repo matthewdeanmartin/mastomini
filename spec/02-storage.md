@@ -146,21 +146,30 @@ base32 snowflake.
 | `mm_coll` | `c` + `ID` | collection: curator slot, name, description, flags, language, tag, items inline (item id, account id, revoked) | edit |
 | `mm_list` | `l` + `A` + n | list: id, title, replies policy, exclusive, member **account ids** (not a slot bitmask, so a reused slot inherits nothing) (schema 4) | edit |
 | `mm_filt` | `x` + `A` + n | filter: id, title, context flags, action, expiry, keywords inline (id, text, whole word), statuses inline (id, status id) (schema 4) | edit |
-| `mm_tag` | `g` + `A` + n | followed hashtag | toggle |
+| `mm_social` | `p` + `A` | account public ID, followed/featured tags (each with ID/name), dismissed suggestion public IDs (schema 5) | toggle |
+| `mm_social` | `n` + `A` + `A` | private account note, owner and target public IDs (schema 5) | edit/clear |
+| `mm_social` | `a` + `ID` | announcement text/publication window, read-by public IDs, bounded reaction map (schema 5) | admin edit/member action |
 | `mm_inv` | `i` + `ID` | invite / password-reset code: sha256(code), kind (invite, or reset with target slot + account id), expiry (schema 3) | issue/redeem/revoke |
 
 **Schema 2** added the `B`/`M`/`m` keys and the `mm_mod` and `mm_coll`
 namespaces, as new record kinds. **Schema 3** added the `mm_inv` namespace the
 same way; **schema 4** the history, poll, follow-request, list and filter records and the
-`mm_list` and `mm_filt` namespaces.
+`mm_list` and `mm_filt` namespaces. **Schema 5** adds `mm_social` for
+tag preferences, private notes, suggestion dismissals and announcements. These
+are single-key commits through the normal write governor. On boot, stale public
+account IDs are removed from preferences, notes, read markers and reactions;
+account deletion uses the existing tombstone recovery path. Old record layouts
+are unchanged. Opening upgrades the schema marker to 5; older firmware refuses
+the newer schema, so take a backup before upgrading if rollback is required.
 Boot drops reset codes whose account id no longer matches the slot, polls and
 revisions without their status, a revision that isn't older than the current
 version (an interrupted edit), follow requests whose follow exists (an
 interrupted authorize) or that cross a block, and lists and filters of missing
 accounts. It also clears a tombstoned member's votes, which are bits by slot. No existing record changed layout (postcard is
 not self-describing, so a changed struct would misread every stored record).
-Boot rewrites a schema-1 marker to 2, which is the only write needed; firmware
-that only knows schema 1 then refuses the store instead of misreading it.
+Boot upgrades supported older schema markers after reconstructing and repairing
+the records; firmware that only knows an older schema refuses the store instead
+of misreading it.
 Boot repair also drops follows that cross a block (a block commits before its
 unfollows), moderation records whose account id no longer matches the slot,
 reports naming a missing account, collections of a missing curator, and (in RAM)

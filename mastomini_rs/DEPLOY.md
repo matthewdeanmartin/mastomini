@@ -48,6 +48,13 @@ Step 3 tells you which one applies. You never choose B on your own.
   grep -cE '^MASTOMINI_WIFI_(SSID|PASSWORD)' .env    # 2 = present, 0 = none
   ```
 - The board connected with a USB **data** cable.
+- HTTPS certificates in `certs/`, made by `make certs` from the household CA
+  in `.local/ca` (see `docs/security/https.md`). The firmware build runs
+  `make certs` itself: it creates them only if missing and checks them either
+  way. **Do not regenerate, reissue or rotate working certificates just to
+  deploy**: rotation makes every household device trust a new CA. If
+  `.local/ca` is missing on a build computer that isn't the usual one, stop
+  and ask: a build there would silently create a second household CA.
 
 ## Step 1: Record the tree and pass the desktop gates
 
@@ -143,7 +150,9 @@ A normal boot looks like this (times in ms since reset):
 I (982)  mastomini_esp32: mastomini 0.1.0 starting
 I (3152) mastomini_esp32: store: provisioned=false accounts=0 statuses=0 repairs=0
 I (6842) mastomini_esp32: Wi-Fi up: 192.168.1.161
-I (6942) mastomini_esp32: Ready at http://mastomini.local (http://192.168.1.161/)
+I (7096) esp_https_server: Server listening on port 443
+I (7206) esp_https_server: Server listening on port 80
+I (7306) mastomini_esp32: Ready at https://mastomini.local (https://192.168.1.161/ and http://192.168.1.161/)
 ```
 
 `store:` takes about 2 seconds on an empty store and grows with the number of
@@ -179,7 +188,11 @@ make probe-board ADDRESS=mastomini.local
 ```
 
 Success: the output ends with `Board probe passed`, and the `firmware version`
-line shows the version in `Cargo.toml`. The `info provisioned=…` line reports
+line shows the version in `Cargo.toml`. The HTTPS checks verify strictly
+against `certs/household-ca.crt` for `mastomini.local` (also when probing by
+IP), and require the board to present exactly `certs/mastomini.crt` and serve
+exactly `certs/household-ca.der` at `/ca`: the files of this build. Never
+substitute `curl -k` or a browser warning bypass for them. The `info provisioned=…` line reports
 the household state; after an upgrade it must match before the upgrade.
 
 If only `mastomini.local` fails, mDNS is blocked on this computer: report it,
@@ -226,6 +239,7 @@ If you ever run esptool by hand (you normally should not), add
 | Firmware image too large | Stop; never change partition sizes to make it fit |
 | Boot log shows a store error | Stop; never erase to "fix" it; the data may be recoverable |
 | Probe fails after a good boot log | Report as unverified; include the failing checks |
+| Probe's HTTPS checks fail (certificate not trusted, not this build's) | Stop. Inspect `certs/` and `make certs-check`; never rotate certificates to make it pass |
 | After an upgrade, `accounts`/`statuses` dropped to 0 | Stop immediately; do not provision; report |
 | Chip stays in download mode after two `make boot-log` runs and a replug | Stop; report the log |
 
@@ -278,3 +292,52 @@ Add a row after every first install. Update the address when it changes.
   ready at `192.168.1.161`. The read-only probes passed by IP and by
   `mastomini.local`. The hostname probe took about 90 seconds to resolve on
   Windows, then all checks passed.
+- **2026-09-24 — redeployed revision `d40d624`** on the same board from a clean
+  working tree. `make check` passed: 134 Rust tests, 14 UI tests, 6 client
+  tests, and 115 conformance tests (68 skipped, 27 xfailed). Procedure A again
+  verified the existing mastomini layout. The 1,962,384-byte application was
+  written only at `0x10000`; esptool verified its hash and reported
+  `Application updated. The board restarts; household data was not touched.`
+  Firmware compilation again emitted 10 non-fatal uppercase-name warnings for
+  ESP-IDF reset-reason constants. Boot reported
+  `store: provisioned=true accounts=2 statuses=2 repairs=0` and ready at
+  `192.168.1.161`. Probes passed by IP and by `mastomini.local`; the Windows
+  hostname probe again took about 90 seconds before resolving.
+- **2026-09-24 — HTTPS ("Easy mode") deployed** on the same board (COM11,
+  MAC `ac:a7:04:2c:29:9c`), from revision `d40d624` with the uncommitted HTTPS
+  work. `make check` passed: 141 Rust tests, 15 UI tests, smoke, 11 client
+  tests (5 of them HTTPS end to end), and 115 conformance tests (68 skipped,
+  27 xfailed). A new household CA was created with `make certs`
+  (`MASTOMINI_CERT_IPS=192.168.1.161` given on the command line, so the board's
+  current IP is in the certificate); CA SHA-256 fingerprint
+  `C2:8F:EE:1E:39:95:C2:A6:9D:68:BB:99:00:86:0C:A2:65:97:52:4E:7B:AB:2B:71:7A:C7:5E:B2:A0:15:54:FD`,
+  server certificate valid until 2028-12-23. The install dry run refused
+  (existing mastomini layout), so procedure A. The dry run's reset left the
+  board unreachable until one `make boot-log`, as the runbook describes.
+  Before the upgrade: `provisioned=true accounts=2 statuses=2 repairs=0`.
+- First flash (2,051,904 bytes) booted with both listeners and passed the
+  probe, but measuring showed a TLS handshake took about 1.5 s at the default
+  160 MHz, every response said `Connection: close` (so clients would redo the
+  handshake per request), and 10 simultaneous new HTTPS clients timed out on
+  some connects. Fixed and redeployed: 240 MHz CPU, and HTTPS responses keep
+  the connection. Second flash 2,051,856 bytes, hash verified.
+- Final boot: `store: provisioned=true accounts=2 statuses=2 repairs=0`,
+  listeners on 443 and 80, ready at `192.168.1.161`. The probe passed by IP,
+  including strict HTTPS for `mastomini.local`, the IP address verified
+  against the certificate, this build's certificate and CA, and HTTPS OAuth
+  endpoints. The `mastomini.local` probe passed on the first firmware.
+  Measured on the final firmware: handshake 1.0–1.2 s; on an open connection
+  about 0.05 s per request; 4 clients × 5 requests all succeeded (median
+  0.2 s); 10 clients connecting at once got 47 of 50 (handshakes are
+  serialized on one server task with 5 HTTPS sockets). Plain HTTP unchanged
+  (about 0.2 s, 20 of 20 at 10 at once). Not yet measured: internal heap
+  headroom under TLS load (needs an admin token for `/diag`), and real phones.
+- **2026-09-24 (evening) — reissued certificate.** The first certificate
+  started "now", which showed as Sep 25 (UTC) on devices. `scripts/certs.sh`
+  now starts certificates a day early. Reissued the server certificate from
+  the same CA (fingerprint unchanged, already trusted in the owner's Windows
+  store) with `MASTOMINI_CERT_IPS=192.168.1.161 make reissue-cert`: valid
+  from 2026-09-24 00:50 UTC to 2028-12-22. Procedure A, 2,051,872 bytes, hash
+  verified. Boot: `accounts=2 statuses=2 repairs=0`, both listeners, ready at
+  `192.168.1.161`; probe passed by IP including strict HTTPS and "this build's
+  certificate".

@@ -38,6 +38,102 @@ pub fn date(ms: u64) -> String {
     iso(ms)[..10].to_string()
 }
 
+/// Strict RFC3339, including numeric offsets and fractional seconds. No time
+/// zone database is needed; persisted announcement windows are UTC milliseconds.
+pub fn parse_iso(text: &str) -> Option<u64> {
+    if !text.is_ascii() || text.len() < 20 {
+        return None;
+    }
+    let b = text.as_bytes();
+    if b[4] != b'-'
+        || b[7] != b'-'
+        || !matches!(b[10], b'T' | b't')
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return None;
+    }
+    let n = |a, b| {
+        let part: &str = text.get(a..b)?;
+        part.bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| part.parse::<i64>().ok())
+            .flatten()
+    };
+    let (y, m, d, h, min, s) = (
+        n(0, 4)?,
+        n(5, 7)?,
+        n(8, 10)?,
+        n(11, 13)?,
+        n(14, 16)?,
+        n(17, 19)?,
+    );
+    if !(1970..=9999).contains(&y) || !(1..=12).contains(&m) || h > 23 || min > 59 || s > 59 {
+        return None;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if d < 1 || d > days[(m - 1) as usize] {
+        return None;
+    }
+    let mut pos = 19;
+    let mut fraction = 0;
+    if b.get(pos) == Some(&b'.') {
+        pos += 1;
+        let start = pos;
+        while b.get(pos).is_some_and(u8::is_ascii_digit) {
+            pos += 1;
+        }
+        if pos == start || pos - start > 9 {
+            return None;
+        }
+        for i in 0..3 {
+            fraction = fraction * 10
+                + b.get(start + i)
+                    .filter(|_| start + i < pos)
+                    .map_or(0, |c| (c - b'0') as i64);
+        }
+    }
+    let zone = &text[pos..];
+    let offset = if matches!(zone, "Z" | "z") {
+        0
+    } else {
+        let z = zone.as_bytes();
+        if z.len() != 6 || !matches!(z[0], b'+' | b'-') || z[3] != b':' {
+            return None;
+        }
+        if !z[1..3].iter().chain(&z[4..6]).all(u8::is_ascii_digit) {
+            return None;
+        }
+        let hh = zone[1..3].parse::<i64>().ok()?;
+        let mm = zone[4..6].parse::<i64>().ok()?;
+        if !(0..=23).contains(&hh) || !(0..=59).contains(&mm) {
+            return None;
+        }
+        (hh * 60 + mm) * 60 * if z[0] == b'-' { -1 } else { 1 }
+    };
+    let y = y - i64::from(m <= 2);
+    let era = y.div_euclid(400);
+    let yo = y - era * 400;
+    let mp = m + if m > 2 { -3 } else { 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let days = era * 146097 + yo * 365 + yo / 4 - yo / 100 + doy - 719468;
+    u64::try_from(((days * 86400 + h * 3600 + min * 60 + s) - offset) * 1000 + fraction).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

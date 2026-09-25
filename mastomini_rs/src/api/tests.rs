@@ -4,6 +4,8 @@ use super::testkit::*;
 use crate::http::Request;
 use serde_json::json;
 
+mod social;
+
 #[test]
 fn instance_advertises_household_limits() {
     let mut s = Server::provisioned();
@@ -797,3 +799,4 @@ mod dm;
 mod edits_polls;
 mod lists_filters;
 mod moderation;
+mod trust;

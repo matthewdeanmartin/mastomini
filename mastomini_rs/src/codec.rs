@@ -36,6 +36,9 @@ pub enum Kind {
     FollowRequest = 22,
     List = 23,
     Filter = 24,
+    Social = 25,
+    AccountNote = 26,
+    Announcement = 27,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

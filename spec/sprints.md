@@ -183,7 +183,7 @@ Deferred from Sprint 4, with the reason:
 | Angular app, first-party OAuth client, `/connect` data-driven guide | Large, and several ways to build it; the plain pages cover the flows a household needs today |
 | Avatar/header upload | Needs LittleFS on the board and a new account-record field; worth doing next, with the board at hand |
 | `/admin/health` page, `POST /clock` | Board-side diagnostics and clock fallback; fits with Sprint 6/7 board work |
-| `/trust`, `/admin/security` | Sprint 8 (HTTPS) |
+| `/trust`, `/admin/security` | Done in Sprint 4 (third slice) and Sprint 8 (first slice) |
 
 ## Sprint 4 (second slice) — The household app in Angular
 
@@ -268,6 +268,47 @@ feature through the full request path; `make conformance`: **115 passed**, 27
 listed deviations (was 96 / 45: the 19 edit, list, filter, conversation, poll
 and follow-request entries now pass and were removed).
 
+## Sprint 8 (first slice) — HTTPS next to HTTP, household CA
+
+User guide: `docs/security/https.md`. Deployed and probed on the board
+(`mastomini_rs/DEPLOY.md`, 2026-09-24).
+
+- Scripts (Git Bash, ported from nanacoin's `dev-certs.sh` / `test-certs.sh` /
+  `rotate-certs.sh`): `scripts/certs.sh` (`make certs`, `make reissue-cert`),
+  `scripts/certs-check.sh` (`make certs-check`, run by every firmware build),
+  `scripts/rotate-certs.sh` (`make rotate-certs`). CA in `.local/ca`
+  (`rootCA.pem` / `rootCA-key.pem`, nanacoin and mkcert names; any directory
+  via `MASTOMINI_CA_DIR`), outputs in `certs/`, both gitignored. Differences
+  from nanacoin: the server certificate lasts 820 days, not 100 years (Apple's
+  825-day limit applies to user-installed CAs too), so renewal is
+  `make reissue-cert` with the same CA; the CA carries name constraints
+  (household names and private addresses only); extra names and IPs via
+  `MASTOMINI_CERT_NAMES` / `MASTOMINI_CERT_IPS`.
+- `src/tls.rs`: the public side (CA DER, fingerprint, names, expiry);
+  `src/api/trust.rs`: `/trust` (server-rendered, no JavaScript, fingerprint,
+  per-platform steps), `/ca` (DER), `/ca.pem`, on both listeners, no sign-in.
+  `Request::secure` marks HTTPS; `/status` gained `secure`, `https_url`,
+  `ca_fingerprint`, and `mode` is `easy`; `/admin/security` fills
+  `certificate` and `household_ca`.
+- `Call::origin()`: OAuth discovery and pagination `Link` URLs use the scheme
+  and host the client connected with. Found by the HTTPS client test:
+  Mastodon.py refused an HTTP authorize URL handed out over HTTPS.
+- Board: second `EspHttpServer` on 443 (5 sockets) next to 80 (4 sockets),
+  mbedTLS buffers in PSRAM (full 16 KiB records), 240 MHz, HTTPS keeps
+  connections open. Handshake about 1.1 s, then about 0.05 s per request.
+- Desktop: `MASTOMINI_HTTPS_PORT` adds tiny_http + rustls (0.20, development
+  only); `make run` serves `https://localhost:8443`.
+- Household app: Trust shows the fingerprint and the HTTPS address, Security
+  the CA, certificate expiry and renewal warning; the connect guide no longer
+  claims real-domain-only apps work.
+- Tests: `src/api/tests/trust.rs`, `clienttests/test_https.py` (the real
+  script, strict verification, Mastodon.py over HTTPS, one household on both
+  listeners), and HTTPS checks in `scripts/probe-board.py`.
+
+Not in this slice: Secure mode (HTTP off, token-epoch bump, USB recovery
+build), the uploaded real-domain certificate and `make renew-cert`, session
+tickets, phones.
+
 ## Known gaps carried forward
 
 | Gap | Planned |
@@ -275,7 +316,8 @@ and follow-request entries now pass and were removed).
 | RAM structures are bounded std collections, not preallocated PSRAM slabs; no allocation tests yet | Sprint 6 (board bring-up) |
 | Avatar/header upload (`update_credentials` with files returns 422); generated avatars instead | By decision (open question 17) |
 | Household app not yet exercised on the board (heap/RSSI fields, clock button with SNTP unreachable) | Next board session |
-| HTTPS, `/ca`, Easy/Secure switch, certificate upload: Trust and Security show the HTTP-only state | Sprint 8 |
+| Secure mode (HTTPS only), real-domain certificate upload, phone matrix | Sprint 8 (rest) |
+| 10 devices opening HTTPS at the same moment: a few connects time out (handshakes are serialized, about 1.1 s each) | Session tickets or ECDSA if it matters in practice |
 | Followed hashtags | Sprint 5 (rest) |
 | Conversation read/hidden state and poll-ended announcements are RAM only (a restart marks conversations read) | By design |
 | Notifications are never grouped; notification policy is always accept-all | By design / later |

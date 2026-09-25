@@ -9,6 +9,9 @@ __pycache__/
 /.local/
 .env
 /mastomini_rs/.embuild/
+# HTTPS certificates and the household CA (make certs): never committed
+/mastomini_rs/certs/
+/mastomini_rs/.local/
 .idea
 
 # mkdocs output

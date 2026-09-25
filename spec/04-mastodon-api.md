@@ -1,5 +1,10 @@
 # 04 — Mastodon API surface
 
+**Current implementation status:** [REST audit](api-audit.md) and the checked
+[endpoint ledger](api-coverage.md). Tiers below express intent; an unmarked row
+is not evidence of either completion or absence. Featured tags and followed
+tags remain local-feature backlog, not federation exclusions.
+
 ## Principles
 
 1. **Same wire shapes as Mastodon.** Entities (`Account`, `Status`,
@@ -45,7 +50,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Timelines | `GET /api/v1/timelines/home`, `/public` (`local` is implied), `/tag/:hashtag` |
 | Notifications (RAM only, see 02) | `GET /api/v1/notifications` (types/exclude_types/account_id), `GET /:id`, `POST /clear`, `POST /:id/dismiss`, `GET /api/v1/notifications/unread_count` |
 | Markers | `GET/POST /api/v1/markers` (RAM only, reset on reboot) |
-| Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (`[]` or admin announcements, later), `GET /api/v1/followed_tags` (`[]`) |
+| Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (published local notices), `GET /api/v1/followed_tags` (persistent) |
 | Search | `GET /api/v2/search` (accounts, hashtags, statuses: linear scan over RAM), `resolve=true` never goes off-box |
 
 ## Tier 2 — commonly used
@@ -58,8 +63,8 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Filters | **Done.** v2 CRUD with `keywords_attributes`, `/:id/keywords`, `/keywords/:id`, `/:id/statuses`, `/statuses/:id`; v1 as a view (one v1 filter per keyword). Matching statuses get `Status.filtered` (keyword and status matches) in the filter's contexts; nothing is removed server-side, clients warn, blur or hide as on Mastodon. Expired filters stop matching. Direct messages match on the reader's decrypted text |
 | Favourites / bookmarks | `GET /api/v1/favourites`, `/bookmarks` (paginated by reaction record id, as Mastodon does) |
 | Conversations | **Done.** `GET /api/v1/conversations`, `POST /:id/read`, `DELETE /:id`. Derived from `direct` statuses: a conversation is a thread of direct messages, named by its first message. Read and hidden state are RAM only, like markers (a restart shows everything as read); a hidden conversation comes back when a new message arrives |
-| Tags | `GET /api/v1/tags/:name`, follow/unfollow, featured tags (`[]`) |
-| Grouped notifications | `GET /api/v2/notifications`, `/api/v2/notifications/unread_count` (mastodon_mock has the grouping logic) |
+| Tags | **Implemented.** Follow/unfollow, feature/unfeature, featured CRUD/suggestions and account featured tags; 32 followed/10 featured per member, persisted. Followed public tags enter home; counts/history respect visibility. |
+| Grouped notifications | **Implemented locally.** Favourite/reblog groups by status, follows grouped together, other types individual; filtered group pagination, fetch/accounts/dismiss, unread counts and `ungroup_types`. Bounded RAM ring; no time-window grouping. |
 | Trends | `GET /api/v1/trends/tags`, `/trends/statuses`, `/trends/links` all return `[]`. No feed algorithms |
 | Suggestions / directory | `GET /api/v2/suggestions` (household members you don't follow), `GET /api/v1/directory` |
 
@@ -74,7 +79,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Push (`/api/v1/push/subscription`) | `404` in v1. Later maybe, if the board has internet access |
 | Account creation (`POST /api/v1/accounts`) | `registrations: false`. Returns `403`. Members are created in the household app |
 | Reports | **Done**, see "Moderation" |
-| Admin API (`/api/v1/admin/*`) | **Accounts and reports only**, see "Moderation". Domain/e-mail/IP blocks, trends, measures, dimensions, retention and announcements: `404` (no federation, no sign-ups, no analytics) |
+| Admin API (`/api/v1/admin/*`) | **Accounts, reports and local announcements**, see "Moderation" and [administration](../docs/usage/administration.md). Announcement CRUD and publish/unpublish require admin role/scopes. Domain/e-mail/IP blocks, trends, measures, dimensions and retention: `404` (no federation, no sign-ups, no analytics) |
 | Collections | **Done** (Mastodon 4.6), see "Collections" |
 | Translation, preview cards, quotes, annual reports, domain blocks, endorsements | No. Neutral values in entities |
 

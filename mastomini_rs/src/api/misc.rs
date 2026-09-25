@@ -34,6 +34,13 @@ fn not_followed<S: Store>(c: &Call<'_, S>, viewer: u8) -> Vec<Value> {
         .active_accounts()
         .filter(|a| a.slot != viewer && !c.svc.state.follows(viewer, a.slot) && !a.rec.disabled)
         .filter(|a| !c.svc.state.hides(viewer, a.slot) && !c.svc.state.suspended(a.slot))
+        .filter(|a| {
+            !c.svc
+                .state
+                .social
+                .get(&viewer)
+                .is_some_and(|p| p.dismissed.contains(&a.rec.id))
+        })
         .map(|a| entities::account(c.svc, c.ctx, a))
         .collect()
 }
@@ -105,21 +112,15 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
             };
             Ok(Response::ok(Value::Array(not_followed(c, viewer))))
         }
-        ("DELETE", ["api", "v1", "suggestions", _]) => c.user().map(|_| Response::ok(json!({}))),
         ("GET", ["api", "v1", "directory"]) => directory(c),
-        ("GET", ["api", "v1", "tags", name]) => c
-            .user()
-            .map(|_| Response::ok(entities::tag(c.ctx, &name.to_lowercase(), false))),
         ("GET" | "PUT", ["api", "v1" | "v2", "notifications", "policy"]) => {
             c.user().map(|_| Response::ok(notification_policy()))
         }
         // Tier 2, not yet implemented: empty lists so clients render nothing.
         (
             "GET",
-            ["api", "v1", "followed_tags" | "featured_tags" | "announcements" | "domain_blocks" | "endorsements"
-            | "scheduled_statuses"]
+            ["api", "v1", "domain_blocks" | "endorsements" | "scheduled_statuses"]
             | ["api", "v1", "trends", ..]
-            | ["api", "v1", "featured_tags", "suggestions"]
             | ["api", "v1", "timelines", "link"],
         ) => empty(c),
         ("POST", ["api", "v1" | "v2", "media"]) => Err(Response::error(

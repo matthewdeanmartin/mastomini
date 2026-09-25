@@ -59,6 +59,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     // Development only: boot into the setup network even with saved Wi-Fi.
     println!("cargo:rerun-if-env-changed=MASTOMINI_FORCE_SETUP");
+    println!("cargo:rerun-if-env-changed=MASTOMINI_TRACE_TIMING");
     if std::env::var_os("CARGO_FEATURE_ESP32").is_none() {
         return;
     }
@@ -68,6 +69,21 @@ fn main() {
     }
 
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
+    // The firmware embeds the HTTPS certificate (src/bin/esp32.rs).
+    for name in [
+        "mastomini.crt",
+        "mastomini.key",
+        "household-ca.der",
+        "certificate.json",
+    ] {
+        let path = root.join("certs").join(name);
+        assert!(
+            path.exists(),
+            "{} is missing: run make certs (docs/security/https.md)",
+            path.display()
+        );
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
     let sources: Vec<(PathBuf, String)> = CREDENTIAL_FILES
         .iter()
         .map(|relative| root.join(relative))

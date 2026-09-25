@@ -5,7 +5,11 @@ import { Household } from '../api/household';
 import { Status } from '../api/models';
 import { DeviceKind, detectDevice } from './connect-guide';
 
-/** Installing the household certificate, per device (spec/05 Model A). */
+/**
+ * Installing the household certificate, per device (spec/05 Model A). Kept in
+ * step with the server's own /trust page (mastomini_rs/src/api/trust.rs),
+ * which works without the app.
+ */
 const STEPS: { kind: DeviceKind; label: string; steps: string[] }[] = [
   {
     kind: 'ios',
@@ -22,7 +26,7 @@ const STEPS: { kind: DeviceKind; label: string; steps: string[] }[] = [
     steps: [
       'Download the certificate.',
       'Settings → Security → Encryption & credentials → Install a certificate → CA certificate.',
-      'Most apps still ignore it: Android apps need the real-domain setup.',
+      'Chrome then trusts the board, but most Android apps ignore it: they need the real-domain setup.',
     ],
   },
   {
@@ -45,8 +49,8 @@ const STEPS: { kind: DeviceKind; label: string; steps: string[] }[] = [
     kind: 'linux',
     label: 'Linux',
     steps: [
-      'Copy it to /usr/local/share/ca-certificates/ (as .crt) and run sudo update-ca-certificates.',
-      'Firefox keeps its own list: Settings → Certificates → View Certificates → Authorities → Import.',
+      'Download the PEM version from /ca.pem, copy it to /usr/local/share/ca-certificates/mastomini.crt and run sudo update-ca-certificates.',
+      'Firefox keeps its own list: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.',
     ],
   },
 ];
@@ -59,24 +63,33 @@ const STEPS: { kind: DeviceKind; label: string; steps: string[] }[] = [
     @if (status(); as s) {
       @if (!s.https) {
         <section class="panel">
-          <strong>Nothing to install yet.</strong>
+          <strong>Nothing to install.</strong>
           <p class="muted small">
-            This server uses plain HTTP, so there is no certificate to trust. Anyone on the home
-            Wi-Fi could read what passes between your device and the board, so treat the Wi-Fi
+            This server uses plain HTTP only, so there is no certificate to trust. Anyone on the
+            home Wi-Fi could read what passes between your device and the board, so treat the Wi-Fi
             password as the key to the house.
           </p>
           <p class="muted small">
-            HTTPS is planned. When the owner turns it on, this page will offer the household
-            certificate and walk each device through trusting it. iPhones and Macs will use that
-            certificate; most Android apps will need the server on a real domain name instead.
+            The owner turns HTTPS on by building the firmware with a household certificate (make
+            certs). Then this page offers it and walks each device through trusting it.
           </p>
         </section>
       } @else {
+        @if (s.secure) {
+          <section class="panel">
+            <strong class="ok">This device already trusts the board.</strong>
+            <p class="muted small">You're connected over HTTPS. Use this page for other devices.</p>
+          </section>
+        }
         <p class="lede">
-          Install the household certificate once on each device, so apps can check they are
-          talking to this board.
+          Install the household certificate once on each device. Then apps can check they are
+          talking to this board, and nobody else on the Wi-Fi can read or change what you send.
         </p>
         <a class="btn" href="/ca" download>Download the certificate</a>
+        <p class="muted small">
+          Before trusting it, compare its SHA-256 fingerprint with the one the owner has:
+        </p>
+        <p class="link-box">{{ s.ca_fingerprint }}</p>
         <p>
           @for (g of steps; track g.kind) {
             <button class="btn" [class.btn--quiet]="g.kind !== device()" type="button"
@@ -91,6 +104,12 @@ const STEPS: { kind: DeviceKind; label: string; steps: string[] }[] = [
               }
             </ol>
           }
+        }
+        @if (!s.secure && s.https_url) {
+          <p>
+            Then use <a [href]="s.https_url + '/app/'">{{ s.https_url }}</a>. If it shows a
+            warning, the certificate isn't trusted yet: don't click past it.
+          </p>
         }
       }
     } @else {

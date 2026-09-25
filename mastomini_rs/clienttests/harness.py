@@ -43,7 +43,9 @@ def free_port() -> int:
 class ServerProcess:
     """One desktop server with its own temporary store."""
 
-    def __init__(self) -> None:
+    def __init__(self, extra_env: dict[str, str] | None = None, executable: Path | None = None) -> None:
+        self.extra_env = extra_env or {}
+        self.executable = executable
         self.dir = Path(tempfile.mkdtemp(prefix="mastomini-"))
         self.store = self.dir / "test.store"
         self.port = free_port()
@@ -57,9 +59,10 @@ class ServerProcess:
             MASTOMINI_PORT=str(self.port),
             MASTOMINI_STORE=str(self.store),
             MASTOMINI_PASSWORD_ROUNDS="1000",
+            **self.extra_env,
         )
         log = self.log.open("ab")
-        self.proc = subprocess.Popen([str(binary())], env=env, stdout=log, stderr=log)
+        self.proc = subprocess.Popen([str(self.executable or binary())], env=env, stdout=log, stderr=log)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
@@ -106,16 +109,22 @@ class ServerProcess:
         r.raise_for_status()
 
 
-def submit_sign_in(authorize_url: str, username: str, password: str) -> str:
-    """Load the sign-in page, post the form, return the authorization code."""
-    page = requests.get(authorize_url, timeout=10)
+def submit_sign_in(
+    authorize_url: str, username: str, password: str, http: requests.Session | None = None
+) -> str:
+    """Load the sign-in page, post the form, return the authorization code.
+
+    `http` is the browser: a session that trusts the household CA, for HTTPS.
+    """
+    http = http or requests.Session()
+    page = http.get(authorize_url, timeout=10)
     page.raise_for_status()
     assert 'name="password"' in page.text, page.text
     query = parse_qs(urlparse(authorize_url).query)
     form = {k: v[0] for k, v in query.items()}
     form.update(username=username, password=password, decision="approve")
     base = authorize_url.split("/oauth/authorize")[0]
-    r = requests.post(f"{base}/oauth/authorize", data=form, allow_redirects=False, timeout=10)
+    r = http.post(f"{base}/oauth/authorize", data=form, allow_redirects=False, timeout=10)
     if r.status_code == 302:
         return parse_qs(urlparse(r.headers["Location"]).query)["code"][0]
     # Out-of-band redirect: the code is shown on the page.

@@ -1,0 +1,23 @@
+{
+  "date": "2026-09-25",
+  "platform": "Windows x86_64 desktop",
+  "profile": "release",
+  "command": "cargo run --release --locked --example read_bench -- 4096 500",
+  "workload": {
+    "statuses": 4096,
+    "page_rows": 40,
+    "iterations": 500,
+    "serialized_bytes": 68961,
+    "store": "MemStore"
+  },
+  "before": {
+    "p50_ms": 1.0668,
+    "p95_ms": 1.3712
+  },
+  "after": {
+    "p50_ms": 0.6966,
+    "p95_ms": 0.9145
+  },
+  "provenance": "Same working tree/workload before and after lazy derived account statistics. Uncommitted feature/HTTPS work; not an immutable commit pair. Values captured from release benchmark output.",
+  "limitations": "No network/TLS/FileStore/authentication. No API request JSON cache in this direct renderer workload. Desktop evidence only; no ESP32 speedup claim."
+}

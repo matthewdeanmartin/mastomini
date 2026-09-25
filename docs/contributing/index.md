@@ -30,6 +30,23 @@ anything that touches the firmware, `make firmware` still builds.
 
 Python tools always run through `uv run`.
 
+## REST coverage and performance
+
+Start with [the REST audit](https://github.com/matthewdeanmartin/mastomini/blob/main/spec/api-audit.md)
+and [endpoint inventory](https://github.com/matthewdeanmartin/mastomini/blob/main/spec/api-coverage.md)
+when choosing API work. They distinguish implemented behavior, partial features,
+empty/no-op stubs, missing endpoints and deliberate exclusions. Sprint completion
+does not mean every endpoint in a feature family is implemented.
+
+`make api-coverage` (also part of `make check`) detects changes to reviewed
+implementation files and a stale generated table. Update the JSON ledger,
+review the affected endpoints, and acknowledge only the files you reviewed;
+the audit documents the commands. Behavioral conformance still needs tests.
+
+For latency work, see [the performance investigation](https://github.com/matthewdeanmartin/mastomini/blob/main/spec/08-performance.md)
+and `mastomini_rs/scripts/bench-api.py`. Compare new and reused connections and
+burst concurrency before adding caches: normal social API reads already use RAM.
+
 ## Principles
 
 - **Same wire shapes as Mastodon.** Every field Mastodon defines is present,

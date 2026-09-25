@@ -20,19 +20,19 @@ once.
 
 ## Which apps work
 
-mastomini currently serves **plain HTTP** on the home network
-([HTTPS is not implemented yet](../security/https.md)). That limits which apps
-can connect:
+mastomini serves HTTPS with a **household certificate** and plain HTTP side
+by side. Apps that insist on HTTPS work once the device trusts the household
+certificate: follow [HTTPS and certificates](../security/https.md), then enter
+the server as `https://mastomini.local`.
 
 | Client | Status |
 |---|---|
-| [Mastodon.py](https://github.com/halcy/Mastodon.py) and scripts | Tested: the project's test suites sign in with it through the real sign-in page |
-| Phone apps (Ivory, Ice Cubes, Tusky, the official app, …) | Not tested yet. Many phone apps require HTTPS and will refuse a plain-HTTP server |
-| Web clients served over HTTPS (Phanpy, Elk) | Won't work: browsers block an HTTPS page from calling a plain-HTTP server |
+| [Mastodon.py](https://github.com/halcy/Mastodon.py) and scripts | Tested over HTTP and HTTPS: the test suites sign in through the real sign-in page |
+| iPhone and Mac apps (Ivory, Ice Cubes, Mona, the official app) | Should work over HTTPS once the device trusts the certificate (with full trust on iPhone). Not tested on real devices yet |
+| Android apps (Tusky, the official app, …) | Most ignore certificates you install, so they need a real domain name, which isn't built yet |
+| Web clients served over HTTPS (Phanpy, Elk) | Only if the browser trusts the household certificate. Not tested yet |
 
 The app-by-app compatibility matrix is planned (see `spec/07-testing.md`).
-Until HTTPS exists, expect desktop and self-hosted clients to be the most
-likely to work.
 
 ## What's different from a public Mastodon server
 

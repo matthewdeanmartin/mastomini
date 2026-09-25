@@ -112,13 +112,17 @@ fn server_address<S: Store>(c: &Call<'_, S>) -> String {
 
 /// How to connect an app, shown after setup and on the landing page.
 /// `address` is trusted HTML from [`server_address`].
-fn how_to_connect(address: &str) -> String {
+fn how_to_connect(address: &str, https: bool) -> String {
+    let transport = if https {
+        "<p class=\"hint\">iPhone and Mac apps need this device to trust the household certificate first: <a href=\"/trust\">Trust this server</a>.</p>"
+    } else {
+        "<p class=\"hint\">This server uses plain HTTP. Apps that insist on HTTPS cannot connect to it.</p>"
+    };
     format!(
         "<h2>Connect a Mastodon app</h2><ol>\
 <li>Install a Mastodon app: Ice Cubes or Ivory on iPhone, Tusky or Mastodon on Android, or Whalebird on a computer.</li>\
 <li>When it asks for a server, enter {address}.</li>\
-<li>Sign in with your username and password.</li></ol>\
-<p class=\"hint\">This server uses plain HTTP for now. Apps that insist on HTTPS cannot connect yet.</p>"
+<li>Sign in with your username and password.</li></ol>{transport}"
     )
 }
 
@@ -127,9 +131,9 @@ fn how_to_connect(address: &str) -> String {
 fn landing<S: Store>(c: &Call<'_, S>) -> Response {
     let server = &c.svc.state.server;
     let body = format!(
-        "<p>{}</p><div class=\"buttons\"><a class=\"button\" href=\"/app/#/connect\">Set up my phone</a><a class=\"button\" href=\"/app/\">Household app</a></div><p class=\"hint\">The household app has your signed-in devices and password, and for admins members, invite links and settings. <a href=\"/app/#/trust\">Trust this server</a> · <a href=\"/about\">About</a></p>{}<p class=\"hint\"><a href=\"/setup/password\">Change your password</a></p>",
+        "<p>{}</p><div class=\"buttons\"><a class=\"button\" href=\"/app/#/connect\">Set up my phone</a><a class=\"button\" href=\"/app/\">Household app</a></div><p class=\"hint\">The household app has your signed-in devices and password, and for admins members, invite links and settings. <a href=\"/trust\">Trust this server</a> · <a href=\"/about\">About</a></p>{}<p class=\"hint\"><a href=\"/setup/password\">Change your password</a></p>",
         escape(&server.description),
-        how_to_connect(&server_address(c)),
+        how_to_connect(&server_address(c), c.ctx.tls.is_some()),
     );
     page(200, &server.title, &body)
 }
@@ -161,7 +165,7 @@ fn create_household<S: Store>(c: &mut Call<'_, S>) -> Reply {
                 "<p class=\"ok\">Your household is ready and <code>{}</code> is its owner.</p>{}\
 <div class=\"buttons\"><a class=\"button\" href=\"/app/#/admin/members\">Invite your family</a></div>",
                 escape(&username),
-                how_to_connect(&server_address(c))
+                how_to_connect(&server_address(c), c.ctx.tls.is_some())
             );
             Ok(page(200, "All set", &body))
         }
@@ -284,7 +288,7 @@ fn redeem<S: Store>(c: &mut Call<'_, S>, code: &str) -> Reply {
             };
             let body = format!(
                 "<p class=\"ok\">{done}</p>{}",
-                how_to_connect(&server_address(c))
+                how_to_connect(&server_address(c), c.ctx.tls.is_some())
             );
             Ok(page(200, "All set", &body))
         }

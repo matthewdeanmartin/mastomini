@@ -64,7 +64,8 @@ def main() -> int:
                 deadline = min(deadline, time.monotonic() + 2)
     port.close()
 
-    ready = re.search(r'Ready at \S+ \(http://([\d.]+)/\)', text)
+    # "Ready at https://mastomini.local (https://192.168.1.161/ and http://192.168.1.161/)"
+    ready = re.search(r'Ready at \S+ \(https?://([\d.]+)/', text)
     if ready:
         print(f'\nSUMMARY: ready, address {ready.group(1)}')
         return 0

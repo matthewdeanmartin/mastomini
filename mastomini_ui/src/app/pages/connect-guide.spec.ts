@@ -9,11 +9,19 @@ describe('connect guide', () => {
     expect(detectDevice('Mozilla/5.0 (X11; Linux x86_64)')).toBe('linux');
   });
 
-  it('says only plain-HTTP clients work before HTTPS exists', () => {
+  it('says only plain-HTTP clients work without HTTPS', () => {
     const all = GUIDES.flatMap((g) => g.clients);
     const now = all.filter((c) => works(c, false)).map((c) => c.name);
     expect(now).toEqual(['Mastodon.py and scripts']);
-    expect(all.filter((c) => works(c, true)).length).toBe(all.length);
+  });
+
+  it('with the household certificate, all but real-domain-only clients work', () => {
+    const all = GUIDES.flatMap((g) => g.clients);
+    const blocked = all.filter((c) => !works(c, true)).map((c) => c.name);
+    expect(blocked.sort()).toEqual(['Moshidon', 'Mastodon (official)', 'Tusky'].sort());
+    expect(all.filter((c) => !works(c, true)).every((c) => c.needs.includes('https-domain'))).toBe(
+      true,
+    );
   });
 
   it('has a guide for every device kind', () => {

@@ -30,7 +30,8 @@ Mastodon app at the board, sign in, and post short messages to each other.
 
 ## Status
 
-mastomini runs on real hardware over plain HTTP on the home network. HTTPS is
-planned but [not implemented yet](security/https.md). The design documents in
+mastomini runs on real hardware on the home network, over HTTPS with a
+household certificate each device trusts once, and over plain HTTP
+([HTTPS and certificates](security/https.md)). The design documents in
 [`spec/`](https://github.com/matthewdeanmartin/mastomini/tree/main/spec) record
 what is built, what is planned, and why.

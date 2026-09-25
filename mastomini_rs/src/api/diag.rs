@@ -70,9 +70,16 @@ impl Clock {
     }
 }
 
-/// How the server is reached. Only plain HTTP exists until Sprint 8, which
-/// adds Easy mode (HTTPS and HTTP) and Secure mode (HTTPS only).
-pub const TRANSPORT_MODE: &str = "http";
+/// How the server is reached (spec/05): `http` (no certificate in this
+/// build) or `easy` (HTTPS and HTTP both serve everything). Secure mode
+/// (HTTPS only) is not built yet.
+pub fn transport_mode(ctx: &super::Ctx) -> &'static str {
+    if ctx.tls.is_some() {
+        "easy"
+    } else {
+        "http"
+    }
+}
 
 fn require_owner<S: Store>(c: &Call<'_, S>, slot: u8) -> Result<(), Response> {
     match c.svc.state.account(slot).map(|a| a.rec.role) {
@@ -177,12 +184,21 @@ fn security<S: Store>(c: &Call<'_, S>) -> Reply {
         .collect();
     Ok(Response::ok(json!({
         "transport": {
-            "mode": TRANSPORT_MODE,
-            "https": false,
+            "mode": transport_mode(c.ctx),
+            "https": c.ctx.tls.is_some(),
             "secure_mode_available": false,
+            "this_connection": if c.req.secure { "https" } else { "http" },
         },
-        "certificate": Value::Null,
-        "household_ca": Value::Null,
+        "certificate": c.ctx.tls.as_ref().map(|t| json!({
+            "names": t.names,
+            "not_after": t.not_after,
+            "https_url": t.https_url,
+        })),
+        "household_ca": c.ctx.tls.as_ref().map(|t| json!({
+            "name": t.ca_name,
+            "fingerprint_sha256": t.ca_fingerprint,
+            "name_constrained": t.name_constrained(),
+        })),
         "passwords": {
             "min_length": auth::PASSWORD_MIN,
             "rounds": c.svc.config.password_rounds,

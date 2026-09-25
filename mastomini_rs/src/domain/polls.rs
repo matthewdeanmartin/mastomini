@@ -86,6 +86,13 @@ impl<S: Store> Service<S> {
     /// Tell the author and voters when a poll ends. Runs on every request;
     /// polls that ended before this boot are not announced again.
     pub(crate) fn announce_polls(&mut self, now_ms: u64) {
+        if self
+            .state
+            .next_poll_check
+            .is_some_and(|deadline| now_ms < deadline)
+        {
+            return;
+        }
         let ended: Vec<(u64, u16)> = self
             .state
             .polls
@@ -107,6 +114,15 @@ impl<S: Store> Service<S> {
             }
         }
         self.state.polls_primed = true;
+        self.state.next_poll_check = Some(
+            self.state
+                .polls
+                .iter()
+                .filter(|(id, _)| !self.state.polls_announced.contains(id))
+                .map(|(_, p)| p.expires_ms)
+                .min()
+                .unwrap_or(u64::MAX),
+        );
     }
 
     /// A departing member's votes, so a reused slot doesn't inherit them.

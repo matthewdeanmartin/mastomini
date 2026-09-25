@@ -99,8 +99,11 @@ notifications, and everything except the notifications survives a server restart
 
 ## Sprint 8 — HTTPS, household CA, real-domain certificates (nice to have)
 
-- Household CA with `MASTOMINI_CA_DIR` bring-your-own, `/trust`, `/ca`, Easy/Secure
-  modes, uploaded real-domain certificate, `make renew-cert`.
+- **Done (first slice, see sprints.md):** household CA with `MASTOMINI_CA_DIR`
+  bring-your-own, `/trust`, `/ca`, Easy mode (HTTPS and HTTP), `make certs` /
+  `reissue-cert` / `rotate-certs`, on the board.
+- Secure mode (HTTPS only, nanacoin semantics, USB recovery build), uploaded
+  real-domain certificate, `make renew-cert`.
 - Client matrix on real phones (iOS via the CA, Android via the real domain).
 
 ## Later / maybe

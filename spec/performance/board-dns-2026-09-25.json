@@ -1,0 +1,13 @@
+{
+  "created_utc": "2026-09-25T21:49:14.716044+00:00",
+  "base": "http://mastomini.local",
+  "label": "board-preflight",
+  "authenticated": false,
+  "rounds_per_worker": 2,
+  "measurement": "client wall time including connect, TLS, queue, handler and transfer; no automatic retries",
+  "results": [],
+  "dns_preflight": {
+    "ms": 5020.375000021886,
+    "error": "TimeoutExpired"
+  }
+}

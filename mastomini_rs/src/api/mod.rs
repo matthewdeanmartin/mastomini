@@ -14,11 +14,14 @@ mod instance;
 mod lists;
 mod misc;
 mod moderation;
+mod notification_groups;
 mod oauth;
 mod setup;
+mod social;
 mod statuses;
 pub mod time;
 mod timelines;
+mod trust;
 
 use crate::domain::query::PageQuery;
 use crate::domain::{Error, Principal, Service};
@@ -35,6 +38,8 @@ pub struct Ctx {
     pub platform: fn() -> diag::Platform,
     /// A monotonic clock, for the manually set time (`POST /clock`).
     pub uptime_ms: fn() -> u64,
+    /// The HTTPS side, when this build serves it (`/ca`, `/trust`).
+    pub tls: Option<crate::tls::Tls>,
 }
 
 impl Ctx {
@@ -44,6 +49,7 @@ impl Ctx {
             base_url: base_url.trim_end_matches('/').to_string(),
             platform: diag::Platform::host,
             uptime_ms: diag::host_uptime_ms,
+            tls: None,
         }
     }
 
@@ -93,7 +99,7 @@ impl<S: Store> Call<'_, S> {
         self.user_scoped(needed)
     }
 
-    pub fn user_scoped(&self, needed: &str) -> Result<u8, Response> {
+    pub fn authenticated_user(&self) -> Result<u8, Response> {
         let principal = self
             .principal
             .as_ref()
@@ -104,6 +110,12 @@ impl<S: Store> Call<'_, S> {
         if principal.disabled {
             return Err(Response::error(403, "Your login is currently disabled"));
         }
+        Ok(slot)
+    }
+
+    pub fn user_scoped(&self, needed: &str) -> Result<u8, Response> {
+        let slot = self.authenticated_user()?;
+        let principal = self.principal.as_ref().unwrap();
         if !principal.allows(needed) && !(needed == "read" && principal.allows("profile")) {
             return Err(Response::error(
                 403,
@@ -127,10 +139,33 @@ impl<S: Store> Call<'_, S> {
         }
     }
 
+    /// Where this client reached the server: `https://mastomini.local` over
+    /// HTTPS, `http://192.168.1.161` over HTTP. URLs a client calls next (the
+    /// OAuth endpoints, the next page) use it, so an app stays on the scheme
+    /// and name it chose: an HTTPS app told to sign in over HTTP refuses.
+    /// Identities (account and post URLs) keep the configured `base_url`.
+    pub fn origin(&self) -> String {
+        let scheme = if self.req.secure { "https" } else { "http" };
+        // The client's own Host header, echoed back to that client only; a
+        // name, an IP (v6 in brackets) and a port, nothing else.
+        let host = self
+            .req
+            .header("Host")
+            .map(str::trim)
+            .filter(|h| {
+                !h.is_empty()
+                    && h.len() <= 255
+                    && h.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b".-:[]".contains(&b))
+            })
+            .unwrap_or_else(|| self.ctx.host());
+        format!("{scheme}://{host}")
+    }
+
     /// Mastodon's `Link` header for a page with the given first/last ids.
     pub fn link(&self, ids: &[u64], limit: usize) -> Option<String> {
         let (first, last) = (ids.first()?, ids.last()?);
-        let base = format!("{}{}", self.ctx.base_url, self.req.path);
+        let base = format!("{}{}", self.origin(), self.req.path);
         let keep: Vec<String> = self
             .req
             .query
@@ -183,6 +218,8 @@ pub fn handle<S: Store>(
     req: &Request,
     now_ms: Option<u64>,
 ) -> Response {
+    let started = std::time::Instant::now();
+    *svc.state.rendered_accounts.get_mut() = Some(Default::default());
     let mut response = if req.method == "OPTIONS" && cors(&req.path) {
         Response::new(200, "text/plain", Vec::new())
             .with_header(
@@ -200,12 +237,19 @@ pub fn handle<S: Store>(
         svc.close_session();
         response
     };
+    svc.state.rendered_accounts.get_mut().take();
     if cors(&req.path) {
         response = response
             .with_header("Access-Control-Allow-Origin", "*")
-            .with_header("Access-Control-Expose-Headers", "Link, X-RateLimit-Reset");
+            .with_header(
+                "Access-Control-Expose-Headers",
+                "Link, X-RateLimit-Reset, Server-Timing",
+            );
     }
-    response
+    response.with_header(
+        "Server-Timing",
+        &format!("app;dur={:.3}", started.elapsed().as_secs_f64() * 1000.0),
+    )
 }
 
 fn dispatch<S: Store>(
@@ -270,6 +314,9 @@ fn dispatch<S: Store>(
 
 fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
     let method = c.req.method.as_str();
+    if let Some(reply) = social::route(c, method, seg) {
+        return Some(reply);
+    }
     Some(match (method, seg) {
         (
             _,
@@ -281,6 +328,7 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         | (_, ["api", "v1", "custom_emojis"]) => return instance::route(c, method, seg),
         (_, ["oauth", ..]) | (_, ["api", "v1", "apps", ..]) => return oauth::route(c, method, seg),
         (_, ["app", ..]) => Ok(crate::web::serve(c.req)),
+        (_, ["ca" | "ca.pem" | "trust"]) => return trust::route(c, method, seg),
         (_, [] | ["setup", ..]) => return setup::route(c, method, seg),
         (_, ["about" | "terms-of-service" | "terms" | "privacy-policy"]) => {
             return about::route(c, method, seg)

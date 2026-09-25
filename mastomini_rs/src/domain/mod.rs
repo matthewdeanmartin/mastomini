@@ -19,6 +19,7 @@ mod polls;
 pub mod query;
 pub mod records;
 mod server;
+pub mod social;
 mod statuses;
 
 use crate::codec::{self, Kind};
@@ -70,7 +71,8 @@ const HOUR_MS: u64 = 60 * 60 * 1000;
 /// filters (`mm_filt`).
 /// An older store is upgraded in place at boot (only the marker changes),
 /// so older firmware refuses the store instead of misreading new records.
-pub const SCHEMA: u16 = 4;
+/// 5: local tag preferences, notes, suggestion dismissals and announcements.
+pub const SCHEMA: u16 = 5;
 /// Previous versions kept per edited status, and in all (spec/03).
 pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
 pub const MAX_REVISIONS: usize = 1024;
@@ -290,6 +292,14 @@ struct Governor {
 /// Everything the server knows, in RAM.
 #[derive(Debug, Default)]
 pub struct State {
+    /// Exact derived read index. Invalidated by durable account/status/follow
+    /// mutations and rebuilt lazily in one pass; never a timed/stale cache.
+    pub(crate) account_stats: std::cell::RefCell<Option<[query::AccountStats; MAX_ACCOUNTS]>>,
+    /// Only enabled inside api::handle, cleared before and after every request.
+    pub(crate) rendered_accounts: std::cell::RefCell<Option<BTreeMap<u8, serde_json::Value>>>,
+    pub social: BTreeMap<u8, social::SocialRec>,
+    pub account_notes: BTreeMap<(u8, u8), social::NoteRec>,
+    pub announcements: BTreeMap<u64, social::AnnouncementRec>,
     pub server: ServerRec,
     pub terms: Option<TermsRec>,
     pub provisioned: bool,
@@ -319,6 +329,8 @@ pub struct State {
     /// Polls whose end has been announced (RAM; primed at the first tick).
     pub polls_announced: std::collections::BTreeSet<u64>,
     polls_primed: bool,
+    /// None means recompute the next deadline after a poll mutation.
+    next_poll_check: Option<u64>,
     /// (requester, locked account)
     pub follow_requests: BTreeMap<(u8, u8), FollowRec>,
     /// (owner slot, 0-7)
@@ -338,7 +350,7 @@ pub struct State {
     /// Envelopes of direct messages, by status id.
     pub dms: BTreeMap<u64, crate::crypto::Envelope>,
     /// The caller's unlocked secret, for the current request only.
-    pub session: Option<(u8, Held)>,
+    pub session: Option<dm::Session>,
     pub notifications: VecDeque<Notification>,
     /// Per account: [home, notifications].
     pub markers: [[Option<Marker>; 2]; MAX_ACCOUNTS],
@@ -1046,13 +1058,14 @@ impl<S: Store> Service<S> {
             }
         }
 
-        let service = Service {
+        let mut service = Service {
             store,
             state,
             ids: idgen,
             config,
             latched: None,
         };
+        service.load_social()?;
         service.check_invariants()?;
         Ok(service)
     }
@@ -1157,6 +1170,21 @@ impl<S: Store> Service<S> {
         kind: Kind,
         value: &T,
     ) -> Result<()> {
+        if matches!(
+            kind,
+            Kind::Account | Kind::Status | Kind::Follow | Kind::Block
+        ) {
+            self.state.account_stats.get_mut().take();
+        }
+        if let Some(cache) = self.state.rendered_accounts.get_mut() {
+            cache.clear();
+        }
+        if let Some(session) = &self.state.session {
+            session.clear_cache();
+        }
+        if kind == Kind::Poll {
+            self.state.next_poll_check = None;
+        }
         self.writable()?;
         let bytes = codec::encode(kind, value).map_err(|e| self.map_store_error(e))?;
         self.store
@@ -1165,6 +1193,18 @@ impl<S: Store> Service<S> {
     }
 
     pub(crate) fn erase(&mut self, ns: Ns, key: &Key) -> Result<()> {
+        if matches!(ns, Ns::Stat | Ns::Acct | Ns::Rel) {
+            self.state.account_stats.get_mut().take();
+        }
+        if ns == Ns::Stat {
+            self.state.next_poll_check = None;
+        }
+        if let Some(cache) = self.state.rendered_accounts.get_mut() {
+            cache.clear();
+        }
+        if let Some(session) = &self.state.session {
+            session.clear_cache();
+        }
         self.writable()?;
         self.store
             .erase(ns, key)

@@ -40,7 +40,7 @@ export const GUIDES: DeviceGuide[] = [
       { name: 'Mastodon (official)', needs: ['https-ca'], tested: false },
     ],
     notes: [
-      'iPhone apps require HTTPS. Once the owner turns it on, install the household certificate from the Trust page and turn on full trust for it.',
+      'iPhone apps require HTTPS: install the household certificate from the Trust page, turn on full trust for it, then use the https:// address.',
     ],
   },
   {
@@ -100,9 +100,13 @@ export function detectDevice(userAgent: string): DeviceKind {
   return 'linux';
 }
 
-/** Can this client connect with what the server offers now? */
+/**
+ * Can this client connect with what the server offers now? `https`: the
+ * server has the household certificate (Model A). A real domain (Model B)
+ * isn't built yet, so clients that need one don't work.
+ */
 export function works(client: Client, https: boolean): boolean {
-  return client.needs.includes('http') || (https && client.needs.some((n) => n !== 'http'));
+  return client.needs.includes('http') || (https && client.needs.includes('https-ca'));
 }
 
 export const NEEDS_TEXT: Record<Needs, string> = {

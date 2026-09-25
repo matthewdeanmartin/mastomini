@@ -50,9 +50,6 @@ NOT_APPLICABLE: dict[str, str] = {
     'test_contract_admin.py::test_admin_measures_shape': 'no admin analytics',
     'test_contract_admin.py::test_admin_dimensions_shape': 'no admin analytics',
     'test_contract_admin.py::test_admin_retention_shape': 'no admin analytics',
-    'test_contract_admin_extra.py::test_admin_announcement_create_publish_delete_cycle': 'no announcements (spec/04: later)',
-    'test_contract_admin_extra.py::test_admin_announcement_create_requires_text': 'no announcements',
-    'test_last_mile_phase_1_2.py::test_scheduled_announcement_visibility': 'no announcements',
     'test_contract_extended.py::test_media_upload_and_attach': 'no post media (spec/01)',
     'test_contract_gaps.py::test_only_media_scopes_to_target_account': 'no post media',
     'test_contract_media.py::test_media_get_round_trips': 'no post media',
@@ -79,21 +76,10 @@ NOT_APPLICABLE: dict[str, str] = {
     'test_contract_openapi_backlog.py::test_oembed_returns_minimal_shape': 'no oEmbed: posts have no public pages',
     'test_contract_discovery.py::test_endorsements_reflect_pins': 'no endorsements (spec/04 Tier 3)',
     'test_contract_openapi_backlog.py::test_account_endorsements_by_id': 'no endorsements',
-    'test_contract_discovery.py::test_featured_tags_own_and_by_account': 'no featured tags (max_featured_tags: 0)',
-    'test_contract_tags_quotes.py::test_featured_tag_create_and_list': 'no featured tags',
-    'test_contract_tags_quotes.py::test_featured_tag_delete_by_id': 'no featured tags',
-    'test_contract_tags_quotes.py::test_tag_feature_unfeature_aliases': 'no featured tags',
-    'test_contract_tags_quotes.py::test_featured_tags_visible_to_other_accounts': 'no featured tags',
-    'test_contract_tags_quotes.py::test_featured_tag_suggestions_exclude_featured': 'no featured tags',
-    'test_contract_tags_quotes.py::test_featured_tag_create_is_idempotent': 'no featured tags',
 }
 
 NOT_YET: dict[str, str] = {
-    'test_contract_tags_quotes.py::test_tag_follow_unfollow_roundtrip': 'followed hashtags (Tier 2)',
-    'test_contract_tags_quotes.py::test_tag_follow_is_idempotent_and_per_account': 'followed hashtags (Tier 2)',
-    'test_contract_tags_quotes.py::test_tag_name_normalized': 'followed hashtags (Tier 2)',
-    'test_contract_discovery.py::test_followed_tags_reflect_tag_follows': 'followed hashtags (Tier 2)',
-    'test_last_mile_phase_1_2.py::test_suggestion_dismissal_persists': 'dismissed suggestions are not remembered',
+    # Local features, not federation exclusions; see spec/api-audit.md.
     'test_last_mile_phase_1_2.py::test_notification_policy_filters_accepts_and_overrides': 'the notification policy is always accept-all',
     'test_last_mile_phase_1_2.py::test_notification_policy_drop_creates_neither_notification_nor_request': 'the notification policy is always accept-all',
 }
@@ -111,14 +97,6 @@ DIFFERENT: dict[str, str] = {
     'test_last_mile_phase_1_2.py::test_admin_sensitive_and_silence_have_public_effects': "as on Mastodon, authors see their own posts' sensitivity; also reads the public timeline without a token",
     'test_contract_extended.py::test_update_credentials': 'as on Mastodon, the returned note is HTML (plain text is in source.note)',
     'test_contract_gaps.py::test_update_credentials_fields_and_avatar': 'avatars are generated, never uploaded (open question 17)',
-    'test_bughunt_grouped_notifications.py::test_follow_notifications_group_into_one': 'notifications are never grouped: each is its own group (spec/04)',
-    'test_bughunt_grouped_notifications.py::test_reblogs_of_same_status_group': 'notifications are never grouped',
-    'test_contract_grouped_notifications.py::test_favourites_of_same_status_group_together': 'notifications are never grouped',
-    'test_contract_grouped_notifications.py::test_single_group_fetch_and_accounts': 'notifications are never grouped, so a group has one account',
-    'test_contract_grouped_notifications.py::test_grouped_unread_count_counts_groups': 'notifications are never grouped, so groups = notifications',
-    'test_contract_oauth.py::test_oauth_userinfo': 'OIDC userinfo is Mastodon 4.4; mastomini advertises 4.3',
-    'test_contract_openapi_backlog.py::test_profile_get_and_patch_mirrors_update_credentials': '/api/v1/profile is Mastodon 4.5; mastomini advertises 4.3',
-    'test_contract_openapi_backlog.py::test_timelines_direct': '/api/v1/timelines/direct was removed in Mastodon 3.0; use conversations',
 }
 
 

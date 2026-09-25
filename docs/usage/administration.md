@@ -144,6 +144,36 @@ Mastodon apps with admin screens can use the standard admin API
 with the `admin:read` / `admin:write` scopes, and, as on Mastodon, an account
 must be suspended before the admin API will delete it.
 
+## Announcements
+
+Admins can manage household announcements through the REST API. Use an admin
+account's OAuth token with `admin:read admin:write` scopes (`BOARD` is the board's
+HTTPS origin, and `TOKEN` the token):
+
+```bash
+curl "$BOARD/api/v1/admin/announcements" -H "Authorization: Bearer $TOKEN"
+curl -X POST "$BOARD/api/v1/admin/announcements" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"text":"Dinner at six!","published":true}'
+curl -X PATCH "$BOARD/api/v1/admin/announcements/<id>" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"text":"Dinner at seven!"}'
+curl -X POST "$BOARD/api/v1/admin/announcements/<id>/unpublish" -H "Authorization: Bearer $TOKEN"
+curl -X DELETE "$BOARD/api/v1/admin/announcements/<id>" -H "Authorization: Bearer $TOKEN"
+```
+
+`GET /api/v1/admin/announcements/<id>` retrieves one announcement; `PUT` is also
+accepted for edits. Create a draft with `published:false`, then POST to
+`/<id>/publish`. Optional `starts_at` and `ends_at` use RFC3339 timestamps
+(for example `2026-10-01T18:00:00-04:00`); an empty string clears a date. Optional
+`all_day` is a boolean. Publication windows are checked when members read the list.
+The limit is 16 announcements, each with at most 2048 UTF-8 bytes of plain text.
+Delete old announcements to free capacity. Text is escaped when rendered.
+
+Members' clients use `GET /api/v1/announcements`, POST `/<id>/dismiss`, and
+PUT/DELETE `/<id>/reactions/<emoji>` (URL-encode the emoji). Read and reaction
+state survives restarts. `?with_dismissed=true` includes read announcements;
+at most eight Unicode reaction types fit on each notice. These member endpoints
+use `read:announcements` / `write:announcements` or their parent scopes.
+
 ## Health
 
 **Health** in the household app (admins) shows the clock, how full storage is
@@ -162,10 +192,12 @@ the newest post.
 
 ## Security
 
-**Security** (owner only) shows how the board is reached (plain HTTP for now),
-members still waiting for their direct-message key (they need to sign in once),
-each member's number of signed-in devices, and the password rules. HTTPS and
-the Easy/Secure switch are not built yet (see [HTTPS](../security/https.md)).
+**Security** (owner only) shows how the board is reached (HTTPS and plain
+HTTP), the household certificate's fingerprint, the board certificate's names
+and expiry date (with a warning when renewal is due), members still waiting
+for their direct-message key (they need to sign in once), each member's number
+of signed-in devices, and the password rules. The Secure mode switch, which
+would turn plain HTTP off, is not built yet (see [HTTPS](../security/https.md)).
 
 ## Avatars
 

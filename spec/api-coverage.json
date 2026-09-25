@@ -1,0 +1,2608 @@
+{
+  "reference": {
+    "description": "mastodon_mock pinned OpenAPI 4.7.0 plus spec/03-api-coverage.md; mock-only control endpoints excluded; path parameters normalized to {id}.",
+    "schema_sha256": "516725a2c5e09c4de5b47305cb515ee03c7e929967432441003624fe35378942",
+    "audit_date": "2026-09-25",
+    "commit": "e09c035725b5dfdbc8bf2b8efce633d06cc35fed",
+    "checklist_sha256": "6b300ebd95f853d7582f5d27ce38b9cdc8676978e1863ede014fb2ab2e91d759"
+  },
+  "reference_endpoints": [
+    "DELETE /api/v1/admin/accounts/{id}",
+    "DELETE /api/v1/admin/canonical_email_blocks/{id}",
+    "DELETE /api/v1/admin/domain_allows/{id}",
+    "DELETE /api/v1/admin/domain_blocks/{id}",
+    "DELETE /api/v1/admin/email_domain_blocks/{id}",
+    "DELETE /api/v1/admin/ip_blocks/{id}",
+    "DELETE /api/v1/announcements/{id}/reactions/{id}",
+    "DELETE /api/v1/collections/{id}",
+    "DELETE /api/v1/collections/{id}/items/{id}",
+    "DELETE /api/v1/conversations/{id}",
+    "DELETE /api/v1/domain_blocks",
+    "DELETE /api/v1/featured_tags/{id}",
+    "DELETE /api/v1/filters/{id}",
+    "DELETE /api/v1/lists/{id}",
+    "DELETE /api/v1/lists/{id}/accounts",
+    "DELETE /api/v1/media/{id}",
+    "DELETE /api/v1/profile/avatar",
+    "DELETE /api/v1/profile/header",
+    "DELETE /api/v1/push/subscription",
+    "DELETE /api/v1/scheduled_statuses/{id}",
+    "DELETE /api/v1/statuses/{id}",
+    "DELETE /api/v1/suggestions/{id}",
+    "DELETE /api/v2/filters/keywords/{id}",
+    "DELETE /api/v2/filters/statuses/{id}",
+    "DELETE /api/v2/filters/{id}",
+    "GET /.well-known/nodeinfo",
+    "GET /.well-known/oauth-authorization-server",
+    "GET /api/oembed",
+    "GET /api/v1/accounts",
+    "GET /api/v1/accounts/familiar_followers",
+    "GET /api/v1/accounts/lookup",
+    "GET /api/v1/accounts/relationships",
+    "GET /api/v1/accounts/search",
+    "GET /api/v1/accounts/verify_credentials",
+    "GET /api/v1/accounts/{id}",
+    "GET /api/v1/accounts/{id}/collections",
+    "GET /api/v1/accounts/{id}/endorsements",
+    "GET /api/v1/accounts/{id}/featured_tags",
+    "GET /api/v1/accounts/{id}/followers",
+    "GET /api/v1/accounts/{id}/following",
+    "GET /api/v1/accounts/{id}/identity_proofs",
+    "GET /api/v1/accounts/{id}/in_collections",
+    "GET /api/v1/accounts/{id}/lists",
+    "GET /api/v1/accounts/{id}/statuses",
+    "GET /api/v1/admin/accounts",
+    "GET /api/v1/admin/accounts/{id}",
+    "GET /api/v1/admin/canonical_email_blocks",
+    "GET /api/v1/admin/canonical_email_blocks/{id}",
+    "GET /api/v1/admin/domain_allows",
+    "GET /api/v1/admin/domain_allows/{id}",
+    "GET /api/v1/admin/domain_blocks",
+    "GET /api/v1/admin/domain_blocks/{id}",
+    "GET /api/v1/admin/email_domain_blocks",
+    "GET /api/v1/admin/email_domain_blocks/{id}",
+    "GET /api/v1/admin/ip_blocks",
+    "GET /api/v1/admin/ip_blocks/{id}",
+    "GET /api/v1/admin/reports",
+    "GET /api/v1/admin/reports/{id}",
+    "GET /api/v1/admin/trends/links",
+    "GET /api/v1/admin/trends/statuses",
+    "GET /api/v1/admin/trends/tags",
+    "GET /api/v1/announcements",
+    "GET /api/v1/annual_reports",
+    "GET /api/v1/annual_reports/{id}",
+    "GET /api/v1/annual_reports/{id}/state",
+    "GET /api/v1/apps/verify_credentials",
+    "GET /api/v1/blocks",
+    "GET /api/v1/bookmarks",
+    "GET /api/v1/collections/{id}",
+    "GET /api/v1/conversations",
+    "GET /api/v1/custom_emojis",
+    "GET /api/v1/directory",
+    "GET /api/v1/domain_blocks",
+    "GET /api/v1/endorsements",
+    "GET /api/v1/favourites",
+    "GET /api/v1/featured_tags",
+    "GET /api/v1/featured_tags/suggestions",
+    "GET /api/v1/filters",
+    "GET /api/v1/filters/{id}",
+    "GET /api/v1/follow_requests",
+    "GET /api/v1/followed_tags",
+    "GET /api/v1/instance",
+    "GET /api/v1/instance/activity",
+    "GET /api/v1/instance/domain_blocks",
+    "GET /api/v1/instance/extended_description",
+    "GET /api/v1/instance/languages",
+    "GET /api/v1/instance/peers",
+    "GET /api/v1/instance/privacy_policy",
+    "GET /api/v1/instance/rules",
+    "GET /api/v1/instance/terms_of_service",
+    "GET /api/v1/instance/terms_of_service/{id}",
+    "GET /api/v1/instance/translation_languages",
+    "GET /api/v1/lists",
+    "GET /api/v1/lists/{id}",
+    "GET /api/v1/lists/{id}/accounts",
+    "GET /api/v1/markers",
+    "GET /api/v1/media/{id}",
+    "GET /api/v1/mutes",
+    "GET /api/v1/notifications",
+    "GET /api/v1/notifications/requests",
+    "GET /api/v1/notifications/requests/merged",
+    "GET /api/v1/notifications/requests/{id}",
+    "GET /api/v1/notifications/unread_count",
+    "GET /api/v1/notifications/{id}",
+    "GET /api/v1/polls/{id}",
+    "GET /api/v1/preferences",
+    "GET /api/v1/profile",
+    "GET /api/v1/push/subscription",
+    "GET /api/v1/scheduled_statuses",
+    "GET /api/v1/scheduled_statuses/{id}",
+    "GET /api/v1/search",
+    "GET /api/v1/statuses",
+    "GET /api/v1/statuses/{id}",
+    "GET /api/v1/statuses/{id}/card",
+    "GET /api/v1/statuses/{id}/context",
+    "GET /api/v1/statuses/{id}/favourited_by",
+    "GET /api/v1/statuses/{id}/history",
+    "GET /api/v1/statuses/{id}/quotes",
+    "GET /api/v1/statuses/{id}/reblogged_by",
+    "GET /api/v1/statuses/{id}/source",
+    "GET /api/v1/streaming/direct",
+    "GET /api/v1/streaming/hashtag",
+    "GET /api/v1/streaming/hashtag/local",
+    "GET /api/v1/streaming/health",
+    "GET /api/v1/streaming/list",
+    "GET /api/v1/streaming/public",
+    "GET /api/v1/streaming/public/local",
+    "GET /api/v1/streaming/public/remote",
+    "GET /api/v1/streaming/user",
+    "GET /api/v1/streaming/user/notification",
+    "GET /api/v1/suggestions",
+    "GET /api/v1/tags/{id}",
+    "GET /api/v1/timelines/direct",
+    "GET /api/v1/timelines/home",
+    "GET /api/v1/timelines/link",
+    "GET /api/v1/timelines/list/{id}",
+    "GET /api/v1/timelines/public",
+    "GET /api/v1/timelines/tag/{id}",
+    "GET /api/v1/trends",
+    "GET /api/v1/trends/links",
+    "GET /api/v1/trends/statuses",
+    "GET /api/v1/trends/tags",
+    "GET /api/v1_alpha/async_refreshes/{id}",
+    "GET /api/v2/admin/accounts",
+    "GET /api/v2/filters",
+    "GET /api/v2/filters/keywords/{id}",
+    "GET /api/v2/filters/statuses/{id}",
+    "GET /api/v2/filters/{id}",
+    "GET /api/v2/filters/{id}/keywords",
+    "GET /api/v2/filters/{id}/statuses",
+    "GET /api/v2/instance",
+    "GET /api/v2/notifications",
+    "GET /api/v2/notifications/policy",
+    "GET /api/v2/notifications/unread_count",
+    "GET /api/v2/notifications/{id}",
+    "GET /api/v2/notifications/{id}/accounts",
+    "GET /api/v2/search",
+    "GET /api/v2/suggestions",
+    "GET /health",
+    "GET /oauth/authorize",
+    "GET /oauth/userinfo",
+    "PATCH /api/v1/accounts/update_credentials",
+    "PATCH /api/v1/collections/{id}",
+    "PATCH /api/v1/profile",
+    "PATCH /api/v2/notifications/policy",
+    "POST /api/v1/accounts",
+    "POST /api/v1/accounts/{id}/block",
+    "POST /api/v1/accounts/{id}/endorse",
+    "POST /api/v1/accounts/{id}/follow",
+    "POST /api/v1/accounts/{id}/mute",
+    "POST /api/v1/accounts/{id}/note",
+    "POST /api/v1/accounts/{id}/pin",
+    "POST /api/v1/accounts/{id}/remove_from_followers",
+    "POST /api/v1/accounts/{id}/unblock",
+    "POST /api/v1/accounts/{id}/unendorse",
+    "POST /api/v1/accounts/{id}/unfollow",
+    "POST /api/v1/accounts/{id}/unmute",
+    "POST /api/v1/accounts/{id}/unpin",
+    "POST /api/v1/admin/accounts/{id}/action",
+    "POST /api/v1/admin/accounts/{id}/approve",
+    "POST /api/v1/admin/accounts/{id}/enable",
+    "POST /api/v1/admin/accounts/{id}/reject",
+    "POST /api/v1/admin/accounts/{id}/unsensitive",
+    "POST /api/v1/admin/accounts/{id}/unsilence",
+    "POST /api/v1/admin/accounts/{id}/unsuspend",
+    "POST /api/v1/admin/canonical_email_blocks",
+    "POST /api/v1/admin/canonical_email_blocks/test",
+    "POST /api/v1/admin/dimensions",
+    "POST /api/v1/admin/domain_allows",
+    "POST /api/v1/admin/domain_blocks",
+    "POST /api/v1/admin/email_domain_blocks",
+    "POST /api/v1/admin/ip_blocks",
+    "POST /api/v1/admin/measures",
+    "POST /api/v1/admin/reports/{id}/assign_to_self",
+    "POST /api/v1/admin/reports/{id}/reopen",
+    "POST /api/v1/admin/reports/{id}/resolve",
+    "POST /api/v1/admin/reports/{id}/unassign",
+    "POST /api/v1/admin/retention",
+    "POST /api/v1/admin/trends/links/{id}/approve",
+    "POST /api/v1/admin/trends/links/{id}/reject",
+    "POST /api/v1/admin/trends/statuses/{id}/approve",
+    "POST /api/v1/admin/trends/statuses/{id}/reject",
+    "POST /api/v1/admin/trends/tags/{id}/approve",
+    "POST /api/v1/admin/trends/tags/{id}/reject",
+    "POST /api/v1/announcements/{id}/dismiss",
+    "POST /api/v1/annual_reports/{id}/generate",
+    "POST /api/v1/annual_reports/{id}/read",
+    "POST /api/v1/apps",
+    "POST /api/v1/collections",
+    "POST /api/v1/collections/{id}/items",
+    "POST /api/v1/collections/{id}/items/{id}/revoke",
+    "POST /api/v1/conversations/{id}/read",
+    "POST /api/v1/domain_blocks",
+    "POST /api/v1/emails/confirmations",
+    "POST /api/v1/featured_tags",
+    "POST /api/v1/filters",
+    "POST /api/v1/follow_requests/{id}/authorize",
+    "POST /api/v1/follow_requests/{id}/reject",
+    "POST /api/v1/lists",
+    "POST /api/v1/lists/{id}/accounts",
+    "POST /api/v1/markers",
+    "POST /api/v1/media",
+    "POST /api/v1/notifications/clear",
+    "POST /api/v1/notifications/requests/accept",
+    "POST /api/v1/notifications/requests/dismiss",
+    "POST /api/v1/notifications/requests/{id}/accept",
+    "POST /api/v1/notifications/requests/{id}/dismiss",
+    "POST /api/v1/notifications/{id}/dismiss",
+    "POST /api/v1/polls/{id}/votes",
+    "POST /api/v1/push/subscription",
+    "POST /api/v1/reports",
+    "POST /api/v1/statuses",
+    "POST /api/v1/statuses/{id}/bookmark",
+    "POST /api/v1/statuses/{id}/favourite",
+    "POST /api/v1/statuses/{id}/mute",
+    "POST /api/v1/statuses/{id}/pin",
+    "POST /api/v1/statuses/{id}/quotes/{id}/revoke",
+    "POST /api/v1/statuses/{id}/reblog",
+    "POST /api/v1/statuses/{id}/translate",
+    "POST /api/v1/statuses/{id}/unbookmark",
+    "POST /api/v1/statuses/{id}/unfavourite",
+    "POST /api/v1/statuses/{id}/unmute",
+    "POST /api/v1/statuses/{id}/unpin",
+    "POST /api/v1/statuses/{id}/unreblog",
+    "POST /api/v1/tags/{id}/feature",
+    "POST /api/v1/tags/{id}/follow",
+    "POST /api/v1/tags/{id}/unfeature",
+    "POST /api/v1/tags/{id}/unfollow",
+    "POST /api/v2/filters",
+    "POST /api/v2/filters/{id}/keywords",
+    "POST /api/v2/filters/{id}/statuses",
+    "POST /api/v2/media",
+    "POST /api/v2/notifications/{id}/dismiss",
+    "POST /oauth/revoke",
+    "POST /oauth/token",
+    "PUT /api/v1/admin/domain_blocks/{id}",
+    "PUT /api/v1/admin/ip_blocks/{id}",
+    "PUT /api/v1/announcements/{id}/reactions/{id}",
+    "PUT /api/v1/filters/{id}",
+    "PUT /api/v1/lists/{id}",
+    "PUT /api/v1/media/{id}",
+    "PUT /api/v1/push/subscription",
+    "PUT /api/v1/scheduled_statuses/{id}",
+    "PUT /api/v1/statuses/{id}",
+    "PUT /api/v1/statuses/{id}/interaction_policy",
+    "PUT /api/v2/filters/keywords/{id}",
+    "PUT /api/v2/filters/{id}"
+  ],
+  "endpoints": [
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/accounts/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/announcements/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/canonical_email_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/domain_allows/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/domain_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/email_domain_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/ip_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/announcements/{id}/reactions/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent local announcements, publication windows, per-member dismissals and Unicode reactions; 16 announcements, 2048-byte text, 8 reaction types.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/collections/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/collections/{id}/items/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/conversations/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/conversations.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/featured_tags/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lists/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lists/{id}/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/media/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/profile/avatar",
+      "tier": 3,
+      "status": "partial",
+      "note": "Idempotently returns profile with generated defaults; uploaded avatars/headers remain unsupported.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/profile/header",
+      "tier": 3,
+      "status": "partial",
+      "note": "Idempotently returns profile with generated defaults; uploaded avatars/headers remain unsupported.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/push/subscription",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/scheduled_statuses/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/statuses/{id}",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/suggestions/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent per-viewer dismissal; both suggestion versions filter it; public IDs prevent slot-reuse inheritance.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/keywords/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/statuses/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/nodeinfo",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-authorization-server",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/oembed",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/familiar_followers",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/lookup",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/relationships",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/search",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/verify_credentials",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/collections",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/endorsements",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/featured_tags",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/followers",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/following",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/identity_proofs",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/in_collections",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/lists",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/{id}/statuses",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/accounts/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/announcements",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/announcements/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/canonical_email_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/canonical_email_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_allows",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_allows/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/email_domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/email_domain_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ip_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ip_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No handler (404): federation/sign-up admin controls do not apply to a household."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/links",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/statuses",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/tags",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/announcements",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Persistent local announcements, publication windows, per-member dismissals and Unicode reactions; 16 announcements, 2048-byte text, 8 reaction types.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports/{id}/state",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/apps/verify_credentials",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/blocks",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bookmarks",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/collections/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/conversations.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/custom_emojis",
+      "tier": 1,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/directory",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/endorsements",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/favourites",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/featured_tags",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/featured_tags/suggestions",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filters",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/follow_requests",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/followed_tags",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/activity",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/extended_description",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/languages",
+      "tier": 1,
+      "status": "stub",
+      "note": "Returns [] only; no language listing.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/peers",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/privacy_policy",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/rules",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/terms_of_service",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/terms_of_service/{id}",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/translation_languages",
+      "tier": 3,
+      "status": "excluded",
+      "note": "No handler (404); translation disabled in instance configuration.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists/{id}/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/markers",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mutes",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/policy",
+      "tier": 2,
+      "status": "stub",
+      "note": "Always accept-all; PUT does not persist changes.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests",
+      "tier": 2,
+      "status": "stub",
+      "note": "Returns []; no request-policy workflow.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests/merged",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests/{id}",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/unread_count",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/polls/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/preferences",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/profile",
+      "tier": 3,
+      "status": "implemented",
+      "note": "Alias of verify/update credentials with read:accounts/write:accounts scopes; generated avatars only.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/push/subscription",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scheduled_statuses",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scheduled_statuses/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search",
+      "tier": 3,
+      "status": "implemented",
+      "note": "Legacy v1 alias of scoped local v2 search; hashtags serialized as names.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/card",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/context",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/favourited_by",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/history",
+      "tier": 2,
+      "status": "partial",
+      "note": "At most 3 stored previous versions plus current; direct messages have no history; historical poll snapshot is null.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/quotes",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/reblogged_by",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/{id}/source",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming",
+      "tier": 3,
+      "status": "excluded",
+      "source": "mastomini_rs/src/api/mod.rs",
+      "note": "No SSE/WebSocket transport; streaming URLs are null. Board refuses upgrades before routing."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/direct",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/hashtag",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/hashtag/local",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/health",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/list",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/public",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/public/local",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/public/remote",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/user",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/user/notification",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deferred; URLs advertised null. No REST handler; WebSocket upgrade refused by board transport.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/suggestions",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tags/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/direct",
+      "tier": 3,
+      "status": "implemented",
+      "note": "Legacy DM timeline, authenticated participant visibility, mute/block filtering and normal cursor pagination.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/home",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/link",
+      "tier": 2,
+      "status": "stub",
+      "note": "Returns [] only.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/list/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/public",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/tag/{id}",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/links",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/statuses",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/tags",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate neutral response: empty list/object or null.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1_alpha/async_refreshes/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/admin/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/keywords/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/statuses/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/{id}/keywords",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/{id}/statuses",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/instance",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping.",
+      "source": "mastomini_rs/src/api/notification_groups.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/policy",
+      "tier": 2,
+      "status": "stub",
+      "note": "Always accept-all; PUT does not persist changes.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/unread_count",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping.",
+      "source": "mastomini_rs/src/api/notification_groups.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping.",
+      "source": "mastomini_rs/src/api/notification_groups.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/{id}/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping.",
+      "source": "mastomini_rs/src/api/notification_groups.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/search",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/suggestions",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/nodeinfo/2.0",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/instance.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/oauth/authorize",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "GET",
+      "path": "/oauth/userinfo",
+      "tier": 3,
+      "status": "implemented",
+      "note": "Local identity claims (sub, preferred_username, name, profile, picture); profile or read:accounts scope; no fabricated email.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/accounts/update_credentials",
+      "tier": 1,
+      "status": "partial",
+      "note": "Text profile updates supported; avatar/header uploads rejected with 422.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/announcements/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/collections/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/profile",
+      "tier": 3,
+      "status": "partial",
+      "note": "Alias of verify/update credentials with read:accounts/write:accounts scopes; generated avatars only.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v2/notifications/policy",
+      "tier": 2,
+      "status": "missing",
+      "note": "No PATCH handler (404); PUT alias exists but is a fixed accept-all no-op.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Explicit 403: household-created accounts; no registration approval.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/block",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/endorse",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/follow",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/mute",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/note",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent owner-private relationship note, 2000 UTF-8 bytes; empty comment clears; purge on either account deletion.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/pin",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/remove_from_followers",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/unblock",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/unendorse",
+      "tier": 3,
+      "status": "excluded",
+      "note": "No endorsements in v1; no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/unfollow",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/unmute",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/accounts.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/unpin",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/action",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/approve",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Explicit 403: household-created accounts; no registration approval.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/enable",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/reject",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Explicit 403: household-created accounts; no registration approval.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/unsensitive",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/unsilence",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/{id}/unsuspend",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/announcements",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/announcements/{id}/publish",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/announcements/{id}/unpublish",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/canonical_email_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/canonical_email_blocks/test",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/dimensions",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/domain_allows",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/email_domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/ip_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/measures",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/{id}/assign_to_self",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/{id}/reopen",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/{id}/resolve",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/{id}/unassign",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/retention",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/{id}/approve",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/{id}/reject",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/statuses/{id}/approve",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/statuses/{id}/reject",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/tags/{id}/approve",
+      "tier": 2,
+      "status": "excluded",
+      "note": "No admin trends in v1; no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/tags/{id}/reject",
+      "tier": 2,
+      "status": "excluded",
+      "note": "No admin trends in v1; no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/announcements/{id}/dismiss",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent local announcements, publication windows, per-member dismissals and Unicode reactions; 16 announcements, 2048-byte text, 8 reaction types.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/annual_reports/{id}/generate",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/annual_reports/{id}/read",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/apps",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections/{id}/items",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections/{id}/items/{id}/revoke",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/{id}/read",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/conversations.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/domain_blocks",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/emails/confirmations",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/featured_tags",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filters",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/follow_requests/{id}/authorize",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/follow_requests/{id}/reject",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lists",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lists/{id}/accounts",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/markers",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Explicit 422: no post attachments.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/clear",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/dismiss",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/accept",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/dismiss",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/{id}/accept",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/{id}/dismiss",
+      "tier": 2,
+      "status": "missing",
+      "note": "No handler; normally Mastodon-shaped 404.",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/{id}/dismiss",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/timelines.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/polls/{id}/votes",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/push/subscription",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/bookmark",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/favourite",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/mute",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/pin",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/quotes/{id}/revoke",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/reblog",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/translate",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/unbookmark",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/unfavourite",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/unmute",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/unpin",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/{id}/unreblog",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/{id}/feature",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/{id}/follow",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/{id}/unfeature",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/{id}/unfollow",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent normalized tags: 32 followed/10 featured per account; followed public tags enter home; visibility-filtered counts and seven-day history.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters/{id}/keywords",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters/{id}/statuses",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/media",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Explicit 422: no post attachments.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/notifications/{id}/dismiss",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping.",
+      "source": "mastomini_rs/src/api/notification_groups.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/authorize",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/revoke",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/token",
+      "tier": 1,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/oauth.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/announcements/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local admin management extension: bounded persisted announcements, drafts, publication windows and lifecycle; requires admin role plus admin:read/admin:write.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/domain_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/ip_blocks/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/reports/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/moderation.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/announcements/{id}/reactions/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Persistent local announcements, publication windows, per-member dismissals and Unicode reactions; 16 announcements, 2048-byte text, 8 reaction types.",
+      "source": "mastomini_rs/src/api/social.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/collections/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/collections.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/lists/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/lists.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/notifications/policy",
+      "tier": 2,
+      "status": "stub",
+      "note": "Always accept-all; PUT does not persist changes.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/push/subscription",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/scheduled_statuses/{id}",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/statuses/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/statuses.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/statuses/{id}/interaction_policy",
+      "tier": 3,
+      "status": "excluded",
+      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
+      "source": "mastomini_rs/src/api/mod.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/filters/keywords/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/filters/{id}",
+      "tier": 2,
+      "status": "implemented",
+      "note": "Local household behavior; see spec/04 and conformance/deviations.py for limits.",
+      "source": "mastomini_rs/src/api/filters.rs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/notifications/policy",
+      "tier": 2,
+      "status": "stub",
+      "note": "Always accept-all; PUT does not persist changes.",
+      "source": "mastomini_rs/src/api/misc.rs"
+    }
+  ],
+  "reviewed_sources": {
+    "mastomini_rs/src/api/about.rs": "663f48de4ad78ca0c38db856f4f2d4cd2f0f201ad2d7e674690e914c46fc8344",
+    "mastomini_rs/src/api/accounts.rs": "1247568be61a2b6c1607eb211610f2657b3b9dfe6f1ec04e671a4919748b4d40",
+    "mastomini_rs/src/api/collections.rs": "87b761668b729e96792777f500fff4b43a051d02ff1a03b352ec42a880216414",
+    "mastomini_rs/src/api/conversations.rs": "2dad23befe98dff8736d0a99abc6f7a8f8cba40fbd2c685a970df19be55d9748",
+    "mastomini_rs/src/api/diag.rs": "5a85bb01c507f67982c1edf5d215f328023f5a904d79ad756d67a3584f762a6e",
+    "mastomini_rs/src/api/entities.rs": "36bf5caad27f22a7a8932e9e8ff3d75f6f8edfa0b81058f6141b2f13925ecbc9",
+    "mastomini_rs/src/api/filters.rs": "75c89fa1c8cc80d0f9f788f1ac4c9a5c4cb594ecdda411b308274d03c2f6de69",
+    "mastomini_rs/src/api/household.rs": "e80a146f21aa19db4f9737bd3c8c418bd9ff2a9d79db4eceb3a7d4d639446433",
+    "mastomini_rs/src/api/html.rs": "fe0c5bb50d02e4c74257dd1c992e79d40a712ff46333d630ad624ae63f1f5a4d",
+    "mastomini_rs/src/api/instance.rs": "616cc133058d424ed6677441ba3dc4b7aa938d8f661aa8d66c1faf2ed4f71493",
+    "mastomini_rs/src/api/lists.rs": "d5055a97fb26d5501e5f33fd7b4153389508e7542ff5868cc5494d202635b9ac",
+    "mastomini_rs/src/api/misc.rs": "47e20c402afce54542e77658e5aa231913af6a6a7cb8f9b22bf6276cdbd5fa73",
+    "mastomini_rs/src/api/mod.rs": "34c5da85fcbfe8c18d1a0839749b1092fbfe511d7a0db9fcfc8d0627f7fd0e16",
+    "mastomini_rs/src/api/moderation.rs": "3174eea542b798a952cd942c9c035c3546194823d062ca89743d4e2858564ce7",
+    "mastomini_rs/src/api/notification_groups.rs": "6336cc8331e385cc10ca3464850f77e3846e267af7c10224aabaa280c30f6693",
+    "mastomini_rs/src/api/oauth.rs": "6d18f6c340932aac0bd6e039ae98116410bbd711c0d15aab1502be2f07d5c2e8",
+    "mastomini_rs/src/api/setup.rs": "9b62dec8e3e5e015f4ee3d1a8a7427ae1ffc9d8900a4a35fde3a02128765cdfc",
+    "mastomini_rs/src/api/social.rs": "2fcf88e36509bb95daad8dd4f5346ccebce0c4a90ce3f9a1ade56b28b518946c",
+    "mastomini_rs/src/api/statuses.rs": "591f6652605dba96851647bb235a489ca0e66715a47c33d36be90c38eafb78f8",
+    "mastomini_rs/src/api/time.rs": "0ff507b79b766d5ce1c1ef3a0b76d1b8c6374974968e413f587be080d2a4f4f8",
+    "mastomini_rs/src/api/timelines.rs": "75e1e78109eb0fa5d253f08f967558156b4ffb48769ed1126e817f68ce499eea",
+    "mastomini_rs/src/api/trust.rs": "e8b6bdbecfff8abb94c111a972e5b08af5c03bd3bf6b10d9ec1a6c70c12f111b",
+    "mastomini_rs/src/auth.rs": "96802f952161104fa0e85dbd1ad07174a06576e5a2871a8489aa74855de562f2",
+    "mastomini_rs/src/codec.rs": "df14805b96679444941128236f52adeea5e3b2785b194818fb7ae84f900a1be1",
+    "mastomini_rs/src/crypto.rs": "f7f577b86c5299efc644733180226d6ab7c524e2421c4566261018c8563d63d3",
+    "mastomini_rs/src/domain/accounts.rs": "8fa64f1991516eb3925a35bda34001499bdd92e88843df8c990d80d7bb917d02",
+    "mastomini_rs/src/domain/codes.rs": "a8ea33385ee6f4468f7ada6ce11a7cb464f2039ca1adfbd4c3659aea3072c115",
+    "mastomini_rs/src/domain/collections.rs": "189caf17f1eaf413c8f04080bbdde6d449305738d27448af42c06c26db0b7a78",
+    "mastomini_rs/src/domain/conversations.rs": "7f0adcbdc7ee46c582be702b420eaf94e8251b0b42ee9ee5d6209f2a56e3bebf",
+    "mastomini_rs/src/domain/dm.rs": "70dd7184999d1380afd234428b732591db4756ca1e6b73018545065b4e19765d",
+    "mastomini_rs/src/domain/edits.rs": "3b51e0b072adc8ce0192f790a9bf6e8d234be68ea2decc2a1a41e37ddb560b67",
+    "mastomini_rs/src/domain/filters.rs": "f734584017abf18fb723f5c661899ddd27a3ea32e0e4fca5003e202cffada5bb",
+    "mastomini_rs/src/domain/follow_requests.rs": "2dd9639c61bbda73f13f9c600eb5ddd360ddd966a14f5fada1c296e46b684f14",
+    "mastomini_rs/src/domain/lists.rs": "ade8ceb87af94017f283807ab1559a13215525d17878a454d4ba298f74020c78",
+    "mastomini_rs/src/domain/mod.rs": "7c42f5332fee6142a21a56e2b0a9196781d42f674ac0e14a450430e37e80a4c4",
+    "mastomini_rs/src/domain/moderation.rs": "bbb896412f8976df5326c2283aed12d7fbb56d9a159521d67b81256a4a0b0660",
+    "mastomini_rs/src/domain/oauth.rs": "9c46106189a026e7904401b09b8fd588ddaff933f06dbc40da1646602e1beaa0",
+    "mastomini_rs/src/domain/polls.rs": "3d4ed72fa217dc70511c2de769887cd425794ac33beadefe02b2536940ea711a",
+    "mastomini_rs/src/domain/query.rs": "66a716b3f2de2063769d85361723b39f3468091da6fc734accd9dfdf8d8a87fc",
+    "mastomini_rs/src/domain/records.rs": "9a2ffd5de849fb9e26daac45d1afba98f72e9df5d50aaa9010ff2703eb7ee7bc",
+    "mastomini_rs/src/domain/server.rs": "2529408be7688529d47fd2be2252fd81c2377661fa6f78088f769759681ad5d6",
+    "mastomini_rs/src/domain/social.rs": "64a7705d71e24b9d2d5298f24605d4c07936b9bc7e4f7e2bf65f194400581105",
+    "mastomini_rs/src/domain/statuses.rs": "661f9c6c2c4255a34af6106e82d21a0cc53c228ff5a2b2b1ecccf6f59f58d67e",
+    "mastomini_rs/src/http.rs": "c40c05071cd7d76d40d03831dfc228cd6a9477fcd0df8601e8b5c786ee5b064e",
+    "mastomini_rs/src/store/mod.rs": "656faa66a56be2b9bc9c3e7b3eb1fb56ee595d91feee5b59eaaa7d4026e4c4c3",
+    "mastomini_rs/src/text.rs": "ed408dd1f7d36c30cd06dfd959e38f1df7a7669b86307c08443000b8c553a140"
+  }
+}

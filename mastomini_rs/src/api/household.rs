@@ -25,8 +25,11 @@ fn status<S: Store>(c: &mut Call<'_, S>) -> Reply {
         "writes_this_hour": writes,
         "store_used": stats.map(|s| s.used_fraction()),
         "clock": c.clock.as_str(),
-        "mode": super::diag::TRANSPORT_MODE,
-        "https": false,
+        "mode": super::diag::transport_mode(c.ctx),
+        "https": c.ctx.tls.is_some(),
+        "secure": c.req.secure,
+        "https_url": c.ctx.tls.as_ref().map(|t| &t.https_url),
+        "ca_fingerprint": c.ctx.tls.as_ref().map(|t| &t.ca_fingerprint),
         "household_app": crate::web::bundled(),
     })))
 }
