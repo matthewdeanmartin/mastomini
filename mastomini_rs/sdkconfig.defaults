@@ -18,10 +18,24 @@ CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
 # Mastodon clients send long OAuth URLs and headers (spec/01 sdkconfig table).
 CONFIG_HTTPD_MAX_URI_LEN=1024
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
-CONFIG_LWIP_MAX_SOCKETS=16
+# Two listeners' sockets (src/bin/esp32.rs): (7 + 2) + (4 + 2) + DNS.
+CONFIG_LWIP_MAX_SOCKETS=20
+CONFIG_LWIP_MAX_ACTIVE_TCP=20
+# 8 segments in flight instead of 4: a 40-post timeline is tens of KiB.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
 CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
-# HTTPS on 443 next to HTTP on 80 (docs/security/https.md).
+# HTTPS on 443 next to HTTP on 80 (docs/security/https.md), on esp-tls
+# directly (src/bin/esp32/server.rs).
 CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+CONFIG_ESP_TLS_SERVER=y
+# A client that reconnects resumes its TLS session: no key exchange or
+# signature, which is most of the ~1 s handshake.
+CONFIG_ESP_TLS_SERVER_SESSION_TICKETS=y
+# Precomputed tables (flash, not RAM) for the fixed-base multiplication
+# in every ECDHE key exchange.
+CONFIG_MBEDTLS_ECP_FIXED_POINT_OPTIM=y
+# Full-size outgoing TLS records: fewer records and MACs per response.
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=16384
 # TLS sessions allocate from PSRAM, leaving internal RAM for Wi-Fi and task
 # stacks. That keeps full 16 KiB TLS records: browsers send avatar uploads
 # in them. (nanacoin shrank its input buffer to 4 KiB instead, which only

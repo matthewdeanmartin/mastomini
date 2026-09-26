@@ -7,7 +7,7 @@ Scope: pinned mastodon_mock OpenAPI + its REST checklist + mastomini's additiona
 This includes versions newer than advertised 4.3. It is not a claim of complete Mastodon parity.
 Path parameter names are normalized to `{id}` (including names, tags and group keys).
 
-**285 method/path pairs:** 94 excluded, 172 implemented, 7 missing, 5 partial, 7 stub.
+**285 method/path pairs:** 94 excluded, 172 implemented, 0 missing, 5 partial, 14 stub.
 
 `implemented` means a substantive local handler, not certification of every parameter;
 `partial` has explicit behavioral limits; `stub` is a neutral/no-op handler;
@@ -153,15 +153,15 @@ Path parameter names are normalized to `{id}` (including names, tags and group k
 | GET | `/api/v1/notifications` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v1/notifications/clear` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v1/notifications/dismiss` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
-| GET | `/api/v1/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all; PUT does not persist changes. |
-| PUT | `/api/v1/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all; PUT does not persist changes. |
+| GET | `/api/v1/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged. |
+| PUT | `/api/v1/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged. |
 | GET | `/api/v1/notifications/requests` | **stub** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Returns []; no request-policy workflow. |
-| POST | `/api/v1/notifications/requests/accept` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
-| POST | `/api/v1/notifications/requests/dismiss` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
-| GET | `/api/v1/notifications/requests/merged` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
-| GET | `/api/v1/notifications/requests/{id}` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
-| POST | `/api/v1/notifications/requests/{id}/accept` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
-| POST | `/api/v1/notifications/requests/{id}/dismiss` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No handler; normally Mastodon-shaped 404. |
+| POST | `/api/v1/notifications/requests/accept` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
+| POST | `/api/v1/notifications/requests/dismiss` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
+| GET | `/api/v1/notifications/requests/merged` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
+| GET | `/api/v1/notifications/requests/{id}` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
+| POST | `/api/v1/notifications/requests/{id}/accept` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
+| POST | `/api/v1/notifications/requests/{id}/dismiss` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404. |
 | GET | `/api/v1/notifications/unread_count` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | GET | `/api/v1/notifications/{id}` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v1/notifications/{id}/dismiss` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
@@ -199,9 +199,9 @@ Path parameter names are normalized to `{id}` (including names, tags and group k
 | GET | `/api/v2/filters/{id}/statuses` | **implemented** | [filters.rs](../mastomini_rs/src/api/filters.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v2/filters/{id}/statuses` | **implemented** | [filters.rs](../mastomini_rs/src/api/filters.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | GET | `/api/v2/notifications` | **implemented** | [notification_groups.rs](../mastomini_rs/src/api/notification_groups.rs) | Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping. |
-| GET | `/api/v2/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all; PUT does not persist changes. |
-| PATCH | `/api/v2/notifications/policy` | **missing** | [mod.rs](../mastomini_rs/src/api/mod.rs) | No PATCH handler (404); PUT alias exists but is a fixed accept-all no-op. |
-| PUT | `/api/v2/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all; PUT does not persist changes. |
+| GET | `/api/v2/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged. |
+| PATCH | `/api/v2/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged. |
+| PUT | `/api/v2/notifications/policy` | **stub** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged. |
 | GET | `/api/v2/notifications/unread_count` | **implemented** | [notification_groups.rs](../mastomini_rs/src/api/notification_groups.rs) | Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping. |
 | GET | `/api/v2/notifications/{id}` | **implemented** | [notification_groups.rs](../mastomini_rs/src/api/notification_groups.rs) | Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping. |
 | GET | `/api/v2/notifications/{id}/accounts` | **implemented** | [notification_groups.rs](../mastomini_rs/src/api/notification_groups.rs) | Groups favourite/reblog by target and follows together; other types individual. Filtered bounded RAM ring, group pagination/counts/accounts/dismissal; ungroup_types supported. No time-window grouping. |

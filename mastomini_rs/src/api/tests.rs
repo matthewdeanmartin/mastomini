@@ -792,6 +792,7 @@ fn streaming_is_advertised_as_absent() {
 }
 
 mod about;
+mod api_keys;
 mod codes;
 mod conversations;
 mod diag;
@@ -799,4 +800,40 @@ mod dm;
 mod edits_polls;
 mod lists_filters;
 mod moderation;
+mod pages;
 mod trust;
+
+#[test]
+fn notification_requests_are_never_pending() {
+    let mut s = Server::provisioned();
+    let token = s.login("alice", "alicepw", "read write");
+    let r = s.get("/api/v1/notifications/requests/merged", Some(&token));
+    assert_eq!(r.json_body(), json!({ "merged": true }));
+    assert_eq!(
+        s.get("/api/v1/notifications/requests/1", Some(&token))
+            .status,
+        404
+    );
+    for path in [
+        "/api/v1/notifications/requests/accept",
+        "/api/v1/notifications/requests/dismiss",
+    ] {
+        let r = s.post_form(path, Some(&token), &[("id[]", "1")]);
+        assert_eq!(r.status, 200, "{path}");
+        assert_eq!(r.json_body(), json!({}));
+    }
+    let r = s.post_form("/api/v1/notifications/requests/1/accept", Some(&token), &[]);
+    assert_eq!(r.status, 404);
+    let r = s.send(
+        Request::new("PATCH", "/api/v2/notifications/policy")
+            .with_header("Authorization", &format!("Bearer {token}"))
+            .with_body("application/json", r#"{"for_not_following":"filter"}"#),
+    );
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json_body()["for_not_following"], "accept");
+    // Signed out: the usual 401, not a hint about what exists.
+    assert_eq!(
+        s.get("/api/v1/notifications/requests/merged", None).status,
+        401
+    );
+}

@@ -80,6 +80,49 @@ With a token from the household API:
 | `POST /api/mastomini/v1/me/sign_out_everywhere` | Sign out every device |
 | `GET /api/mastomini/v1/me/devices` | Your signed-in apps: name, when signed in, last used since the last restart, and which one is making this request |
 | `DELETE /api/mastomini/v1/me/devices/<id>` | Sign one of them out |
+| `GET /api/mastomini/v1/me/api_keys` | Your API keys: name, scopes, when made, last used (never the keys) |
+| `POST /api/mastomini/v1/me/api_keys` with `name`, `scopes` (default `read write`), `password` | Make an API key; the response's `key` is shown this once |
+| `DELETE /api/mastomini/v1/me/api_keys/<id>` | Revoke one |
+
+### Bots and API keys
+
+A bot or script posts as a member with an API key. Make one under **My
+account → API keys** in the household app: give it a name (it shows as the
+app on the bot's posts), choose whether it may post or only read, and confirm
+with your password. Copy the key then; it is not shown again. The bot sends it
+like any Mastodon app token:
+
+```sh
+curl -H "Authorization: Bearer $KEY" -d "status=Sunny, 21°" https://mastomini.local/api/v1/statuses
+```
+
+Mastodon libraries take it as the access token, e.g. Mastodon.py's
+`Mastodon(access_token=KEY, api_base_url="https://mastomini.local")`. For a bot
+with its own name and avatar, have an admin create a member for it and make
+the key while signed in as that member; tick **bot** in its profile from any
+Mastodon app so others can tell.
+
+Keys are separate from signed-in devices: signing in on new phones never
+pushes a key out. Each member can have 4, the household 16. A key stops
+working when you revoke it, change your password or sign out everywhere, or
+when the account is deleted. A key can send direct messages but not read
+them: those stay sealed to devices you signed in on with your password.
+Making a key needs the password so that an app holding one of your tokens
+cannot make itself a longer-lived one.
+
+## Post and profile pages
+
+Mastodon apps offer "open in browser" (or "open original") for posts and
+profiles. Those links are plain pages on the board: `/@alice` (profile),
+`/@alice/<post id>` (a post and its thread), `/tags/<name>` and
+`/@alice/tagged/<name>`. No JavaScript; they work in any browser.
+
+Anyone on the network sees public and unlisted posts, as on Mastodon. To see
+followers-only posts, **Sign in** at the top of any page: it sets a read-only
+session in this browser, listed as "Web browser" under signed-in devices. It
+is only used by these pages, never the API, and ends like any device (sign
+out, password change, sign out everywhere). Direct messages show as encrypted
+here; read them in your app.
 
 ## Rules, terms of service and the about page
 
@@ -181,6 +224,22 @@ and the date of the oldest post kept, the board's memory, uptime, reason for
 the last restart and Wi-Fi signal, and how much of each limit is in use. The
 same data is `GET /api/mastomini/v1/diag` (admin token).
 `GET /api/mastomini/v1/status` (no sign-in) has a short summary.
+
+### Which firmware is the board running?
+
+`GET /api/mastomini/v1/version` (no sign-in) names the build: the package
+version, a `fingerprint` of every firmware input (sources, lockfile, board
+settings, certificates, the household app), the git `commit` and whether the
+tree had uncommitted changes (`dirty`), when it was built, and uptime. It says
+nothing about the household. From `mastomini_rs/`:
+
+```sh
+make board-version ADDRESS=192.168.1.161
+```
+
+compares the board's fingerprint with the working tree and exits 1 when they
+differ, i.e. when the board needs `make deploy`. Editing only tests does not
+change the fingerprint. A board that answers 404 predates the endpoint: flash it.
 
 ### When the board can't get the time
 

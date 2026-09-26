@@ -56,6 +56,16 @@ export interface Device {
   current: boolean;
 }
 
+/** `GET /api/mastomini/v1/me/api_keys`; `key` only in the create response. */
+export interface ApiKey {
+  id: string;
+  name: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+  key?: string;
+}
+
 /** `GET/PUT /api/mastomini/v1/admin/server`. */
 export interface ServerSettings {
   title: string;

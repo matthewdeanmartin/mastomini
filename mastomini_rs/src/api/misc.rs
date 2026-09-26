@@ -113,9 +113,23 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
             Ok(Response::ok(Value::Array(not_followed(c, viewer))))
         }
         ("GET", ["api", "v1", "directory"]) => directory(c),
-        ("GET" | "PUT", ["api", "v1" | "v2", "notifications", "policy"]) => {
+        // v1 updates with PUT, v2 with PATCH. Everyone who can notify a
+        // member is a member, so nothing is ever filtered.
+        ("GET" | "PUT" | "PATCH", ["api", "v1" | "v2", "notifications", "policy"]) => {
             c.user().map(|_| Response::ok(notification_policy()))
         }
+        // Notification requests (filtered notifications): never any, as
+        // above. Mastodon's shapes, so apps that ask don't see errors.
+        ("GET", ["api", "v1", "notifications", "requests", "merged"]) => {
+            c.user().map(|_| Response::ok(json!({ "merged": true })))
+        }
+        ("POST", ["api", "v1", "notifications", "requests", "accept" | "dismiss"]) => {
+            c.user().map(|_| Response::ok(json!({})))
+        }
+        ("GET", ["api", "v1", "notifications", "requests", _])
+        | ("POST", ["api", "v1", "notifications", "requests", _, "accept" | "dismiss"]) => c
+            .user()
+            .and_then(|_| Err(Response::error(404, "Record not found"))),
         // Tier 2, not yet implemented: empty lists so clients render nothing.
         (
             "GET",

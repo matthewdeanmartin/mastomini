@@ -154,7 +154,7 @@ impl<S: Store> Service<S> {
             .state
             .tokens
             .iter()
-            .filter(|t| t.rec.slot == slot)
+            .filter(|t| t.rec.slot == slot && !self.state.is_api_key(t.rec.id))
             .collect();
         out.sort_by_key(|t| core::cmp::Reverse(t.rec.id));
         out

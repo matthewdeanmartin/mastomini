@@ -89,10 +89,30 @@ def test_tags_notes_and_deferred_policy(household):
     response = requests.get(base + "/api/v1/accounts/relationships", headers=headers,
                             params={"id[]": account_id}, timeout=5)
     assert response.json()[0]["note"] == "private note"
-    response = requests.patch(base + "/api/v2/notifications/policy", headers=headers,
-                              json={"for_not_followers": "drop"}, timeout=5)
-    assert response.status_code == 404
-    response = requests.put(base + "/api/v2/notifications/policy", headers=headers,
-                            json={"for_not_followers": "drop"}, timeout=5)
-    assert response.status_code == 200
-    assert response.json()["for_not_followers"] == "accept"
+    for update in (requests.patch, requests.put):
+        response = update(base + "/api/v2/notifications/policy", headers=headers,
+                          json={"for_not_followers": "drop"}, timeout=5)
+        assert response.status_code == 200
+        assert response.json()["for_not_followers"] == "accept"
+
+
+def test_firmware_version_matches_the_fingerprint_build_rs_computed(server):
+    """scripts/firmware-version.py and build.rs must hash the same inputs the
+    same way, or every board would look out of date (or never would)."""
+    import requests
+    tool = load("firmware-version")
+    built = requests.get(f"{server.base}/api/mastomini/v1/version", timeout=5).json()
+    assert built["fingerprint"] == tool.fingerprint()
+
+
+def test_firmware_fingerprint_ignores_tests_and_sees_sources(tmp_path):
+    tool = load("firmware-version")
+    src = tmp_path / "mastomini_rs" / "src"
+    (src / "api" / "tests").mkdir(parents=True)
+    (src / "lib.rs").write_text("fn main() {}")
+    first = tool.fingerprint(tmp_path)
+    (src / "api" / "tests" / "x.rs").write_text("#[test] fn t() {}")
+    (src / "api" / "tests.rs").write_text("mod x;")
+    assert tool.fingerprint(tmp_path) == first
+    (src / "lib.rs").write_text("fn main() { }")
+    assert tool.fingerprint(tmp_path) != first

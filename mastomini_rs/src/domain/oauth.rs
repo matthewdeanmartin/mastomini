@@ -270,6 +270,20 @@ impl<S: Store> Service<S> {
         scopes: Vec<String>,
         now_ms: u64,
     ) -> Result<String> {
+        self.issue_token_with(slot, app_id, scopes, now_ms, true)
+    }
+
+    /// `counted`: the token is a session, capped per member and overall by
+    /// evicting the oldest session. API keys are not: they have their own
+    /// cap (local_tokens.rs) and are never evicted to make room.
+    pub(crate) fn issue_token_with(
+        &mut self,
+        slot: u8,
+        app_id: u64,
+        scopes: Vec<String>,
+        now_ms: u64,
+        counted: bool,
+    ) -> Result<String> {
         let epoch = self
             .state
             .account(slot)
@@ -277,28 +291,8 @@ impl<S: Store> Service<S> {
             .rec
             .token_epoch;
         self.govern(Some(slot), now_ms)?;
-        loop {
-            let mine = self
-                .state
-                .tokens
-                .iter()
-                .filter(|t| t.rec.slot == slot)
-                .count();
-            let victim = if mine >= MAX_TOKENS_PER_ACCOUNT {
-                self.state
-                    .tokens
-                    .iter()
-                    .filter(|t| t.rec.slot == slot)
-                    .min_by_key(|t| t.rec.id)
-            } else if self.state.tokens.len() >= MAX_TOKENS {
-                self.state.tokens.iter().min_by_key(|t| t.rec.id)
-            } else {
-                None
-            };
-            let Some(hash) = victim.map(|t| t.rec.hash) else {
-                break;
-            };
-            self.forget_token(&hash)?;
+        if counted {
+            self.make_room_for_session(slot)?;
         }
         let token = auth::random_secret();
         let rec = TokenRec {
@@ -315,6 +309,30 @@ impl<S: Store> Service<S> {
             last_used_ms: now_ms,
         });
         Ok(token)
+    }
+
+    /// Evict the oldest sessions past the per-member and overall caps. API
+    /// keys neither count nor go.
+    fn make_room_for_session(&mut self, slot: u8) -> Result<()> {
+        loop {
+            let state = &self.state;
+            let sessions = || state.tokens.iter().filter(|t| !state.is_api_key(t.rec.id));
+            let mine = sessions().filter(|t| t.rec.slot == slot).count();
+            let victim = if mine >= MAX_TOKENS_PER_ACCOUNT {
+                sessions()
+                    .filter(|t| t.rec.slot == slot)
+                    .min_by_key(|t| t.rec.id)
+            } else if sessions().count() >= MAX_TOKENS {
+                sessions().min_by_key(|t| t.rec.id)
+            } else {
+                None
+            };
+            let Some(hash) = victim.map(|t| t.rec.hash) else {
+                break;
+            };
+            self.forget_token(&hash)?;
+        }
+        Ok(())
     }
 
     /// `grant_type=client_credentials`: an app-only token, kept in RAM.
@@ -376,7 +394,11 @@ impl<S: Store> Service<S> {
         let disabled = account.rec.disabled;
         token.last_used_ms = now_ms;
         let slot = token.rec.slot;
-        let app_id = token.rec.app_id;
+        // A local token stands for itself: an API key's posts name the key.
+        let app_id = match token.rec.app_id {
+            LOCAL_APP => token.rec.id,
+            app => app,
+        };
         let scopes = token.rec.scopes.clone();
         Some(Principal {
             slot: Some(slot),

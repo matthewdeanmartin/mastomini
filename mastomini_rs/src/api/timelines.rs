@@ -284,7 +284,9 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("GET", ["api", "v1", "notifications", id]) if *id != "policy" => notification(c, id),
         ("POST", ["api", "v1", "notifications", "clear"]) => clear(c),
         ("POST", ["api", "v1", "notifications", "dismiss"]) => dismiss(c, None),
-        ("POST", ["api", "v1", "notifications", id, "dismiss"]) => dismiss(c, Some(id)),
+        ("POST", ["api", "v1", "notifications", id, "dismiss"]) if *id != "requests" => {
+            dismiss(c, Some(id))
+        }
         ("GET", ["api", "v2", "notifications"]) => super::notification_groups::list(c),
         ("GET", ["api", "v2", "notifications", key]) if *key != "policy" => {
             super::notification_groups::show(c, key)

@@ -73,7 +73,7 @@ impl Server {
         handle(&mut self.svc, &self.ctx, &req, Some(self.now))
     }
 
-    fn authed(req: Request, token: Option<&str>) -> Request {
+    pub fn authed(req: Request, token: Option<&str>) -> Request {
         match token {
             Some(t) => req.with_header("Authorization", &format!("Bearer {t}")),
             None => req,

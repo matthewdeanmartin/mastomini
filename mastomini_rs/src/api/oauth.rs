@@ -59,6 +59,18 @@ fn verify_app<S: Store>(c: &Call<'_, S>) -> Reply {
         .principal
         .as_ref()
         .ok_or_else(|| fail(Error::Unauthorized))?;
+    // An API key is its own "app", named by the member.
+    if let Some(key) = c.svc.state.local_token(principal.app_id) {
+        return Ok(Response::ok(json!({
+            "id": key.token_id.to_string(),
+            "name": key.name,
+            "website": null,
+            "scopes": principal.scopes,
+            "redirect_uri": "",
+            "redirect_uris": [],
+            "vapid_key": "",
+        })));
+    }
     let app = c
         .svc
         .state

@@ -3,7 +3,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { Api } from './api';
-import { Code, Device, Diag, Member, Security, ServerSettings, Status } from './models';
+import { ApiKey, Code, Device, Diag, Member, Security, ServerSettings, Status } from './models';
 
 const V1 = '/api/mastomini/v1';
 
@@ -54,6 +54,19 @@ export class Household {
 
   signOutEverywhere(): Promise<void> {
     return this.api.post(`${V1}/me/sign_out_everywhere`);
+  }
+
+  apiKeys(): Promise<ApiKey[]> {
+    return this.api.get(`${V1}/me/api_keys`);
+  }
+
+  /** The response carries the key itself, this once. */
+  createApiKey(name: string, scopes: string, password: string): Promise<ApiKey> {
+    return this.api.post(`${V1}/me/api_keys`, { name, scopes, password });
+  }
+
+  revokeApiKey(id: string): Promise<void> {
+    return this.api.delete(`${V1}/me/api_keys/${encodeURIComponent(id)}`);
   }
 
   // Admin

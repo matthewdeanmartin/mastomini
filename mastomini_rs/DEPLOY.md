@@ -198,6 +198,17 @@ the household state; after an upgrade it must match before the upgrade.
 If only `mastomini.local` fails, mDNS is blocked on this computer: report it,
 it is not a deployment failure.
 
+Then confirm the board runs exactly this working tree (read-only):
+
+```bash
+make board-version ADDRESS=192.168.x.y
+```
+
+Success: `Board firmware matches this working tree.` (exit 0). It compares the
+build fingerprint from `GET /api/mastomini/v1/version` with the same hash of
+the working tree's firmware inputs. Before a deploy, the same command tells you
+whether one is needed at all: exit 1 means the board differs.
+
 ## First-time setup (done by the household, not by the operator)
 
 After a first install the board is unprovisioned. Do not create the household
@@ -341,3 +352,28 @@ Add a row after every first install. Update the address when it changes.
   verified. Boot: `accounts=2 statuses=2 repairs=0`, both listeners, ready at
   `192.168.1.161`; probe passed by IP including strict HTTPS and "this build's
   certificate".
+- **2026-09-25 — transport rebuild** on COM11 (MAC `ac:a7:04:2c:29:9c`),
+  revision `5555dbb` with uncommitted changes. `make check` passed: 151 Rust
+  tests, 15 UI tests, smoke, 23 client tests, 138 conformance tests (58
+  skipped, 14 xfailed). Before flashing, the board answered HTTP without
+  `Server-Timing`: it ran firmware older than the 2026-09-25 performance work,
+  which nothing on the board could show. This build adds
+  `GET /api/mastomini/v1/version` and `make board-version`. Procedure A,
+  2,204,960 bytes, hash verified. Boot: `store: provisioned=true accounts=2
+  statuses=2 repairs=0`, `TLS session tickets on`, HTTPS 7 sockets and HTTP 4,
+  both backlog 8, ready at `192.168.1.161`. Probe passed by IP (strict HTTPS,
+  this build's certificate and CA); `make board-version` matched. Measurements
+  are in spec/08 "Board transport".
+- **2026-09-25 (later) — API keys and post/profile pages**, same board,
+  revision `5555dbb` with uncommitted changes. `make check` passed (164 Rust,
+  15 UI, smoke, 25 client, 138 conformance / 58 skipped / 14 xfailed). New
+  record kind only (`LocalToken`); no existing layout changed, no wipe.
+  Procedure A, hash verified. The first boot after flashing **did not join
+  Wi-Fi** within its one attempt and opened `mastomini-setup`; the store was
+  intact (`accounts=2 statuses=2 repairs=0`). One more `make boot-log` joined
+  normally (RSSI -71, weak) and was ready at `192.168.1.161`; the full log is
+  `.local/boot-log-2026-09-25.txt`. Known gap, not fixed: a board that fails
+  its boot-time join stays in setup mode and never retries the saved network
+  (likely after a power cut, when the router boots slower than the board).
+  Probe passed; `make board-version` matched; `/@matt`, `/tags/…` and
+  `/web/signin` serve pages over HTTP and HTTPS.

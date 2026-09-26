@@ -1097,7 +1097,7 @@
       "path": "/api/v1/notifications/policy",
       "tier": 2,
       "status": "stub",
-      "note": "Always accept-all; PUT does not persist changes.",
+      "note": "Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged.",
       "source": "mastomini_rs/src/api/misc.rs"
     },
     {
@@ -1112,17 +1112,17 @@
       "method": "GET",
       "path": "/api/v1/notifications/requests/merged",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "GET",
       "path": "/api/v1/notifications/requests/{id}",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "GET",
@@ -1545,7 +1545,7 @@
       "path": "/api/v2/notifications/policy",
       "tier": 2,
       "status": "stub",
-      "note": "Always accept-all; PUT does not persist changes.",
+      "note": "Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged.",
       "source": "mastomini_rs/src/api/misc.rs"
     },
     {
@@ -1656,9 +1656,9 @@
       "method": "PATCH",
       "path": "/api/v2/notifications/policy",
       "tier": 2,
-      "status": "missing",
-      "note": "No PATCH handler (404); PUT alias exists but is a fixed accept-all no-op.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "POST",
@@ -2160,33 +2160,33 @@
       "method": "POST",
       "path": "/api/v1/notifications/requests/accept",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "POST",
       "path": "/api/v1/notifications/requests/dismiss",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "POST",
       "path": "/api/v1/notifications/requests/{id}/accept",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "POST",
       "path": "/api/v1/notifications/requests/{id}/dismiss",
       "tier": 2,
-      "status": "missing",
-      "note": "No handler; normally Mastodon-shaped 404.",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "stub",
+      "note": "Neutral: members are the only accounts that can notify, so nothing is ever filtered; merged is always true, bulk accept/dismiss return {}, a single request id is 404.",
+      "source": "mastomini_rs/src/api/misc.rs"
     },
     {
       "method": "POST",
@@ -2497,7 +2497,7 @@
       "path": "/api/v1/notifications/policy",
       "tier": 2,
       "status": "stub",
-      "note": "Always accept-all; PUT does not persist changes.",
+      "note": "Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged.",
       "source": "mastomini_rs/src/api/misc.rs"
     },
     {
@@ -2553,7 +2553,7 @@
       "path": "/api/v2/notifications/policy",
       "tier": 2,
       "status": "stub",
-      "note": "Always accept-all; PUT does not persist changes.",
+      "note": "Always accept-all (every notifier is a household member); PUT/PATCH return it unchanged.",
       "source": "mastomini_rs/src/api/misc.rs"
     }
   ],
@@ -2562,47 +2562,49 @@
     "mastomini_rs/src/api/accounts.rs": "1247568be61a2b6c1607eb211610f2657b3b9dfe6f1ec04e671a4919748b4d40",
     "mastomini_rs/src/api/collections.rs": "87b761668b729e96792777f500fff4b43a051d02ff1a03b352ec42a880216414",
     "mastomini_rs/src/api/conversations.rs": "2dad23befe98dff8736d0a99abc6f7a8f8cba40fbd2c685a970df19be55d9748",
-    "mastomini_rs/src/api/diag.rs": "5a85bb01c507f67982c1edf5d215f328023f5a904d79ad756d67a3584f762a6e",
-    "mastomini_rs/src/api/entities.rs": "36bf5caad27f22a7a8932e9e8ff3d75f6f8edfa0b81058f6141b2f13925ecbc9",
+    "mastomini_rs/src/api/diag.rs": "150c9947135038ce487818c4e7b3e35c16168daa317858de733704e81ca9f1d2",
+    "mastomini_rs/src/api/entities.rs": "5dd7b0f60f5fad6a9e1e7b868bd6ed304ced3bc2652610f69f90c0b8d3bba443",
     "mastomini_rs/src/api/filters.rs": "75c89fa1c8cc80d0f9f788f1ac4c9a5c4cb594ecdda411b308274d03c2f6de69",
-    "mastomini_rs/src/api/household.rs": "e80a146f21aa19db4f9737bd3c8c418bd9ff2a9d79db4eceb3a7d4d639446433",
+    "mastomini_rs/src/api/household.rs": "4e3991f8b8af1c818175770f5661237c690f43a7f61d4db4c40a6e388baa9ed7",
     "mastomini_rs/src/api/html.rs": "fe0c5bb50d02e4c74257dd1c992e79d40a712ff46333d630ad624ae63f1f5a4d",
     "mastomini_rs/src/api/instance.rs": "616cc133058d424ed6677441ba3dc4b7aa938d8f661aa8d66c1faf2ed4f71493",
     "mastomini_rs/src/api/lists.rs": "d5055a97fb26d5501e5f33fd7b4153389508e7542ff5868cc5494d202635b9ac",
-    "mastomini_rs/src/api/misc.rs": "47e20c402afce54542e77658e5aa231913af6a6a7cb8f9b22bf6276cdbd5fa73",
-    "mastomini_rs/src/api/mod.rs": "34c5da85fcbfe8c18d1a0839749b1092fbfe511d7a0db9fcfc8d0627f7fd0e16",
+    "mastomini_rs/src/api/misc.rs": "f49abe0ae4457d63d969bd5da6b8cee6cedf69badd20cfcfa1647885ab9fbc8c",
+    "mastomini_rs/src/api/mod.rs": "917290c4f8adf9a7cbe27add4dfc9b3cca8762f974eca31baf7407deaf37d2bd",
     "mastomini_rs/src/api/moderation.rs": "3174eea542b798a952cd942c9c035c3546194823d062ca89743d4e2858564ce7",
     "mastomini_rs/src/api/notification_groups.rs": "6336cc8331e385cc10ca3464850f77e3846e267af7c10224aabaa280c30f6693",
-    "mastomini_rs/src/api/oauth.rs": "6d18f6c340932aac0bd6e039ae98116410bbd711c0d15aab1502be2f07d5c2e8",
+    "mastomini_rs/src/api/oauth.rs": "9007f446e13be59b7396e3fd07c5b8c66931e3518c9e6977ad98dfc6cc8e4372",
     "mastomini_rs/src/api/setup.rs": "9b62dec8e3e5e015f4ee3d1a8a7427ae1ffc9d8900a4a35fde3a02128765cdfc",
     "mastomini_rs/src/api/social.rs": "2fcf88e36509bb95daad8dd4f5346ccebce0c4a90ce3f9a1ade56b28b518946c",
     "mastomini_rs/src/api/statuses.rs": "591f6652605dba96851647bb235a489ca0e66715a47c33d36be90c38eafb78f8",
     "mastomini_rs/src/api/time.rs": "0ff507b79b766d5ce1c1ef3a0b76d1b8c6374974968e413f587be080d2a4f4f8",
-    "mastomini_rs/src/api/timelines.rs": "75e1e78109eb0fa5d253f08f967558156b4ffb48769ed1126e817f68ce499eea",
+    "mastomini_rs/src/api/timelines.rs": "465ae1050df9aff24670127e66cbd40ac698ad304ea718f6a82a849164605236",
     "mastomini_rs/src/api/trust.rs": "e8b6bdbecfff8abb94c111a972e5b08af5c03bd3bf6b10d9ec1a6c70c12f111b",
     "mastomini_rs/src/auth.rs": "96802f952161104fa0e85dbd1ad07174a06576e5a2871a8489aa74855de562f2",
-    "mastomini_rs/src/codec.rs": "df14805b96679444941128236f52adeea5e3b2785b194818fb7ae84f900a1be1",
+    "mastomini_rs/src/codec.rs": "55d1eb6ed59e8fd9e5733b91f2754679032e4f326091b68d23a9b82047e265c8",
     "mastomini_rs/src/crypto.rs": "f7f577b86c5299efc644733180226d6ab7c524e2421c4566261018c8563d63d3",
     "mastomini_rs/src/domain/accounts.rs": "8fa64f1991516eb3925a35bda34001499bdd92e88843df8c990d80d7bb917d02",
-    "mastomini_rs/src/domain/codes.rs": "a8ea33385ee6f4468f7ada6ce11a7cb464f2039ca1adfbd4c3659aea3072c115",
+    "mastomini_rs/src/domain/codes.rs": "6384ee69f3312adcf8089ee7f9335ff4f5e3aa235eb0563a2ef9fa25e79ed0ca",
     "mastomini_rs/src/domain/collections.rs": "189caf17f1eaf413c8f04080bbdde6d449305738d27448af42c06c26db0b7a78",
     "mastomini_rs/src/domain/conversations.rs": "7f0adcbdc7ee46c582be702b420eaf94e8251b0b42ee9ee5d6209f2a56e3bebf",
-    "mastomini_rs/src/domain/dm.rs": "70dd7184999d1380afd234428b732591db4756ca1e6b73018545065b4e19765d",
+    "mastomini_rs/src/domain/dm.rs": "1168c9fc203291cae0d65c58b7784e71f761235913ca6c316d08e0a1affa7e34",
     "mastomini_rs/src/domain/edits.rs": "3b51e0b072adc8ce0192f790a9bf6e8d234be68ea2decc2a1a41e37ddb560b67",
     "mastomini_rs/src/domain/filters.rs": "f734584017abf18fb723f5c661899ddd27a3ea32e0e4fca5003e202cffada5bb",
     "mastomini_rs/src/domain/follow_requests.rs": "2dd9639c61bbda73f13f9c600eb5ddd360ddd966a14f5fada1c296e46b684f14",
     "mastomini_rs/src/domain/lists.rs": "ade8ceb87af94017f283807ab1559a13215525d17878a454d4ba298f74020c78",
-    "mastomini_rs/src/domain/mod.rs": "7c42f5332fee6142a21a56e2b0a9196781d42f674ac0e14a450430e37e80a4c4",
+    "mastomini_rs/src/domain/mod.rs": "9e775b9864af6258c0c9409732141cc52b79a211f9c0a32e440bf11805e618a9",
     "mastomini_rs/src/domain/moderation.rs": "bbb896412f8976df5326c2283aed12d7fbb56d9a159521d67b81256a4a0b0660",
-    "mastomini_rs/src/domain/oauth.rs": "9c46106189a026e7904401b09b8fd588ddaff933f06dbc40da1646602e1beaa0",
+    "mastomini_rs/src/domain/oauth.rs": "9f9bd0f79f7e4b8453bf3c16c0900d3322ea2b8d55c07d108ff4ad9a8e5ed7e0",
     "mastomini_rs/src/domain/polls.rs": "3d4ed72fa217dc70511c2de769887cd425794ac33beadefe02b2536940ea711a",
     "mastomini_rs/src/domain/query.rs": "66a716b3f2de2063769d85361723b39f3468091da6fc734accd9dfdf8d8a87fc",
     "mastomini_rs/src/domain/records.rs": "9a2ffd5de849fb9e26daac45d1afba98f72e9df5d50aaa9010ff2703eb7ee7bc",
     "mastomini_rs/src/domain/server.rs": "2529408be7688529d47fd2be2252fd81c2377661fa6f78088f769759681ad5d6",
     "mastomini_rs/src/domain/social.rs": "64a7705d71e24b9d2d5298f24605d4c07936b9bc7e4f7e2bf65f194400581105",
     "mastomini_rs/src/domain/statuses.rs": "661f9c6c2c4255a34af6106e82d21a0cc53c228ff5a2b2b1ecccf6f59f58d67e",
-    "mastomini_rs/src/http.rs": "c40c05071cd7d76d40d03831dfc228cd6a9477fcd0df8601e8b5c786ee5b064e",
+    "mastomini_rs/src/http.rs": "1e271240a61cec933fea12a48ae91d1d69ef48cd88d15facc0e975ca1b6b40a4",
     "mastomini_rs/src/store/mod.rs": "656faa66a56be2b9bc9c3e7b3eb1fb56ee595d91feee5b59eaaa7d4026e4c4c3",
-    "mastomini_rs/src/text.rs": "ed408dd1f7d36c30cd06dfd959e38f1df7a7669b86307c08443000b8c553a140"
+    "mastomini_rs/src/text.rs": "ed408dd1f7d36c30cd06dfd959e38f1df7a7669b86307c08443000b8c553a140",
+    "mastomini_rs/src/api/pages.rs": "d907f485a090573d931a6fc794a5ffe71bbeb61246a0dbf3d212c3b89aee757c",
+    "mastomini_rs/src/domain/local_tokens.rs": "26966dcff71c95be7d2a5b617a9f5940bb71e62acf2c7afd731f750c7758beae"
   }
 }

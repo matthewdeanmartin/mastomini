@@ -13,33 +13,27 @@ compile_error!(
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::{cpu::Core, peripherals::Peripherals, task::thread::ThreadSpawnConfiguration},
-    http::{
-        server::{Configuration as HttpConfiguration, EspHttpServer},
-        Method,
-    },
-    io::{Read, Write},
     mdns::EspMdns,
     nvs::{EspDefaultNvsPartition, EspNvs, EspNvsPartition, NvsCustom},
     sntp::{EspSntp, SntpConf},
-    sys::EspError,
-    tls::X509,
     wifi::{BlockingWifi, EspWifi},
 };
 use mastomini::{
-    api::{self, diag::Platform, Ctx},
+    api::{diag::Platform, Ctx},
     domain::{Config, Service},
-    http::{Request, Response, FORWARDED_HEADERS, UPLOAD_BODY_LIMIT},
     tls::Tls,
 };
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[path = "esp32/net.rs"]
 mod net;
 #[path = "esp32/nvs_store.rs"]
 mod nvs_store;
+#[path = "esp32/server.rs"]
+mod server;
 use net::Net;
 use nvs_store::NvsStore;
 
@@ -197,6 +191,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+    // Modem sleep (the default) wakes the radio only at DTIM beacons, so an
+    // idle board answered after 100–300 ms. The board runs on mains power.
+    // SAFETY: Wi-Fi is initialized and started (station or setup network).
+    if let Err(e) = esp_idf_svc::sys::esp!(unsafe {
+        esp_idf_svc::sys::esp_wifi_set_ps(esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_NONE)
+    }) {
+        log::warn!("Wi-Fi power saving stays on: {e}");
+    }
     let net = Arc::new(Mutex::new(net));
 
     let mut time_config = SntpConf::default();
@@ -205,45 +207,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _sntp = EspSntp::new(&time_config)?;
 
-    // Two listeners, one service (spec/05 "Easy mode"). Sockets: each httpd
-    // takes its open sockets plus a listening and a control socket, and both
-    // together must fit CONFIG_LWIP_MAX_SOCKETS (16) with the captive DNS
-    // socket: (5 + 2) + (4 + 2) + 1 = 14. Measured (spec/04 "Streaming"):
-    // stalls come from the listen backlog at 8+ simultaneous connects, not
-    // from the socket count, and least-recently-used purging keeps clients
-    // moving. TLS sessions' buffers live in PSRAM (sdkconfig.defaults).
-    let mut https = EspHttpServer::new(&HttpConfiguration {
-        https_port: 443,
-        // Distinct from the HTTP server's default 32768.
-        ctrl_port: 32769,
-        core: Some(Core::Core1),
-        // serde_json rendering, plus the TLS handshake's frames.
-        stack_size: 32 * 1024,
-        max_open_sockets: 5,
-        max_sessions: 5,
-        lru_purge_enable: true,
-        max_uri_handlers: 8,
-        uri_match_wildcard: true,
-        session_timeout: Duration::from_secs(10),
-        server_certificate: Some(X509::pem_until_nul(SERVER_CERT.as_bytes())),
-        private_key: Some(X509::pem_until_nul(SERVER_KEY.as_bytes())),
-        ..Default::default()
-    })?;
-    register(&mut https, true, &shared, &ctx, &net)?;
-    let mut http = EspHttpServer::new(&HttpConfiguration {
-        http_port: 80,
-        core: Some(Core::Core1),
-        stack_size: 32 * 1024,
-        max_open_sockets: 4,
-        max_sessions: 4,
-        // Evict the least recently used connection instead of refusing.
-        lru_purge_enable: true,
-        max_uri_handlers: 8,
-        uri_match_wildcard: true,
-        session_timeout: Duration::from_secs(10),
-        ..Default::default()
-    })?;
-    register(&mut http, false, &shared, &ctx, &net)?;
+    // Two listeners, one service (spec/05 "Easy mode"), on httpd directly
+    // (server.rs). Sockets: each httpd takes its open sockets plus a
+    // listening and a control socket, and both together must fit
+    // CONFIG_LWIP_MAX_SOCKETS (20) with the captive DNS socket:
+    // (7 + 2) + (4 + 2) + 1 = 16. Seven HTTPS sockets let a browser or a
+    // chatty app keep its usual six connections open without least-recently-
+    // used purging forcing reconnects. TLS sessions' buffers live in PSRAM
+    // (sdkconfig.defaults).
+    server::init_tls(SERVER_CERT, SERVER_KEY)?;
+    server::start(
+        &server::Settings {
+            port: 443,
+            ctrl_port: 32769,
+            sockets: 7,
+            backlog: 8,
+        },
+        server::Listener {
+            secure: true,
+            shared: Arc::clone(&shared),
+            ctx: Arc::clone(&ctx),
+            net: Arc::clone(&net),
+        },
+    )?;
+    server::start(
+        &server::Settings {
+            port: 80,
+            ctrl_port: 32768,
+            sockets: 4,
+            backlog: 8,
+        },
+        server::Listener {
+            secure: false,
+            shared: Arc::clone(&shared),
+            ctx: Arc::clone(&ctx),
+            net: Arc::clone(&net),
+        },
+    )?;
 
     let mut mdns = EspMdns::take()?;
     mdns.set_hostname(HOSTNAME)?;
@@ -300,100 +300,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     }
-}
-
-/// Route every method on one listener to the API. `secure`: this is the
-/// HTTPS listener.
-fn register(
-    server: &mut EspHttpServer<'static>,
-    secure: bool,
-    shared: &Shared,
-    ctx: &Arc<Ctx>,
-    net: &Arc<Mutex<Net>>,
-) -> Result<(), EspError> {
-    for (method, name) in [
-        (Method::Get, "GET"),
-        (Method::Head, "HEAD"),
-        (Method::Post, "POST"),
-        (Method::Put, "PUT"),
-        (Method::Patch, "PATCH"),
-        (Method::Delete, "DELETE"),
-        (Method::Options, "OPTIONS"),
-    ] {
-        let shared = Arc::clone(shared);
-        let ctx = Arc::clone(ctx);
-        let net = Arc::clone(net);
-        server.fn_handler::<esp_idf_svc::io::EspIOError, _>("/*", method, move |mut req| {
-            let started = Instant::now();
-            let mut body_ms = 0.0;
-            let mut lock_ms = 0.0;
-            let head = name == "HEAD";
-            let mut request = Request::new(if head { "GET" } else { name }, req.uri());
-            request.secure = secure;
-            for header in FORWARDED_HEADERS {
-                if let Some(value) = req.header(header) {
-                    request
-                        .headers
-                        .push((header.to_string(), value.to_string()));
-                }
-            }
-            let length = req
-                .header("Content-Length")
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(0);
-            let reply = if length > UPLOAD_BODY_LIMIT {
-                Response::error(413, "Request body is too large")
-            } else {
-                let mut body = vec![0; length];
-                if req.read_exact(&mut body).is_err() {
-                    Response::error(400, "Request body ended early")
-                } else {
-                    request.body = body;
-                    body_ms = started.elapsed().as_secs_f64()*1000.0;
-                    // Never hold the network and service locks together.
-                    let (setup, joined) = {
-                        let net = net.lock().unwrap();
-                        (net.setup_mode, net.sta_ip.is_some())
-                    };
-                    if request.path == "/setup/wifi" {
-                        let provisioned = shared.lock().unwrap().state.provisioned;
-                        net.lock().unwrap().page(&request, provisioned)
-                    } else if let Some(to) =
-                        setup.then(|| net::captive(&request.path, joined)).flatten()
-                    {
-                        Response::redirect(&format!("http://{}{to}", net::AP_IP))
-                    } else {
-                        let waiting = Instant::now();
-                        let mut service = shared.lock().unwrap();
-                        lock_ms = waiting.elapsed().as_secs_f64()*1000.0;
-                        api::handle(&mut service, &ctx, &request, now_ms())
-                    }
-                }
-            };
-            let reply = reply.with_timing(&format!("body;dur={body_ms:.3}, lock;dur={lock_ms:.3}"));
-            let mut headers: Vec<(&str, &str)> = reply
-                .headers
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()))
-                .collect();
-            // Plain HTTP: free the socket promptly, the board has few. HTTPS:
-            // keep it, because a new TLS handshake costs about a second of
-            // CPU and a request on an open connection about 0.1 s (measured
-            // on the board); least-recently-used purging reclaims idle ones.
-            if !secure {
-                headers.push(("Connection", "close"));
-            }
-            let sending = Instant::now();
-            let mut response = req.into_response(reply.status, None, &headers)?;
-            if !head {
-                response.write_all(&reply.body)?;
-            }
-            if started.elapsed().as_millis() >= 250 || option_env!("MASTOMINI_TRACE_TIMING")==Some("1") {
-                log::info!("timing method={} route={} status={} bytes={} body_ms={body_ms:.3} lock_ms={lock_ms:.3} send_ms={:.3} accepted_total_ms={:.3}",
-                    name,mastomini::http::route_label(&request.path),reply.status,reply.body.len(),sending.elapsed().as_secs_f64()*1000.0,started.elapsed().as_secs_f64()*1000.0);
-            }
-            Ok(())
-        })?;
-    }
-    Ok(())
 }

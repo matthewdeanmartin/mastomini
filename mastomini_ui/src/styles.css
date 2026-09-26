@@ -223,3 +223,9 @@ dl.facts dt {
 dl.facts dd {
   margin: 0;
 }
+
+/* A one-time secret (API key): long, unbroken, must wrap on phones. */
+code.secret {
+  word-break: break-all;
+  user-select: all;
+}

@@ -131,7 +131,18 @@ impl<S: Store> Service<S> {
 
     /// Erase a user token and its device seal.
     pub(crate) fn forget_token(&mut self, hash: &[u8; 32]) -> Result<()> {
+        let id = self
+            .state
+            .tokens
+            .iter()
+            .find(|t| t.rec.hash == *hash)
+            .map(|t| t.rec.id);
         self.erase(Ns::Tok, &keys::token(hash))?;
+        // After the token: a description left alone is repaired at boot.
+        if let Some(id) = id.filter(|id| self.state.local_tokens.contains_key(id)) {
+            self.erase(Ns::Tok, &keys::local_token(id))?;
+            self.state.local_tokens.remove(&id);
+        }
         self.state.tokens.retain(|t| t.rec.hash != *hash);
         let seal = keys::token_seal(hash);
         if self.state.token_seals.remove(&seal).is_some() {

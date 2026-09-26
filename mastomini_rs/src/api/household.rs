@@ -304,12 +304,18 @@ fn devices<S: Store>(c: &Call<'_, S>) -> Reply {
         .devices(slot)
         .into_iter()
         .map(|t| {
-            let app = c.svc.state.apps.get(&t.rec.app_id);
+            // A browser session from the post and profile pages has no app.
+            let app = c.svc.state.application_name(t.rec.app_id).or_else(|| {
+                c.svc
+                    .state
+                    .local_token(t.rec.id)
+                    .map(|l| (l.name.as_str(), None))
+            });
             json!({
                 "id": t.rec.id.to_string(),
                 "app": {
-                    "name": app.map(|a| a.name.as_str()),
-                    "website": app.and_then(|a| a.website.as_deref()),
+                    "name": app.map(|(name, _)| name),
+                    "website": app.and_then(|(_, website)| website),
                 },
                 "scopes": t.rec.scopes,
                 "created_at": time::iso(crate::ids::millis(t.rec.id)),
@@ -319,6 +325,66 @@ fn devices<S: Store>(c: &Call<'_, S>) -> Reply {
         })
         .collect();
     Ok(Response::ok(Value::Array(rows)))
+}
+
+fn api_key_json(t: &crate::domain::Token, key: &crate::domain::LocalTokenRec) -> Value {
+    json!({
+        "id": t.rec.id.to_string(),
+        "name": key.name,
+        "scopes": t.rec.scopes,
+        "created_at": time::iso(crate::ids::millis(t.rec.id)),
+        "last_used_at": (t.last_used_ms > 0).then(|| time::iso(t.last_used_ms)),
+    })
+}
+
+/// `GET /me/api_keys`: the member's API keys (never the keys themselves).
+fn api_keys<S: Store>(c: &Call<'_, S>) -> Reply {
+    let slot = c.user()?;
+    let rows: Vec<Value> = c
+        .svc
+        .api_keys(slot)
+        .into_iter()
+        .map(|(t, key)| api_key_json(t, key))
+        .collect();
+    Ok(Response::ok(Value::Array(rows)))
+}
+
+/// `POST /me/api_keys` with `name`, `scopes` (default `read write`) and the
+/// member's `password`: the key, shown this once.
+fn create_api_key<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let slot = c.user()?;
+    let name = c.params.get("name").unwrap_or("").to_string();
+    let scopes = c
+        .params
+        .get("scopes")
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("read write")
+        .to_string();
+    let password = c.params.get("password").unwrap_or("").to_string();
+    let (id, key) = match c.svc.create_api_key(slot, &password, &name, &scopes, c.now) {
+        Ok(created) => created,
+        Err(Error::Unauthorized) => return Err(Response::error(403, "Wrong password")),
+        Err(e) => return Err(fail(e)),
+    };
+    let (t, rec) = c
+        .svc
+        .api_keys(slot)
+        .into_iter()
+        .find(|(t, _)| t.rec.id == id)
+        .ok_or_else(|| fail(Error::NotFound))?;
+    let mut body = api_key_json(t, rec);
+    body["key"] = json!(key);
+    Ok(Response::ok(body).with_header("Cache-Control", "no-store"))
+}
+
+fn revoke_api_key<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let slot = c.user()?;
+    let id = c.id(id)?;
+    if !c.svc.api_keys(slot).iter().any(|(t, _)| t.rec.id == id) {
+        return Err(fail(Error::NotFound));
+    }
+    c.svc.revoke_device(slot, id, c.now).map_err(fail)?;
+    Ok(Response::ok(json!({})))
 }
 
 fn revoke_device<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
@@ -337,6 +403,9 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", ["me", "sign_out_everywhere"]) => sign_out_everywhere(c),
         ("GET", ["me", "devices"]) => devices(c),
         ("DELETE", ["me", "devices", id]) => revoke_device(c, id),
+        ("GET", ["me", "api_keys"]) => api_keys(c),
+        ("POST", ["me", "api_keys"]) => create_api_key(c),
+        ("DELETE", ["me", "api_keys", id]) => revoke_api_key(c, id),
         ("POST", ["admin", "invites"]) => create_invite(c),
         ("GET", ["admin", "codes"]) => list_codes(c),
         ("DELETE", ["admin", "codes", id]) => revoke_code(c, id),

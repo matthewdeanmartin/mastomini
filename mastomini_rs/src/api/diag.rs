@@ -81,6 +81,47 @@ pub fn transport_mode(ctx: &super::Ctx) -> &'static str {
     }
 }
 
+/// Which sources this binary was built from (build.rs). `fingerprint`
+/// changes with any firmware input, committed or not;
+/// `scripts/firmware-version.py` compares it with the working tree.
+pub fn build() -> Value {
+    let built_ms = env!("MASTOMINI_BUILD_MS").parse::<u64>().unwrap_or(0);
+    let mut features = Vec::new();
+    if cfg!(feature = "desktop") {
+        features.push("desktop");
+    }
+    if cfg!(feature = "esp32") {
+        features.push("esp32");
+    }
+    if crate::web::bundled() {
+        features.push("bundled-web");
+    }
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "fingerprint": env!("MASTOMINI_BUILD_FINGERPRINT"),
+        "commit": Some(env!("MASTOMINI_BUILD_COMMIT")).filter(|c| !c.is_empty()),
+        "dirty": match env!("MASTOMINI_BUILD_DIRTY") {
+            "1" => Some(true),
+            "0" => Some(false),
+            _ => None,
+        },
+        "built_at": (built_ms > 0).then(|| time::iso(built_ms)),
+        "profile": env!("MASTOMINI_BUILD_PROFILE"),
+        "features": features,
+        "trace_timing": option_env!("MASTOMINI_TRACE_TIMING") == Some("1"),
+    })
+}
+
+/// `GET /version` (public): the build, and how long it has been running.
+/// Nothing household-specific, so no sign-in: a deploy script asks it
+/// before deciding to flash.
+fn version<S: Store>(c: &Call<'_, S>) -> Reply {
+    let mut body = build();
+    body["target"] = json!((c.ctx.platform)().target);
+    body["uptime_ms"] = json!((c.ctx.uptime_ms)());
+    Ok(Response::ok(body).with_header("Cache-Control", "no-store"))
+}
+
 fn require_owner<S: Store>(c: &Call<'_, S>, slot: u8) -> Result<(), Response> {
     match c.svc.state.account(slot).map(|a| a.rec.role) {
         Some(Role::Owner) => Ok(()),
@@ -99,6 +140,7 @@ fn diag<S: Store>(c: &mut Call<'_, S>) -> Reply {
     let oldest = s.statuses.keys().next().copied();
     Ok(Response::ok(json!({
         "version": env!("CARGO_PKG_VERSION"),
+        "build": build(),
         "household_app": crate::web::bundled(),
         "platform": platform,
         "clock": {
@@ -215,6 +257,7 @@ fn security<S: Store>(c: &Call<'_, S>) -> Reply {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", ["diag"]) => diag(c),
+        ("GET", ["version"]) => version(c),
         ("POST", ["clock"]) => set_clock(c),
         ("GET", ["admin", "security"]) => security(c),
         _ => return None,

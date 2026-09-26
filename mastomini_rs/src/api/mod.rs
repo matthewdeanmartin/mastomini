@@ -16,6 +16,7 @@ mod misc;
 mod moderation;
 mod notification_groups;
 mod oauth;
+mod pages;
 mod setup;
 mod social;
 mod statuses;
@@ -358,6 +359,11 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         ) => Ok(Response::new(200, "image/png", MISSING_PNG)
             .with_header("Cache-Control", "public, max-age=604800")),
         ("GET", ["avatars", file]) => Ok(avatar(c, file)),
+        // The `url`s of posts, profiles and hashtags: plain pages.
+        (_, ["web", "signin" | "signout"] | ["tags", _]) => return pages::route(c, method, seg),
+        (_, [first, ..]) if first.starts_with('@') || first.starts_with("%40") => {
+            return pages::route(c, method, seg)
+        }
         // Browsers ask for these at the root of every site.
         ("GET", ["favicon.ico"]) => Ok(Response::new(200, "image/x-icon", FAVICON)
             .with_header("Cache-Control", "public, max-age=604800")),

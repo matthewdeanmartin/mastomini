@@ -11,7 +11,7 @@ separating connection, queue, handler and transfer time.
 |---|---|---|
 | Normal social reads use RAM/PSRAM | `domain/mod.rs` boot reconstruction; `domain/query.rs`; `domain/oauth.rs::principal` | There is no per-request SQL lookup to cache. Authentication scans in-memory token records; it does not run password PBKDF2 for normal bearer requests. |
 | Shared service lock | `bin/desktop.rs::serve`, `bin/esp32.rs::register` | HTTP and HTTPS serialize service work. A slow write/sign-in can hold up unrelated reads. Within each listener, handlers are synchronous too. More sockets do not create more handler CPU capacity. |
-| Connection setup is material | Comments and prior board measurements in `bin/esp32.rs` | Prior measurements: approximately 1 s fresh TLS handshake versus 0.1 s on an open connection. HTTPS keeps connections alive; HTTP explicitly closes them. These are previous measurements, not new results from this audit. |
+| Connection setup is material | Comments and prior board measurements in `bin/esp32.rs` | Prior measurements: approximately 1 s fresh TLS handshake versus 0.1 s on an open connection. These are previous measurements, not new results from this audit; see "Board transport" for the rebuilt listeners. |
 | Burst capacity is small | `bin/esp32.rs`: HTTPS 5 sessions, HTTP 4, LRU purge; `sdkconfig.defaults` | Excess active/idle connections can cause purging and expensive reconnects. Previous HTTP-only 6-versus-10-socket tests in spec/04 did not fix backlog stalls. They do not establish current dual-listener HTTPS capacity. |
 | Former account JSON repeated scans | `api/entities.rs::account`; `domain/query.rs::statuses_count`, `last_status_ms`, `follower_counts` | Each timeline row rebuilds its author. `statuses_count` scans up to 4,096 posts per rendering; 40 rows can repeat 163,840 status inspections, plus boosts/notifications and other scans. This was optimized below; it was not established as the dominant board cost. |
 | Common work on every request | `api/mod.rs::dispatch`; `domain/polls.rs::announce_polls`; `domain/dm.rs::open_session` | Previously poll expiry scanned every request and bearer requests opened the device key eagerly. Both are now deferred as described below. |
@@ -103,13 +103,70 @@ the source audit alone cannot choose among them.
    is lazy: ordinary non-DM reads never do it. Password hashing strength is
    unchanged. Existing encryption, expiry, edit and revocation tests still run.
 
-Transport tuning remains **measurement-gated**: HTTPS reuse was already enabled;
-HTTP closes connections. No socket/backlog increase was made without board heap
-and burst evidence. The pinned `esp-idf-svc 0.52.1` sets `backlog_conn=5` internally
-and exposes no configuration field for it; changing it requires a dependency
-change or reviewed wrapper patch. Five TLS and four HTTP client slots are kept.
-Server timings start after acceptance and cannot see DNS, TCP, TLS or backlog
-waiting. Near-zero `lock` time does not rule out waiting in a synchronous listener.
+Transport was then measured on the board and rebuilt; see "Board transport"
+below. Server timings start after acceptance and cannot see DNS, TCP, TLS or
+backlog waiting. Near-zero `lock` time does not rule out waiting in a
+synchronous listener.
+
+## Board transport (2026-09-25, measured before and after)
+
+Handler time on the board was already small (`app` p95: 1 ms for
+`/api/v1/instance/rules`, 7 ms for `/api/v2/instance`). The time went to how
+responses and connections were handled, which the source audit above could not
+see. Reading esp-idf-svc 0.52.1 and ESP-IDF 5.5.3 found:
+
+| Cause | Evidence | Fix (`src/bin/esp32/server.rs`, `sdkconfig.defaults`) |
+|---|---|---|
+| Each response was dozens of writes | `httpd_resp_send*` (httpd_txrx.c) sends each header as four writes, then chunked body frames; esp-idf-svc always used chunked | Build status line, headers, `Content-Length` and body in one buffer; one `httpd_send` |
+| Nagle's algorithm on every socket | lwIP default; small writes waited for the client's delayed ACK. A tiny response (`/rules`, 299 ms p50) was slower than a large one (`/instance`, 55 ms) | `TCP_NODELAY` in httpd's `open_fn`, before the TLS handshake |
+| TLS handshake records also waited | mbedTLS flushes each TLS record separately (packing is DTLS-only) | Same `TCP_NODELAY`, set before `esp_tls_server_session_create` |
+| No TLS session resumption | esp-idf-svc hard-codes `session_tickets: false` | esp-tls server session directly, `CONFIG_ESP_TLS_SERVER_SESSION_TICKETS=y` |
+| An event-loop post on every TLS read/write | `esp_https_server` posts `HTTPS_SERVER_EVENT_*` per call | Own transport, no events |
+| One stalled handshake blocks every HTTPS client for 10 s | esp-tls default server handshake timeout, one httpd task | 4 s handshake timeout |
+| Wi-Fi modem sleep | Ping 6–235 ms to an idle board | `esp_wifi_set_ps(WIFI_PS_NONE)`: the board is mains powered |
+
+Also: listen backlog 5 → 8, HTTPS sockets 5 → 7 (a browser keeps six),
+`LWIP_MAX_SOCKETS` 16 → 20, TCP send buffer 4 → 8 segments, 16 KiB outgoing
+TLS records (PSRAM), precomputed NIST fixed-point tables (flash). HTTP now keeps
+connections open like HTTPS; the previous `Connection: close` header never made
+httpd close anything, and least-recently-used purging still reclaims sockets.
+
+Public endpoints, same Windows client over Wi-Fi, 5 rounds per worker
+(`scripts/bench-api.py`, [before HTTP](performance/board-transport-before-http-2026-09-25.json),
+[before HTTPS](performance/board-transport-before-https-2026-09-25.json),
+[after HTTP](performance/board-transport-after-http-2026-09-25.json),
+[after HTTPS](performance/board-transport-after-https-2026-09-25.json)):
+
+| Request, open connection | Before p50 / p95 | After p50 / p95 |
+|---|---:|---:|
+| HTTP `/rules`, 1 worker | 299 / 367 ms | 9 / 14 ms |
+| HTTP `/instance`, 1 worker | 55 / 74 ms | 18 / 27 ms |
+| HTTP `/rules`, 4 workers | 157 / 645 ms | 36 / 102 ms |
+| HTTPS `/rules`, 1 worker | 85 / 427 ms | 13 / 24 ms |
+| HTTPS `/instance`, 1 worker | 52 / 77 ms | 31 / 95 ms |
+
+| TLS connection setup | Before | After |
+|---|---:|---:|
+| Full handshake (new client) | 1.25–1.5 s | 0.89–0.96 s |
+| Resumed handshake (returning client) | not supported | 13–50 ms |
+| 4 new clients at once, p50 | 3.5–4.6 s | 2.8–3.8 s |
+
+Small samples: smoke evidence, not stable tails. `bench-api.py` uses
+`requests`, which never resumes TLS sessions, so its "new" rows are the full
+handshake. Resumption was timed with Python's `ssl` module and a saved session.
+A full handshake is almost all ECDHE: X25519 and P-256 measured the same, and
+the S3 has no ECC accelerator. An ECDSA certificate would replace a
+hardware-accelerated RSA signature with another curve operation, so the RSA
+certificate stays. A client pays the full handshake once per board boot (ticket
+keys are generated at boot), then resumes.
+
+Remaining tail: handshakes run on the single HTTPS task, so a new client's
+~0.9 s handshake delays requests on other open connections (the 4-worker
+open-connection p95 of about 1 s is startup handshakes). Clients should set
+`TCP_NODELAY` (browsers and OkHttp do). Without it, the first request after a
+resumed handshake waited ~160 ms for the board's delayed ACK. Not yet measured:
+authenticated timelines with many posts on the board (needs a read token; the
+board holds 2 posts), and internal heap under 7 TLS sessions.
 
 ## Recorded results and commands
 

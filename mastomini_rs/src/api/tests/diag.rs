@@ -109,3 +109,26 @@ fn security_summary_is_for_the_owner() {
     assert_eq!(bob_row["devices"], 1);
     assert_eq!(bob_row["message_key"], true);
 }
+
+#[test]
+fn version_is_public_and_identifies_the_build() {
+    let mut s = Server::provisioned();
+    let r = s.get("/api/mastomini/v1/version", None);
+    assert_eq!(r.status, 200);
+    assert!(r
+        .headers
+        .iter()
+        .any(|(k, v)| k == "Cache-Control" && v == "no-store"));
+    let v = r.json_body();
+    assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
+    let fingerprint = v["fingerprint"].as_str().unwrap();
+    assert_eq!(fingerprint.len(), 12);
+    assert!(fingerprint.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(v["target"], "desktop");
+    assert!(v["uptime_ms"].is_u64());
+    assert!(v["built_at"].as_str().unwrap().ends_with('Z'));
+    // Nothing about the household.
+    for key in ["accounts", "records", "store", "platform"] {
+        assert!(v.get(key).is_none(), "{key}");
+    }
+}

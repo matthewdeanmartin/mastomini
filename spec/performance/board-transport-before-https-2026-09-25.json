@@ -1,0 +1,1245 @@
+{
+  "created_utc": "2026-09-25T23:46:22.039714+00:00",
+  "base": "https://192.168.1.161",
+  "label": "",
+  "tls_name": "mastomini.local",
+  "authenticated": false,
+  "rounds_per_worker": 5,
+  "measurement": "client wall time including connect, TLS, queue, handler and transfer; no automatic retries",
+  "results": [
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 1,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 1492.292,
+          "success_p95_ms": 1492.292,
+          "success_max_ms": 1492.292,
+          "all_max_ms": 1492.292
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 1249.273,
+          "success_p95_ms": 1545.154,
+          "success_max_ms": 1545.154,
+          "all_max_ms": 1545.154
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1475.9864999796264,
+          "server_timing_ms": {},
+          "ms": 1492.291699978523
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1537.9634000128135,
+          "server_timing_ms": {},
+          "ms": 1545.1539999921806
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1122.3518999759108,
+          "server_timing_ms": {},
+          "ms": 1129.736499977298
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1308.7214999832213,
+          "server_timing_ms": {},
+          "ms": 1315.4854999738745
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1242.0834000222385,
+          "server_timing_ms": {},
+          "ms": 1249.2725999909453
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 1,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 1469.615,
+          "success_p95_ms": 1469.615,
+          "success_max_ms": 1469.615,
+          "all_max_ms": 1469.615
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 1233.276,
+          "success_p95_ms": 1384.012,
+          "success_max_ms": 1384.012,
+          "all_max_ms": 1384.012
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1469.3521999870427,
+          "server_timing_ms": {},
+          "ms": 1469.6145000052638
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1125.7351000094786,
+          "server_timing_ms": {},
+          "ms": 1126.0048000258394
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1233.072799979709,
+          "server_timing_ms": {},
+          "ms": 1233.275800012052
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1244.7984000318684,
+          "server_timing_ms": {},
+          "ms": 1245.0768999988213
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1383.7599999969825,
+          "server_timing_ms": {},
+          "ms": 1384.0116999926977
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 1,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 1362.885,
+          "success_p95_ms": 1362.885,
+          "success_max_ms": 1362.885,
+          "all_max_ms": 1362.885
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 52.402,
+          "success_p95_ms": 77.429,
+          "success_max_ms": 77.429,
+          "all_max_ms": 77.429
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1343.9944999990985,
+          "server_timing_ms": {},
+          "ms": 1362.884900008794
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 43.13119995640591,
+          "server_timing_ms": {},
+          "ms": 52.402300003450364
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 45.41859996970743,
+          "server_timing_ms": {},
+          "ms": 77.42899999720976
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 47.30140004539862,
+          "server_timing_ms": {},
+          "ms": 52.336900029331446
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 43.52220002328977,
+          "server_timing_ms": {},
+          "ms": 53.01940004574135
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 1,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 1399.015,
+          "success_p95_ms": 1399.015,
+          "success_max_ms": 1399.015,
+          "all_max_ms": 1399.015
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 84.581,
+          "success_p95_ms": 426.607,
+          "success_max_ms": 426.607,
+          "all_max_ms": 426.607
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1398.8001000252552,
+          "server_timing_ms": {},
+          "ms": 1399.014700029511
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 84.3489000108093,
+          "server_timing_ms": {},
+          "ms": 84.58050002809614
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 66.87880004756153,
+          "server_timing_ms": {},
+          "ms": 67.00890004867688
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 102.91230003349483,
+          "server_timing_ms": {},
+          "ms": 103.15710003487766
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 426.4919999986887,
+          "server_timing_ms": {},
+          "ms": 426.6074000042863
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 4,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 3465.824,
+          "success_p95_ms": 5591.165,
+          "success_max_ms": 5591.165,
+          "all_max_ms": 5591.165
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 4371.795,
+          "success_p95_ms": 4888.054,
+          "success_max_ms": 4888.054,
+          "all_max_ms": 4888.054
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 5585.380800010171,
+          "server_timing_ms": {},
+          "ms": 5591.164899989963
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4715.822400001343,
+          "server_timing_ms": {},
+          "ms": 4725.39889998734
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4283.140299958177,
+          "server_timing_ms": {},
+          "ms": 4297.180499997921
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4587.174899992533,
+          "server_timing_ms": {},
+          "ms": 4596.659099974204
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 3060.8676000265405,
+          "server_timing_ms": {},
+          "ms": 3073.509700014256
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 3459.7739000455476,
+          "server_timing_ms": {},
+          "ms": 3465.8238000120036
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4620.916799991392,
+          "server_timing_ms": {},
+          "ms": 4648.197300033644
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4150.082599953748,
+          "server_timing_ms": {},
+          "ms": 4160.801499965601
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4393.9964000019245,
+          "server_timing_ms": {},
+          "ms": 4408.735400007572
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4437.239499995485,
+          "server_timing_ms": {},
+          "ms": 4524.910500040278
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 2261.367099999916,
+          "server_timing_ms": {},
+          "ms": 2318.6195000307634
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4591.491700033657,
+          "server_timing_ms": {},
+          "ms": 4609.008400002494
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4354.301100014709,
+          "server_timing_ms": {},
+          "ms": 4371.795100043528
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4295.668100006878,
+          "server_timing_ms": {},
+          "ms": 4310.9575000125915
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4514.76960000582,
+          "server_timing_ms": {},
+          "ms": 4541.473200020846
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4416.92210000474,
+          "server_timing_ms": {},
+          "ms": 4431.782100000419
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4867.897299991455,
+          "server_timing_ms": {},
+          "ms": 4888.054000039119
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4310.4190999874845,
+          "server_timing_ms": {},
+          "ms": 4327.832499984652
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4254.887100018095,
+          "server_timing_ms": {},
+          "ms": 4282.341499987524
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4265.320200007409,
+          "server_timing_ms": {},
+          "ms": 4284.26440001931
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 4,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 3533.031,
+          "success_p95_ms": 5490.006,
+          "success_max_ms": 5490.006,
+          "all_max_ms": 5490.006
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 4590.005,
+          "success_p95_ms": 6650.644,
+          "success_max_ms": 6650.644,
+          "all_max_ms": 6650.644
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 3532.9177000094205,
+          "server_timing_ms": {},
+          "ms": 3533.0309999990277
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4081.9275999674574,
+          "server_timing_ms": {},
+          "ms": 4082.018799963407
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4917.252099956386,
+          "server_timing_ms": {},
+          "ms": 4917.4166999873705
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 5392.02510000905,
+          "server_timing_ms": {},
+          "ms": 5392.1695000026375
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 5367.695899971295,
+          "server_timing_ms": {},
+          "ms": 5367.811299976893
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 2033.0179000156932,
+          "server_timing_ms": {},
+          "ms": 2033.0952000222169
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4424.1150000016205,
+          "server_timing_ms": {},
+          "ms": 4424.235499987844
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4854.203799972311,
+          "server_timing_ms": {},
+          "ms": 4854.362899961416
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4401.329500018619,
+          "server_timing_ms": {},
+          "ms": 4401.43219998572
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 6388.233800011221,
+          "server_timing_ms": {},
+          "ms": 6388.353099988308
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4351.257399946917,
+          "server_timing_ms": {},
+          "ms": 4351.5091999433935
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4507.271900016349,
+          "server_timing_ms": {},
+          "ms": 4507.7999999630265
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4650.933500030078,
+          "server_timing_ms": {},
+          "ms": 4651.034300040919
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 6337.256300030276,
+          "server_timing_ms": {},
+          "ms": 6337.365900049917
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4508.55580001371,
+          "server_timing_ms": {},
+          "ms": 4508.741599973291
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 5489.902700006496,
+          "server_timing_ms": {},
+          "ms": 5490.006199979689
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4589.882400003262,
+          "server_timing_ms": {},
+          "ms": 4590.004700003192
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4407.799699984025,
+          "server_timing_ms": {},
+          "ms": 4407.955900009256
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 6650.549000012688,
+          "server_timing_ms": {},
+          "ms": 6650.644100038335
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 3288.9218000345863,
+          "server_timing_ms": {},
+          "ms": 3289.2677999916486
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 4,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 3033.156,
+          "success_p95_ms": 4152.254,
+          "success_max_ms": 4152.254,
+          "all_max_ms": 4152.254
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 79.245,
+          "success_p95_ms": 1087.337,
+          "success_max_ms": 1087.337,
+          "all_max_ms": 1087.337
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4106.631400005426,
+          "server_timing_ms": {},
+          "ms": 4110.829700017348
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 98.03710004780442,
+          "server_timing_ms": {},
+          "ms": 115.85940001532435
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 114.76570001104847,
+          "server_timing_ms": {},
+          "ms": 124.11669996799901
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 54.06649998622015,
+          "server_timing_ms": {},
+          "ms": 63.14129999373108
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 40.059000020846725,
+          "server_timing_ms": {},
+          "ms": 46.51780001586303
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 4134.90460003959,
+          "server_timing_ms": {},
+          "ms": 4152.254400018137
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 137.06040004035458,
+          "server_timing_ms": {},
+          "ms": 154.18549999594688
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 67.434000025969,
+          "server_timing_ms": {},
+          "ms": 72.8436000063084
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 44.752800022251904,
+          "server_timing_ms": {},
+          "ms": 55.255600018426776
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 48.65260003134608,
+          "server_timing_ms": {},
+          "ms": 54.065999982412905
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 3023.4409000258893,
+          "server_timing_ms": {},
+          "ms": 3033.156300021801
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1067.5941999652423,
+          "server_timing_ms": {},
+          "ms": 1074.1241999785416
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 78.80239997757599,
+          "server_timing_ms": {},
+          "ms": 87.19240000937134
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 68.84580000769347,
+          "server_timing_ms": {},
+          "ms": 75.2096000360325
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 69.6431000251323,
+          "server_timing_ms": {},
+          "ms": 79.24460002686828
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 2022.8848999831825,
+          "server_timing_ms": {},
+          "ms": 2032.8646000125445
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 966.8991999933496,
+          "server_timing_ms": {},
+          "ms": 980.4114000289701
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 1037.4723999993876,
+          "server_timing_ms": {},
+          "ms": 1087.3372999485582
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 68.7360999872908,
+          "server_timing_ms": {},
+          "ms": 86.73440001439303
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2229,
+          "headers_ms": 63.41110001085326,
+          "server_timing_ms": {},
+          "ms": 67.48359999619424
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 4,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 3088.812,
+          "success_p95_ms": 4141.197,
+          "success_max_ms": 4141.197,
+          "all_max_ms": 4141.197
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": null,
+            "body": null,
+            "lock": null
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 100.59,
+          "success_p95_ms": 1042.512,
+          "success_max_ms": 1042.512,
+          "all_max_ms": 1042.512
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 3088.7380999629386,
+          "server_timing_ms": {},
+          "ms": 3088.812399946619
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1036.4506000187248,
+          "server_timing_ms": {},
+          "ms": 1036.5841000457294
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 146.47430001059547,
+          "server_timing_ms": {},
+          "ms": 146.88970003044233
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 80.32639999873936,
+          "server_timing_ms": {},
+          "ms": 80.5514000239782
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 68.1412999983877,
+          "server_timing_ms": {},
+          "ms": 68.40670004021376
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4127.0204000175,
+          "server_timing_ms": {},
+          "ms": 4127.227600023616
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 146.13840001402423,
+          "server_timing_ms": {},
+          "ms": 147.91970001533628
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 81.25699998345226,
+          "server_timing_ms": {},
+          "ms": 81.53269998729229
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 100.48550000647083,
+          "server_timing_ms": {},
+          "ms": 100.59010004624724
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 67.74089997634292,
+          "server_timing_ms": {},
+          "ms": 67.87459994666278
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 4141.075100051239,
+          "server_timing_ms": {},
+          "ms": 4141.197200049646
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 132.6651000417769,
+          "server_timing_ms": {},
+          "ms": 133.03130003623664
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 114.87749998923391,
+          "server_timing_ms": {},
+          "ms": 115.04519998561591
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 77.07739999750629,
+          "server_timing_ms": {},
+          "ms": 77.16300000902265
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 87.13310002349317,
+          "server_timing_ms": {},
+          "ms": 87.30030001606792
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 2041.6242000064813,
+          "server_timing_ms": {},
+          "ms": 2041.7083000065759
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 1042.4177999957465,
+          "server_timing_ms": {},
+          "ms": 1042.5117999548092
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 997.178099991288,
+          "server_timing_ms": {},
+          "ms": 997.2968000220135
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 106.55689996201545,
+          "server_timing_ms": {},
+          "ms": 106.65929998503998
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 91.19789995020255,
+          "server_timing_ms": {},
+          "ms": 91.26929997000843
+        }
+      ]
+    }
+  ],
+  "dns_preflight": {
+    "ms": 72.253999998793,
+    "addresses": [
+      "192.168.1.161"
+    ]
+  }
+}

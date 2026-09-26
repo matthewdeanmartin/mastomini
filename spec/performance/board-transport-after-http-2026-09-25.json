@@ -1,0 +1,1627 @@
+{
+  "created_utc": "2026-09-26T00:09:04.637066+00:00",
+  "base": "http://192.168.1.161",
+  "label": "",
+  "tls_name": null,
+  "authenticated": false,
+  "rounds_per_worker": 5,
+  "measurement": "client wall time including connect, TLS, queue, handler and transfer; no automatic retries",
+  "results": [
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 1,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": 6.823,
+            "body": 0.478,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 70.097,
+          "success_p95_ms": 70.097,
+          "success_max_ms": 70.097,
+          "all_max_ms": 70.097
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 6.637,
+            "body": 0.462,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 101.781,
+          "success_p95_ms": 253.809,
+          "success_max_ms": 253.809,
+          "all_max_ms": 253.809
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 69.78010002058,
+          "server_timing_ms": {
+            "app": 6.823,
+            "body": 0.478,
+            "lock": 0.005
+          },
+          "ms": 70.09709998965263
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 42.586600000504404,
+          "server_timing_ms": {
+            "app": 6.63,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 42.708200053311884
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 253.73300001956522,
+          "server_timing_ms": {
+            "app": 6.637,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 253.80930001847446
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 72.24770000902936,
+          "server_timing_ms": {
+            "app": 6.625,
+            "body": 0.462,
+            "lock": 0.005
+          },
+          "ms": 101.7814000369981
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 135.09949995204806,
+          "server_timing_ms": {
+            "app": 6.57,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 135.17969998065382
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 1,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": 0.933,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 69.193,
+          "success_p95_ms": 69.193,
+          "success_max_ms": 69.193,
+          "all_max_ms": 69.193
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 0.951,
+            "body": 0.458,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 21.878,
+          "success_p95_ms": 69.444,
+          "success_max_ms": 69.444,
+          "all_max_ms": 69.444
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 69.12269996246323,
+          "server_timing_ms": {
+            "app": 0.933,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 69.19259997084737
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 69.28539997898042,
+          "server_timing_ms": {
+            "app": 0.937,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 69.44449996808544
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 40.235099964775145,
+          "server_timing_ms": {
+            "app": 0.951,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 40.36279994761571
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 21.39720000559464,
+          "server_timing_ms": {
+            "app": 0.944,
+            "body": 0.458,
+            "lock": 0.004
+          },
+          "ms": 21.45820000441745
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 21.80009998846799,
+          "server_timing_ms": {
+            "app": 0.946,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 21.878400002606213
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 1,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": 6.576,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 52.475,
+          "success_p95_ms": 52.475,
+          "success_max_ms": 52.475,
+          "all_max_ms": 52.475
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 6.792,
+            "body": 0.732,
+            "lock": 0.022
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 18.411,
+          "success_p95_ms": 27.347,
+          "success_max_ms": 27.347,
+          "all_max_ms": 27.347
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 48.45399997429922,
+          "server_timing_ms": {
+            "app": 6.576,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 52.474799973424524
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 18.111500015947968,
+          "server_timing_ms": {
+            "app": 6.554,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 18.191499984823167
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 16.07549999607727,
+          "server_timing_ms": {
+            "app": 6.57,
+            "body": 0.459,
+            "lock": 0.007
+          },
+          "ms": 18.411299970466644
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 21.711900015361607,
+          "server_timing_ms": {
+            "app": 6.792,
+            "body": 0.732,
+            "lock": 0.022
+          },
+          "ms": 21.78700000513345
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 27.277000015601516,
+          "server_timing_ms": {
+            "app": 6.611,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 27.34749997034669
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 1,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 1,
+          "successful": 1,
+          "server_p95_ms": {
+            "app": 0.939,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 1
+          },
+          "success_p50_ms": 18.152,
+          "success_p95_ms": 18.152,
+          "success_max_ms": 18.152,
+          "all_max_ms": 18.152
+        },
+        "subsequent": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 0.966,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 9.053,
+          "success_p95_ms": 13.573,
+          "success_max_ms": 13.573,
+          "all_max_ms": 13.573
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 18.080500012729317,
+          "server_timing_ms": {
+            "app": 0.939,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 18.15249997889623
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 13.501400011591613,
+          "server_timing_ms": {
+            "app": 0.943,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 13.573299976997077
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 8.997600001748651,
+          "server_timing_ms": {
+            "app": 0.966,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 9.05270001385361
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 8.563500014133751,
+          "server_timing_ms": {
+            "app": 0.942,
+            "body": 0.459,
+            "lock": 0.004
+          },
+          "ms": 8.629199990537018
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 11.73119997838512,
+          "server_timing_ms": {
+            "app": 0.962,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 11.807899980340153
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 4,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 7.293,
+            "body": 0.46,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 93.215,
+          "success_p95_ms": 111.077,
+          "success_max_ms": 111.077,
+          "all_max_ms": 111.077
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 13,
+          "server_p95_ms": {
+            "app": 9.828,
+            "body": 0.488,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 13,
+            "ConnectionError": 3
+          },
+          "success_p50_ms": 67.799,
+          "success_p95_ms": 116.49,
+          "success_max_ms": 116.49,
+          "all_max_ms": 116.49
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 93.13180000754073,
+          "server_timing_ms": {
+            "app": 6.937,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 93.21540000382811
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 58.002900041174144,
+          "server_timing_ms": {
+            "app": 7.02,
+            "body": 0.455,
+            "lock": 0.004
+          },
+          "ms": 60.17830001655966
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 64.44899999769405,
+          "server_timing_ms": {
+            "app": 6.647,
+            "body": 0.454,
+            "lock": 0.005
+          },
+          "ms": 68.87280003866181
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": "ConnectionError",
+          "bytes": 0,
+          "headers_ms": null,
+          "server_timing_ms": {},
+          "ms": 48.059599997941405
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": "ConnectionError",
+          "bytes": 0,
+          "headers_ms": null,
+          "server_timing_ms": {},
+          "ms": 68.76430002739653
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 94.36650003772229,
+          "server_timing_ms": {
+            "app": 7.293,
+            "body": 0.46,
+            "lock": 0.004
+          },
+          "ms": 94.50850001303479
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 67.62400001753122,
+          "server_timing_ms": {
+            "app": 8.917,
+            "body": 0.454,
+            "lock": 0.005
+          },
+          "ms": 67.70469999173656
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 72.99549999879673,
+          "server_timing_ms": {
+            "app": 7.082,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 73.08120001107454
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 50.940100045409054,
+          "server_timing_ms": {
+            "app": 9.828,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 51.0399000486359
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 105.73110001860186,
+          "server_timing_ms": {
+            "app": 7.084,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 105.80319998553023
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 110.99289997946471,
+          "server_timing_ms": {
+            "app": 6.68,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 111.07679997803643
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 66.14489998901263,
+          "server_timing_ms": {
+            "app": 8.868,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 67.7989000105299
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": "ConnectionError",
+          "bytes": 0,
+          "headers_ms": null,
+          "server_timing_ms": {},
+          "ms": 74.81310004368424
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 68.92099999822676,
+          "server_timing_ms": {
+            "app": 6.738,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 84.12249997491017
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 116.41509999753907,
+          "server_timing_ms": {
+            "app": 6.835,
+            "body": 0.454,
+            "lock": 0.004
+          },
+          "ms": 116.48969998350367
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 61.6318000247702,
+          "server_timing_ms": {
+            "app": 6.635,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 61.71440001344308
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 74.27100004861131,
+          "server_timing_ms": {
+            "app": 7.57,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 74.3406000547111
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 65.30070002190769,
+          "server_timing_ms": {
+            "app": 8.227,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 65.3866000357084
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 52.62029997538775,
+          "server_timing_ms": {
+            "app": 6.916,
+            "body": 0.488,
+            "lock": 0.005
+          },
+          "ms": 52.69500002032146
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 57.901399966795,
+          "server_timing_ms": {
+            "app": 8.999,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 57.99030000343919
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 4,
+      "mode": "new",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 1.052,
+            "body": 0.653,
+            "lock": 0.006
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 43.76,
+          "success_p95_ms": 71.292,
+          "success_max_ms": 71.292,
+          "all_max_ms": 71.292
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 14,
+          "server_p95_ms": {
+            "app": 1.603,
+            "body": 0.714,
+            "lock": 0.007
+          },
+          "statuses": {
+            "ConnectionError": 2,
+            "200": 14
+          },
+          "success_p50_ms": 46.219,
+          "success_p95_ms": 101.801,
+          "success_max_ms": 101.801,
+          "all_max_ms": 101.801
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 43.67169999750331,
+          "server_timing_ms": {
+            "app": 1.052,
+            "body": 0.453,
+            "lock": 0.006
+          },
+          "ms": 43.76039997441694
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": "ConnectionError",
+          "bytes": 0,
+          "headers_ms": null,
+          "server_timing_ms": {},
+          "ms": 57.29829997289926
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 65.58709999080747,
+          "server_timing_ms": {
+            "app": 0.974,
+            "body": 0.454,
+            "lock": 0.005
+          },
+          "ms": 65.6952999997884
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 101.73860000213608,
+          "server_timing_ms": {
+            "app": 0.956,
+            "body": 0.456,
+            "lock": 0.004
+          },
+          "ms": 101.80110001238063
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 38.41209999518469,
+          "server_timing_ms": {
+            "app": 0.971,
+            "body": 0.457,
+            "lock": 0.004
+          },
+          "ms": 38.50490000331774
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 38.88790000928566,
+          "server_timing_ms": {
+            "app": 0.984,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 38.968299981206656
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 48.23100002249703,
+          "server_timing_ms": {
+            "app": 1.008,
+            "body": 0.584,
+            "lock": 0.004
+          },
+          "ms": 48.29710000194609
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 40.504900040104985,
+          "server_timing_ms": {
+            "app": 1.081,
+            "body": 0.714,
+            "lock": 0.005
+          },
+          "ms": 40.58610001811758
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 39.01050001149997,
+          "server_timing_ms": {
+            "app": 1.036,
+            "body": 0.452,
+            "lock": 0.004
+          },
+          "ms": 39.06830004416406
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": "ConnectionError",
+          "bytes": 0,
+          "headers_ms": null,
+          "server_timing_ms": {},
+          "ms": 34.76170002250001
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 52.85189999267459,
+          "server_timing_ms": {
+            "app": 0.977,
+            "body": 0.457,
+            "lock": 0.004
+          },
+          "ms": 52.92180000105873
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 51.6158000100404,
+          "server_timing_ms": {
+            "app": 0.975,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 51.686399965547025
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 38.29070000210777,
+          "server_timing_ms": {
+            "app": 0.984,
+            "body": 0.528,
+            "lock": 0.005
+          },
+          "ms": 38.368400011677295
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 46.15090001607314,
+          "server_timing_ms": {
+            "app": 0.97,
+            "body": 0.479,
+            "lock": 0.005
+          },
+          "ms": 46.21910001151264
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 77.45290000457317,
+          "server_timing_ms": {
+            "app": 1.524,
+            "body": 0.693,
+            "lock": 0.007
+          },
+          "ms": 77.54510000813752
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 71.22639997396618,
+          "server_timing_ms": {
+            "app": 0.988,
+            "body": 0.653,
+            "lock": 0.004
+          },
+          "ms": 71.29210000857711
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 40.532799961511046,
+          "server_timing_ms": {
+            "app": 0.989,
+            "body": 0.615,
+            "lock": 0.005
+          },
+          "ms": 40.61499994713813
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 56.33400002261624,
+          "server_timing_ms": {
+            "app": 1.603,
+            "body": 0.699,
+            "lock": 0.007
+          },
+          "ms": 56.38700001873076
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 45.98160000750795,
+          "server_timing_ms": {
+            "app": 0.958,
+            "body": 0.462,
+            "lock": 0.004
+          },
+          "ms": 46.06269998475909
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 68.64769995445386,
+          "server_timing_ms": {
+            "app": 0.969,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 68.71559994760901
+        }
+      ]
+    },
+    {
+      "path": "/api/v2/instance",
+      "concurrency": 4,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 7.791,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 77.766,
+          "success_p95_ms": 105.424,
+          "success_max_ms": 105.424,
+          "all_max_ms": 105.424
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": 7.957,
+            "body": 0.641,
+            "lock": 0.006
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 49.426,
+          "success_p95_ms": 75.287,
+          "success_max_ms": 75.287,
+          "all_max_ms": 75.287
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 77.6723999879323,
+          "server_timing_ms": {
+            "app": 6.872,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 77.76580000063404
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 46.55029997229576,
+          "server_timing_ms": {
+            "app": 7.048,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 46.619499975349754
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 55.95399998128414,
+          "server_timing_ms": {
+            "app": 7.781,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 56.01209995802492
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 57.55299999145791,
+          "server_timing_ms": {
+            "app": 6.654,
+            "body": 0.462,
+            "lock": 0.005
+          },
+          "ms": 57.608300005085766
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 49.53489999752492,
+          "server_timing_ms": {
+            "app": 6.593,
+            "body": 0.461,
+            "lock": 0.004
+          },
+          "ms": 49.59419998340309
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 86.30790002644062,
+          "server_timing_ms": {
+            "app": 7.722,
+            "body": 0.457,
+            "lock": 0.004
+          },
+          "ms": 86.40199998626485
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 65.68250001873821,
+          "server_timing_ms": {
+            "app": 7.957,
+            "body": 0.465,
+            "lock": 0.005
+          },
+          "ms": 65.74719998752698
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 43.3070000144653,
+          "server_timing_ms": {
+            "app": 6.676,
+            "body": 0.453,
+            "lock": 0.004
+          },
+          "ms": 43.38330001337454
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 42.46389999752864,
+          "server_timing_ms": {
+            "app": 7.126,
+            "body": 0.641,
+            "lock": 0.005
+          },
+          "ms": 48.83990000234917
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 44.200100004673004,
+          "server_timing_ms": {
+            "app": 6.791,
+            "body": 0.451,
+            "lock": 0.005
+          },
+          "ms": 44.24989997642115
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 53.67699998896569,
+          "server_timing_ms": {
+            "app": 7.791,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 59.702099999412894
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 32.211699988693,
+          "server_timing_ms": {
+            "app": 6.913,
+            "body": 0.486,
+            "lock": 0.006
+          },
+          "ms": 32.277399965096265
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 46.495200018398464,
+          "server_timing_ms": {
+            "app": 6.998,
+            "body": 0.495,
+            "lock": 0.006
+          },
+          "ms": 46.56679998151958
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 42.8791000158526,
+          "server_timing_ms": {
+            "app": 7.327,
+            "body": 0.576,
+            "lock": 0.006
+          },
+          "ms": 42.93430002871901
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 55.64660002710298,
+          "server_timing_ms": {
+            "app": 6.848,
+            "body": 0.458,
+            "lock": 0.005
+          },
+          "ms": 55.73620001086965
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 105.33920000307262,
+          "server_timing_ms": {
+            "app": 7.685,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 105.42400000849739
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 75.22050000261515,
+          "server_timing_ms": {
+            "app": 7.597,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 75.28740004636347
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 45.25150003610179,
+          "server_timing_ms": {
+            "app": 6.894,
+            "body": 0.612,
+            "lock": 0.004
+          },
+          "ms": 57.98959999810904
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 42.174600006546825,
+          "server_timing_ms": {
+            "app": 7.547,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 49.427099991589785
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 2230,
+          "headers_ms": 49.35970000224188,
+          "server_timing_ms": {
+            "app": 6.599,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 49.42599998321384
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/instance/rules",
+      "concurrency": 4,
+      "mode": "reuse",
+      "phases": {
+        "first": {
+          "samples": 4,
+          "successful": 4,
+          "server_p95_ms": {
+            "app": 1.043,
+            "body": 0.472,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 4
+          },
+          "success_p50_ms": 58.865,
+          "success_p95_ms": 82.626,
+          "success_max_ms": 82.626,
+          "all_max_ms": 82.626
+        },
+        "subsequent": {
+          "samples": 16,
+          "successful": 16,
+          "server_p95_ms": {
+            "app": 1.254,
+            "body": 0.508,
+            "lock": 0.005
+          },
+          "statuses": {
+            "200": 16
+          },
+          "success_p50_ms": 36.114,
+          "success_p95_ms": 101.626,
+          "success_max_ms": 101.626,
+          "all_max_ms": 101.626
+        }
+      },
+      "samples": [
+        {
+          "worker": 0,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 82.56700000492856,
+          "server_timing_ms": {
+            "app": 1.043,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 82.62559998547658
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 51.135200017597526,
+          "server_timing_ms": {
+            "app": 0.977,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 51.213999977335334
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 62.37300002248958,
+          "server_timing_ms": {
+            "app": 0.979,
+            "body": 0.455,
+            "lock": 0.005
+          },
+          "ms": 62.426900025457144
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 10.382399952504784,
+          "server_timing_ms": {
+            "app": 1.156,
+            "body": 0.454,
+            "lock": 0.005
+          },
+          "ms": 10.44529996579513
+        },
+        {
+          "worker": 0,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 25.986200023908168,
+          "server_timing_ms": {
+            "app": 0.974,
+            "body": 0.451,
+            "lock": 0.005
+          },
+          "ms": 26.0629000258632
+        },
+        {
+          "worker": 1,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 58.8024000171572,
+          "server_timing_ms": {
+            "app": 0.972,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 58.86520002968609
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 31.163300038315356,
+          "server_timing_ms": {
+            "app": 1.221,
+            "body": 0.456,
+            "lock": 0.005
+          },
+          "ms": 31.215400027576834
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 47.14859998784959,
+          "server_timing_ms": {
+            "app": 1.254,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 47.20219998853281
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 59.164199978113174,
+          "server_timing_ms": {
+            "app": 0.969,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 59.217599977273494
+        },
+        {
+          "worker": 1,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 23.3808999764733,
+          "server_timing_ms": {
+            "app": 0.966,
+            "body": 0.459,
+            "lock": 0.005
+          },
+          "ms": 23.47760001430288
+        },
+        {
+          "worker": 2,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 22.2154000075534,
+          "server_timing_ms": {
+            "app": 0.967,
+            "body": 0.453,
+            "lock": 0.005
+          },
+          "ms": 22.288200038019568
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 36.04400000767782,
+          "server_timing_ms": {
+            "app": 0.974,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 36.113600013777614
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 22.1587999840267,
+          "server_timing_ms": {
+            "app": 0.986,
+            "body": 0.508,
+            "lock": 0.005
+          },
+          "ms": 22.21690001897514
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 52.02750000171363,
+          "server_timing_ms": {
+            "app": 0.965,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 52.110199991147965
+        },
+        {
+          "worker": 2,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 63.66469996282831,
+          "server_timing_ms": {
+            "app": 0.97,
+            "body": 0.454,
+            "lock": 0.005
+          },
+          "ms": 63.71879996731877
+        },
+        {
+          "worker": 3,
+          "phase": "first",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 74.0718999877572,
+          "server_timing_ms": {
+            "app": 0.984,
+            "body": 0.472,
+            "lock": 0.004
+          },
+          "ms": 74.14779998362064
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 20.29050001874566,
+          "server_timing_ms": {
+            "app": 1.079,
+            "body": 0.49,
+            "lock": 0.005
+          },
+          "ms": 20.368300029076636
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 101.54689999762923,
+          "server_timing_ms": {
+            "app": 0.971,
+            "body": 0.457,
+            "lock": 0.005
+          },
+          "ms": 101.62579995812848
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 18.589999992400408,
+          "server_timing_ms": {
+            "app": 0.988,
+            "body": 0.452,
+            "lock": 0.005
+          },
+          "ms": 18.67419999325648
+        },
+        {
+          "worker": 3,
+          "phase": "subsequent",
+          "status": 200,
+          "bytes": 266,
+          "headers_ms": 36.20470000896603,
+          "server_timing_ms": {
+            "app": 0.956,
+            "body": 0.458,
+            "lock": 0.005
+          },
+          "ms": 36.27809998579323
+        }
+      ]
+    }
+  ],
+  "dns_preflight": {
+    "ms": 79.77150002261624,
+    "addresses": [
+      "192.168.1.161"
+    ]
+  }
+}

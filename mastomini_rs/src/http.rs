@@ -73,7 +73,7 @@ pub fn route_label(path: &str) -> String {
 /// Request headers the board passes to [`crate::api::handle`]. The desktop
 /// server passes every header, so a name missing here only breaks on the
 /// board; a test checks that every header the code reads is listed.
-pub const FORWARDED_HEADERS: [&str; 8] = [
+pub const FORWARDED_HEADERS: [&str; 9] = [
     "Host",
     "Authorization",
     "Content-Type",
@@ -83,6 +83,8 @@ pub const FORWARDED_HEADERS: [&str; 8] = [
     // The household app (src/web.rs): gzip negotiation and revalidation.
     "Accept-Encoding",
     "If-None-Match",
+    // The post and profile pages' sign-in session (api/pages.rs).
+    "Cookie",
 ];
 
 #[derive(Debug, Clone, Default)]

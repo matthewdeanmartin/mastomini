@@ -5,7 +5,7 @@ CARGO ?= cargo
 UV ?= uv
 ESP_PYTHON ?= /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
 
-.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board api-coverage
+.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board board-version api-coverage
 
 help:
 	@printf '%s\n' \
@@ -36,7 +36,8 @@ help:
 	  'make deploy PORT=COM11          Upgrade the app on a mastomini board (DEPLOY.md)' \
 	  'make install PORT=COM11 MAC=..  FIRST INSTALL ONLY: backup, erase, flash (DEPLOY.md)' \
 	  'make boot-log PORT=COM11        Capture the boot log and the board address' \
-	  'make probe-board ADDRESS=ip     Strict read-only check of a running board'
+	  'make probe-board ADDRESS=ip     Strict read-only check of a running board' \
+	  'make board-version ADDRESS=ip   Does the board run this working tree? (exit 1: flash it)'
 
 # HTTPS next to HTTP once make certs has run (docs/security/https.md).
 HTTPS_PORT ?= 8443
@@ -85,9 +86,9 @@ conformance-sync:
 # real hardware.
 scripts-check:
 	$(UV) run --project clienttests python -m py_compile scripts/board.py scripts/boot-log.py \
-	  scripts/deploy.py scripts/firmware-image.py scripts/install.py scripts/probe-board.py \
+	  scripts/deploy.py scripts/firmware-image.py scripts/install.py scripts/probe-board.py scripts/firmware-version.py \
 	  clienttests/conftest.py clienttests/harness.py clienttests/smoke.py clienttests/test_mastodon_py.py \
-	  clienttests/test_https.py \
+	  clienttests/test_https.py clienttests/test_bots_and_pages.py \
 	  clienttests/test_audit_tools.py scripts/api-coverage.py scripts/bench-api.py scripts/bench-desktop.py \
 	  conformance/conftest.py conformance/deviations.py conformance/sync_upstream.py
 	bash -n scripts/certs.sh
@@ -147,3 +148,6 @@ boot-log:
 
 probe-board:
 	$(UV) run --project clienttests python scripts/probe-board.py --address "$(ADDRESS)"
+
+board-version:
+	$(UV) run --project clienttests python scripts/firmware-version.py --address "$(ADDRESS)"

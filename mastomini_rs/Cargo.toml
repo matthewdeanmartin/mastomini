@@ -56,6 +56,8 @@ esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"
 
 [build-dependencies]
 embuild = { version = "0.33", optional = true, features = ["espidf"] }
+# The build fingerprint (build.rs, scripts/firmware-version.py).
+sha2 = "0.10"
 
 [profile.release]
 opt-level = "s"

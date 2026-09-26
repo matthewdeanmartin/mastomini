@@ -224,8 +224,8 @@ pub fn status<S: Store>(svc: &Service<S>, ctx: &Ctx, s: &Status, viewer: Option<
         .collect();
     let application = rec
         .app_id
-        .and_then(|id| svc.state.apps.get(&id))
-        .map(|app| json!({ "name": app.name, "website": app.website }));
+        .and_then(|id| svc.state.application_name(id))
+        .map(|(name, website)| json!({ "name": name, "website": website }));
     let url = status_url(ctx, &author.rec.username, rec.id);
     let resolve = resolver(svc, ctx);
     let (text, spoiler_text) = svc.readable_text(viewer, s);

@@ -13,6 +13,7 @@ mod edits;
 mod filters;
 mod follow_requests;
 mod lists;
+mod local_tokens;
 mod moderation;
 mod oauth;
 mod polls;
@@ -37,6 +38,9 @@ pub use dm::{Held, UserKeyRec, LOCKED_TEXT};
 pub use edits::StatusEdit;
 pub use filters::{filter_context_bit, FilterMatch};
 pub use lists::ListUpdate;
+pub use local_tokens::{
+    LocalKind, LocalTokenRec, LOCAL_APP, MAX_API_KEYS, MAX_API_KEYS_PER_ACCOUNT, MAX_API_KEY_NAME,
+};
 pub use moderation::{AdminAction, NewReport};
 pub use oauth::{parse_scopes, AuthCodeGrant, Principal, KNOWN_SCOPES, OOB};
 pub use polls::NewPoll;
@@ -347,6 +351,8 @@ pub struct State {
     pub user_keys: [Option<UserKeyRec>; MAX_ACCOUNTS],
     /// Device seals by their `mm_key` key (`w` + token key suffix).
     pub token_seals: BTreeMap<Key, crate::crypto::Sealed>,
+    /// API keys and browser sessions, by token id (local_tokens.rs).
+    pub local_tokens: BTreeMap<u64, LocalTokenRec>,
     /// Envelopes of direct messages, by status id.
     pub dms: BTreeMap<u64, crate::crypto::Envelope>,
     /// The caller's unlocked secret, for the current request only.
@@ -515,6 +521,11 @@ pub(crate) mod keys {
     pub fn user_key(slot: u8) -> Key {
         Key::from_parts(&[b"k", &[hex(slot)]]).expect("fits")
     }
+    /// What kind of local token (API key, browser session) a token is, in
+    /// the token namespace beside it.
+    pub fn local_token(token_id: u64) -> Key {
+        Key::from_parts(&[b"k", &ids::b32(token_id)]).expect("fits")
+    }
     /// The device seal for a token: `w` + the token key's suffix.
     pub fn token_seal(hash: &[u8; 32]) -> Key {
         let token = token(hash);
@@ -648,13 +659,22 @@ impl<S: Store> Service<S> {
 
         let mut repairs: Vec<(Ns, Key)> = Vec::new();
 
+        let mut local = Vec::new();
         for (key, bytes) in load(&mut store, Ns::Tok)? {
+            if key.as_str().starts_with('k') {
+                let rec: LocalTokenRec = codec::decode(Kind::LocalToken, &bytes)?;
+                if keys::local_token(rec.token_id) != key {
+                    return Err(corrupt(&key, "id does not match key"));
+                }
+                local.push((key, rec));
+                continue;
+            }
             let rec: TokenRec = codec::decode(Kind::Token, &bytes)?;
             idgen.observe(rec.id);
             let valid = state
                 .account(rec.slot)
                 .is_some_and(|a| a.rec.token_epoch == rec.epoch)
-                && state.apps.contains_key(&rec.app_id);
+                && (rec.app_id == LOCAL_APP || state.apps.contains_key(&rec.app_id));
             if valid {
                 state.tokens.push(Token {
                     rec,
@@ -664,6 +684,27 @@ impl<S: Store> Service<S> {
                 repairs.push((Ns::Tok, key));
             }
         }
+        // A local token and its description are two writes: whichever is
+        // left without the other (a power cut, a revoked token) goes.
+        for (key, rec) in local {
+            let live = state
+                .tokens
+                .iter()
+                .any(|t| t.rec.id == rec.token_id && t.rec.app_id == LOCAL_APP);
+            if live {
+                state.local_tokens.insert(rec.token_id, rec);
+            } else {
+                repairs.push((Ns::Tok, key));
+            }
+        }
+        let described = &state.local_tokens;
+        state.tokens.retain(|t| {
+            let orphan = t.rec.app_id == LOCAL_APP && !described.contains_key(&t.rec.id);
+            if orphan {
+                repairs.push((Ns::Tok, keys::token(&t.rec.hash)));
+            }
+            !orphan
+        });
 
         let mut envelopes = Vec::new();
         let mut polls = Vec::new();
@@ -1080,7 +1121,7 @@ impl<S: Store> Service<S> {
             || s.boosts.len() > MAX_BOOSTS
             || s.reactions.len() > MAX_REACTIONS
             || s.apps.len() > MAX_APPS
-            || s.tokens.len() > MAX_TOKENS
+            || s.tokens.len() > MAX_TOKENS + MAX_API_KEYS
             || s.invites.len() > MAX_CODES_LIVE
             || s.history.len() > MAX_REVISIONS
         {
