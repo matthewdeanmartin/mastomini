@@ -87,14 +87,15 @@ and the server agree:
 | Item | Limit |
 |---|---|
 | URI length | 1,024 B |
-| Request headers | 2,048 B |
+| Request headers | 4,096 B, at most 32 fields |
 | JSON / form body (API) | 4 KiB |
 | Multipart body, `PATCH /api/v1/accounts/update_credentials` only | 160 KiB, and file part ≤ 48 KiB avatar / 96 KiB header |
 | Media upload endpoints (`/api/v1/media`, `/api/v2/media`) | `422 "media attachments are not supported"` (body not read beyond headers; `413` on `Content-Length`) |
 | Page size (`limit`) | default 20, max 40 (Mastodon's defaults) |
 | `id[]` array params (relationships, statuses) | 40 |
 | Search results | 20 per type |
-| Concurrent uploads | 1 |
+| Buffered request input on the board | 512 KiB shared growth budget, plus new clients' initial 4 KiB buffers; API writes remain serialized |
+| Single board response body | 512 KiB; larger replies return 503 |
 
 ## Memory budget (targets, verified on hardware)
 
@@ -106,11 +107,12 @@ and the server agree:
 | Hashtag index (per status: up to 8 × u32 hash) | PSRAM | 128 KiB |
 | Accounts 16 × ~1.6 KiB, apps 32, tokens 64 | PSRAM | ~40 KiB |
 | Ephemeral: notification ring (512 × 32 B), markers (16 × 2), auth codes, idempotency keys (1 h), login-failure counters, rate/governor counters, token last-used | PSRAM | ~64 KiB |
-| Per-worker response buffer: 4 × 128 KiB | PSRAM | 512 KiB |
+| Pending board responses | PSRAM for large allocations | Dispatch pauses at 512 KiB retained; one additional response may cross the threshold |
+| Buffered board requests | PSRAM for large allocations | 512 KiB shared growth budget, plus initial 4 KiB client buffers |
 | NVS page cache (`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM`) | PSRAM | measure (entry count dependent) |
 | **PSRAM total target** | | **≤ 5 MiB of 8 MiB** |
-| TLS sessions (4 × 4 KiB in + 2 KiB out, one 16 KiB upload record) | internal | ~40 KiB |
-| httpd worker stacks 6 × 24 KiB | internal | 144 KiB |
+| TLS sessions (8 established, 2 pending, 2 handoffs; 16 KiB in/out per session) | PSRAM | Record buffers plus TLS contexts; see measured headroom in spec/08 |
+| TLS / HTTP task stacks | internal | 24 KiB on core 0 / 32 KiB on core 1 |
 | Reserved internal pool | internal | 64 KiB (as nanacoin) |
 
 Why fixed status slots rather than a variable-length text arena: fixed slots
@@ -120,10 +122,13 @@ spare. If PSRAM measurements come in tight, the fallback is a ring-ordered text
 arena. It fits ring eviction naturally, because the oldest text is always at the
 tail.
 
-A timeline page of 40 statuses serializes to about 60–120 KiB of JSON, since each
-status embeds its author account. The 128 KiB worker buffer is sized for that. If a
-reply would overflow it, the handler shortens the page and sets the `Link` header
-to match. That is legal Mastodon behaviour: clients follow `Link`, not `limit`.
+A timeline page of 40 statuses typically serializes to about 60–120 KiB of JSON,
+since each status embeds its author account. The current board transport retains
+the encoded body and writes it in bounded pieces, without a second full copy.
+It rejects a body larger than 512 KiB with 503; it does not truncate JSON or
+silently change the API's page boundaries. The remaining slab figures above are
+planning estimates, not a measurement of the current Rust service. See spec/08
+for transport tests and actual board observations.
 
 ## Flash budget
 

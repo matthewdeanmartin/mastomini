@@ -108,6 +108,7 @@ export type Usage = [number, number];
 
 /** `GET /api/mastomini/v1/diag`. */
 export interface Diag {
+  incidents: import('../pages/incident-history').IncidentHistory;
   version: string;
   household_app: boolean;
   platform: {

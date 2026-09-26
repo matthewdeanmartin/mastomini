@@ -1,0 +1,835 @@
+{
+  "address": "192.168.1.161",
+  "tests": {
+    "http_4_fully_established": {
+      "summary": {
+        "samples": 40,
+        "mean_ms": 371.6687924985308,
+        "median_ms": 305.0723499909509,
+        "max_ms": 741.3805000251159
+      },
+      "rows": [
+        {
+          "ms": 153.6424999940209,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.890, body;dur=0.386, lock;dur=0.007"
+        },
+        {
+          "ms": 72.66639999579638,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.843, body;dur=0.385, lock;dur=0.009"
+        },
+        {
+          "ms": 162.82389999832958,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.573, body;dur=0.381, lock;dur=0.007"
+        },
+        {
+          "ms": 146.98959997622296,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.031, body;dur=0.385, lock;dur=0.007"
+        },
+        {
+          "ms": 267.8749000187963,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.986, body;dur=0.386, lock;dur=0.006"
+        },
+        {
+          "ms": 263.8149000122212,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.552, body;dur=0.391, lock;dur=0.008"
+        },
+        {
+          "ms": 487.54010000266135,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.991, body;dur=0.389, lock;dur=0.007"
+        },
+        {
+          "ms": 536.0527000157163,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.018, body;dur=0.390, lock;dur=0.007"
+        },
+        {
+          "ms": 591.946900007315,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.416, body;dur=0.389, lock;dur=0.006"
+        },
+        {
+          "ms": 741.3805000251159,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.583, body;dur=0.449, lock;dur=0.007"
+        },
+        {
+          "ms": 200.47929999418557,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.568, body;dur=0.535, lock;dur=0.006"
+        },
+        {
+          "ms": 159.92299997014925,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.361, body;dur=0.390, lock;dur=0.012"
+        },
+        {
+          "ms": 137.46990001527593,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.410, body;dur=0.387, lock;dur=0.006"
+        },
+        {
+          "ms": 205.63459995901212,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.363, body;dur=0.391, lock;dur=0.006"
+        },
+        {
+          "ms": 182.0284000132233,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.758, body;dur=0.385, lock;dur=0.008"
+        },
+        {
+          "ms": 393.7366000027396,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.012, body;dur=0.386, lock;dur=0.007"
+        },
+        {
+          "ms": 538.3287000004202,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.500, body;dur=0.381, lock;dur=0.008"
+        },
+        {
+          "ms": 625.3990000113845,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.953, body;dur=0.383, lock;dur=0.008"
+        },
+        {
+          "ms": 681.698200001847,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.079, body;dur=0.412, lock;dur=0.007"
+        },
+        {
+          "ms": 583.3282999810763,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.802, body;dur=0.395, lock;dur=0.007"
+        },
+        {
+          "ms": 202.02229998540133,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.531, body;dur=0.380, lock;dur=0.007"
+        },
+        {
+          "ms": 163.64409995730966,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.478, body;dur=0.384, lock;dur=0.006"
+        },
+        {
+          "ms": 145.80140000907704,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.220, body;dur=0.379, lock;dur=0.006"
+        },
+        {
+          "ms": 203.53230001637712,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.876, body;dur=0.376, lock;dur=0.006"
+        },
+        {
+          "ms": 252.8543999651447,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.027, body;dur=0.393, lock;dur=0.013"
+        },
+        {
+          "ms": 445.3188999905251,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.540, body;dur=0.383, lock;dur=0.006"
+        },
+        {
+          "ms": 517.6546999718994,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.796, body;dur=0.710, lock;dur=0.006"
+        },
+        {
+          "ms": 660.3711000061594,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.199, body;dur=0.386, lock;dur=0.006"
+        },
+        {
+          "ms": 649.5489000226371,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.717, body;dur=0.445, lock;dur=0.012"
+        },
+        {
+          "ms": 548.1271999888122,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.740, body;dur=0.383, lock;dur=0.006"
+        },
+        {
+          "ms": 202.1950000198558,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.515, body;dur=0.630, lock;dur=0.008"
+        },
+        {
+          "ms": 175.0264000147581,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.481, body;dur=0.379, lock;dur=0.007"
+        },
+        {
+          "ms": 152.35809999285266,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.799, body;dur=0.508, lock;dur=0.012"
+        },
+        {
+          "ms": 296.4560999535024,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.757, body;dur=0.370, lock;dur=0.006"
+        },
+        {
+          "ms": 347.9586000321433,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.826, body;dur=0.368, lock;dur=0.006"
+        },
+        {
+          "ms": 516.5547000360675,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.928, body;dur=0.387, lock;dur=0.008"
+        },
+        {
+          "ms": 617.3662000219338,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.411, body;dur=0.384, lock;dur=0.008"
+        },
+        {
+          "ms": 629.1544999694452,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.279, body;dur=0.388, lock;dur=0.007"
+        },
+        {
+          "ms": 694.3597999634221,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.427, body;dur=0.388, lock;dur=0.006"
+        },
+        {
+          "ms": 313.6886000283994,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.195, body;dur=0.390, lock;dur=0.007"
+        }
+      ]
+    },
+    "https_4_fully_established": {
+      "summary": {
+        "samples": 40,
+        "mean_ms": 661.81781750347,
+        "median_ms": 680.7675999880303,
+        "max_ms": 1155.1131999585778
+      },
+      "rows": [
+        {
+          "ms": 330.87639999575913,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.136, body;dur=0.396, lock;dur=0.009"
+        },
+        {
+          "ms": 391.45759999519214,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.546, body;dur=0.407, lock;dur=0.007"
+        },
+        {
+          "ms": 395.07540001068264,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.578, body;dur=0.398, lock;dur=0.008"
+        },
+        {
+          "ms": 813.5786000057124,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.632, body;dur=0.423, lock;dur=0.008"
+        },
+        {
+          "ms": 478.71029999805614,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.734, body;dur=0.404, lock;dur=0.007"
+        },
+        {
+          "ms": 750.0222999951802,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.431, body;dur=0.403, lock;dur=0.007"
+        },
+        {
+          "ms": 831.7943000001833,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.210, body;dur=0.477, lock;dur=0.006"
+        },
+        {
+          "ms": 543.2225000113249,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.814, body;dur=0.401, lock;dur=0.008"
+        },
+        {
+          "ms": 537.3305999673903,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.736, body;dur=0.491, lock;dur=0.012"
+        },
+        {
+          "ms": 1155.1131999585778,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.875, body;dur=0.412, lock;dur=0.006"
+        },
+        {
+          "ms": 352.13169996859506,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.258, body;dur=0.398, lock;dur=0.006"
+        },
+        {
+          "ms": 390.28239995241165,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.935, body;dur=0.632, lock;dur=0.013"
+        },
+        {
+          "ms": 702.2781000123359,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.756, body;dur=0.759, lock;dur=0.008"
+        },
+        {
+          "ms": 733.7215000297874,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.719, body;dur=0.403, lock;dur=0.008"
+        },
+        {
+          "ms": 544.038099993486,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.146, body;dur=0.402, lock;dur=0.006"
+        },
+        {
+          "ms": 659.8742000060156,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.264, body;dur=0.405, lock;dur=0.006"
+        },
+        {
+          "ms": 728.659600019455,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.970, body;dur=0.413, lock;dur=0.006"
+        },
+        {
+          "ms": 531.0916000162251,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.196, body;dur=0.400, lock;dur=0.008"
+        },
+        {
+          "ms": 722.8258000104688,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.976, body;dur=0.582, lock;dur=0.009"
+        },
+        {
+          "ms": 1132.1116000181064,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.378, body;dur=0.406, lock;dur=0.008"
+        },
+        {
+          "ms": 364.69810002017766,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.577, body;dur=0.414, lock;dur=0.006"
+        },
+        {
+          "ms": 390.84849995560944,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.103, body;dur=0.414, lock;dur=0.006"
+        },
+        {
+          "ms": 751.3584000407718,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.808, body;dur=0.418, lock;dur=0.006"
+        },
+        {
+          "ms": 734.7207000129856,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.521, body;dur=0.487, lock;dur=0.013"
+        },
+        {
+          "ms": 734.1291999910027,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.723, body;dur=0.475, lock;dur=0.008"
+        },
+        {
+          "ms": 619.5743000134826,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.469, body;dur=0.412, lock;dur=0.006"
+        },
+        {
+          "ms": 615.1256000157446,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.940, body;dur=0.409, lock;dur=0.006"
+        },
+        {
+          "ms": 609.7896000137553,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.947, body;dur=0.412, lock;dur=0.008"
+        },
+        {
+          "ms": 1002.1690000430681,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.435, body;dur=0.410, lock;dur=0.008"
+        },
+        {
+          "ms": 1025.2712999936193,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.714, body;dur=0.630, lock;dur=0.008"
+        },
+        {
+          "ms": 404.5250000199303,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.662, body;dur=0.517, lock;dur=0.011"
+        },
+        {
+          "ms": 472.7065000333823,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.754, body;dur=0.413, lock;dur=0.007"
+        },
+        {
+          "ms": 771.9045999692753,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.084, body;dur=0.402, lock;dur=0.008"
+        },
+        {
+          "ms": 701.6609999700449,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.346, body;dur=0.407, lock;dur=0.008"
+        },
+        {
+          "ms": 704.7961000353098,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.293, body;dur=0.414, lock;dur=0.007"
+        },
+        {
+          "ms": 781.9432000396773,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.403, body;dur=0.492, lock;dur=0.008"
+        },
+        {
+          "ms": 573.8715999759734,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.912, body;dur=0.415, lock;dur=0.006"
+        },
+        {
+          "ms": 518.1214000331238,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.607, body;dur=0.409, lock;dur=0.006"
+        },
+        {
+          "ms": 1122.9637999786064,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.239, body;dur=0.401, lock;dur=0.006"
+        },
+        {
+          "ms": 848.3390000183135,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.917, body;dur=0.407, lock;dur=0.009"
+        }
+      ]
+    },
+    "https_6_fully_established": {
+      "summary": {
+        "samples": 60,
+        "mean_ms": 644.3133366643451,
+        "median_ms": 676.298999984283,
+        "max_ms": 1281.930500001181
+      },
+      "rows": [
+        {
+          "ms": 671.2982999742962,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.505, body;dur=0.401, lock;dur=0.006"
+        },
+        {
+          "ms": 299.3045999901369,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.594, body;dur=0.543, lock;dur=0.009"
+        },
+        {
+          "ms": 565.3066000086255,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.983, body;dur=0.438, lock;dur=0.008"
+        },
+        {
+          "ms": 769.5614999975078,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.383, body;dur=0.407, lock;dur=0.006"
+        },
+        {
+          "ms": 949.6414000168443,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.637, body;dur=0.414, lock;dur=0.007"
+        },
+        {
+          "ms": 1042.6424999604933,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.262, body;dur=0.406, lock;dur=0.007"
+        },
+        {
+          "ms": 1096.6243000002578,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.377, body;dur=0.503, lock;dur=0.009"
+        },
+        {
+          "ms": 395.49949998036027,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.507, body;dur=0.402, lock;dur=0.007"
+        },
+        {
+          "ms": 343.7673000153154,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.761, body;dur=0.430, lock;dur=0.007"
+        },
+        {
+          "ms": 175.91620003804564,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.082, body;dur=0.547, lock;dur=0.008"
+        },
+        {
+          "ms": 711.5260999999009,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.434, body;dur=0.409, lock;dur=0.007"
+        },
+        {
+          "ms": 344.5316000143066,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.440, body;dur=0.415, lock;dur=0.007"
+        },
+        {
+          "ms": 679.4544999720529,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.519, body;dur=0.408, lock;dur=0.006"
+        },
+        {
+          "ms": 756.028400035575,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.645, body;dur=0.409, lock;dur=0.006"
+        },
+        {
+          "ms": 1031.355600047391,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.725, body;dur=0.418, lock;dur=0.006"
+        },
+        {
+          "ms": 1024.9297000118531,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.295, body;dur=0.545, lock;dur=0.008"
+        },
+        {
+          "ms": 943.4008999960497,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.656, body;dur=0.414, lock;dur=0.007"
+        },
+        {
+          "ms": 382.32869998319075,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.184, body;dur=0.416, lock;dur=0.007"
+        },
+        {
+          "ms": 313.1647999980487,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.435, body;dur=0.414, lock;dur=0.006"
+        },
+        {
+          "ms": 197.24810001207516,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.846, body;dur=0.414, lock;dur=0.006"
+        },
+        {
+          "ms": 729.4974999967963,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.857, body;dur=0.413, lock;dur=0.007"
+        },
+        {
+          "ms": 414.38700002618134,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.635, body;dur=0.407, lock;dur=0.006"
+        },
+        {
+          "ms": 741.3537999964319,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.844, body;dur=0.416, lock;dur=0.009"
+        },
+        {
+          "ms": 674.156499968376,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.055, body;dur=0.517, lock;dur=0.008"
+        },
+        {
+          "ms": 1059.0390999568626,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.723, body;dur=0.406, lock;dur=0.008"
+        },
+        {
+          "ms": 1281.930500001181,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.667, body;dur=0.408, lock;dur=0.007"
+        },
+        {
+          "ms": 678.44150000019,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.196, body;dur=0.404, lock;dur=0.006"
+        },
+        {
+          "ms": 368.6464999918826,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.636, body;dur=0.636, lock;dur=0.010"
+        },
+        {
+          "ms": 277.0870999665931,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.950, body;dur=0.413, lock;dur=0.006"
+        },
+        {
+          "ms": 250.83020003512502,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.225, body;dur=0.537, lock;dur=0.008"
+        },
+        {
+          "ms": 766.2618999602273,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.485, body;dur=0.509, lock;dur=0.008"
+        },
+        {
+          "ms": 631.123099999968,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.240, body;dur=0.485, lock;dur=0.008"
+        },
+        {
+          "ms": 739.8669999674894,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.491, body;dur=0.422, lock;dur=0.006"
+        },
+        {
+          "ms": 839.3201999715529,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.359, body;dur=0.421, lock;dur=0.009"
+        },
+        {
+          "ms": 917.7150999894366,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.497, body;dur=0.413, lock;dur=0.008"
+        },
+        {
+          "ms": 1234.7887000069022,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.790, body;dur=0.418, lock;dur=0.009"
+        },
+        {
+          "ms": 511.1643000273034,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.408, body;dur=0.414, lock;dur=0.007"
+        },
+        {
+          "ms": 336.74499997869134,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.737, body;dur=0.638, lock;dur=0.008"
+        },
+        {
+          "ms": 267.62920001056045,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.771, body;dur=0.438, lock;dur=0.006"
+        },
+        {
+          "ms": 239.60289999376982,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.489, body;dur=0.539, lock;dur=0.008"
+        },
+        {
+          "ms": 778.3667999901809,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.665, body;dur=0.535, lock;dur=0.008"
+        },
+        {
+          "ms": 618.8433999777772,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.883, body;dur=0.406, lock;dur=0.006"
+        },
+        {
+          "ms": 757.1769999922253,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.547, body;dur=0.406, lock;dur=0.007"
+        },
+        {
+          "ms": 857.2311000316404,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.575, body;dur=0.408, lock;dur=0.006"
+        },
+        {
+          "ms": 1009.9784000194632,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.844, body;dur=0.406, lock;dur=0.007"
+        },
+        {
+          "ms": 1234.2684000032023,
+          "bytes": 2230,
+          "server_timing": "app;dur=9.085, body;dur=0.402, lock;dur=0.006"
+        },
+        {
+          "ms": 419.2884999793023,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.984, body;dur=0.407, lock;dur=0.006"
+        },
+        {
+          "ms": 344.40259996335953,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.663, body;dur=0.416, lock;dur=0.006"
+        },
+        {
+          "ms": 242.67750000581145,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.852, body;dur=0.416, lock;dur=0.007"
+        },
+        {
+          "ms": 225.5126999807544,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.904, body;dur=0.409, lock;dur=0.006"
+        },
+        {
+          "ms": 791.7534000007436,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.564, body;dur=0.559, lock;dur=0.008"
+        },
+        {
+          "ms": 608.2810999942012,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.740, body;dur=0.413, lock;dur=0.006"
+        },
+        {
+          "ms": 789.8644999950193,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.851, body;dur=0.417, lock;dur=0.007"
+        },
+        {
+          "ms": 945.5738000106066,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.556, body;dur=0.419, lock;dur=0.006"
+        },
+        {
+          "ms": 973.5271999961697,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.399, body;dur=0.421, lock;dur=0.006"
+        },
+        {
+          "ms": 1218.3409000281245,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.636, body;dur=0.412, lock;dur=0.008"
+        },
+        {
+          "ms": 403.3759000012651,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.599, body;dur=0.415, lock;dur=0.006"
+        },
+        {
+          "ms": 350.8516000001691,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.841, body;dur=0.408, lock;dur=0.010"
+        },
+        {
+          "ms": 204.44379997206852,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.923, body;dur=0.420, lock;dur=0.006"
+        },
+        {
+          "ms": 231.92390002077445,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.868, body;dur=0.613, lock;dur=0.012"
+        }
+      ]
+    },
+    "hot_during_cold_handshake": {
+      "summary": {
+        "samples": 10,
+        "mean_ms": 113.45723999547772,
+        "median_ms": 102.90825000265613,
+        "max_ms": 193.2414000038989
+      },
+      "rows": [
+        {
+          "ms": 100.97110003698617,
+          "bytes": 2230,
+          "server_timing": "app;dur=8.620, body;dur=0.666, lock;dur=0.008"
+        },
+        {
+          "ms": 87.18099998077378,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.977, body;dur=0.413, lock;dur=0.007"
+        },
+        {
+          "ms": 86.26219996949658,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.969, body;dur=0.414, lock;dur=0.006"
+        },
+        {
+          "ms": 193.2414000038989,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.963, body;dur=0.415, lock;dur=0.008"
+        },
+        {
+          "ms": 106.33490001782775,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.986, body;dur=0.410, lock;dur=0.007"
+        },
+        {
+          "ms": 104.84539996832609,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.551, body;dur=0.400, lock;dur=0.006"
+        },
+        {
+          "ms": 63.61979997018352,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.549, body;dur=0.392, lock;dur=0.009"
+        },
+        {
+          "ms": 97.66000002855435,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.553, body;dur=0.406, lock;dur=0.008"
+        },
+        {
+          "ms": 109.48929999722168,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.267, body;dur=0.397, lock;dur=0.006"
+        },
+        {
+          "ms": 184.9672999815084,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.709, body;dur=0.541, lock;dur=0.011"
+        }
+      ],
+      "cold_total_ms": 1491.606600000523
+    },
+    "hot_during_silent_handshake": {
+      "summary": {
+        "samples": 5,
+        "mean_ms": 95.44864000054076,
+        "median_ms": 93.95660000154749,
+        "max_ms": 109.03709998819977
+      },
+      "rows": [
+        {
+          "ms": 85.24019998731092,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.975, body;dur=0.417, lock;dur=0.007"
+        },
+        {
+          "ms": 93.95660000154749,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.708, body;dur=0.401, lock;dur=0.006"
+        },
+        {
+          "ms": 95.8919000113383,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.669, body;dur=0.399, lock;dur=0.006"
+        },
+        {
+          "ms": 109.03709998819977,
+          "bytes": 2230,
+          "server_timing": "app;dur=6.701, body;dur=0.394, lock;dur=0.007"
+        },
+        {
+          "ms": 93.11740001430735,
+          "bytes": 2230,
+          "server_timing": "app;dur=7.529, body;dur=0.438, lock;dur=0.009"
+        }
+      ]
+    },
+    "resumption": {
+      "reused": true,
+      "total_ms": 228.83410000940785
+    }
+  }
+}

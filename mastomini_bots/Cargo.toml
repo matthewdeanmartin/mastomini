@@ -1,0 +1,65 @@
+[package]
+name = "mastomini_bots"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+default-run = "mastomini-bots"
+description = "Many Mastodon bots on one ESP32-S3, with an admin site; tuned for mastomini.local, works with any Mastodon server"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+name = "mastobots"
+
+[[bin]]
+name = "mastomini-bots"
+path = "src/bin/desktop.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "mastomini-bots-esp32"
+path = "src/bin/esp32.rs"
+required-features = ["esp32"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tiny_http", "dep:ureq", "dep:rustls", "dep:rustls-pemfile", "dep:webpki-roots"]
+esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
+# Embed the admin app (mastomini_bots_ui); needs `make web` first.
+bundled-web = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+getrandom = "0.2"
+percent-encoding = "2.3"
+log = { version = "0.4", optional = true }
+# Desktop only. The admin server is plain HTTP (or HTTPS with make certs),
+# the Mastodon client is ureq with the public roots plus the household CA.
+tiny_http = { version = "0.12", optional = true, features = ["ssl-rustls"] }
+ureq = { version = "2.12", optional = true, default-features = false, features = ["tls", "json"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = { version = "2", optional = true }
+webpki-roots = { version = "0.26", optional = true }
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"] }
+
+[build-dependencies]
+embuild = { version = "0.33", optional = true, features = ["espidf"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.3"
+esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8.2" }
+bindings_header = "src/mdns_bindings.h"

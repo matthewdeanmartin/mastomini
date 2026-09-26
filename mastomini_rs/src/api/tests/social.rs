@@ -274,6 +274,65 @@ fn announcement_lifecycle_permissions_and_reactions() {
 }
 
 #[test]
+fn announcement_admin_scopes_do_not_replace_roles() {
+    let mut s = Server::provisioned();
+    let owner = s.login("alice", "alicepw", "read write");
+    s.add_member(&owner, "bob");
+    let member = s.login("bob", "secret", "admin:read admin:write");
+    let read = s.login("alice", "alicepw", "admin:read");
+    let write = s.login("alice", "alicepw", "admin:write");
+    let path = "/api/v1/admin/announcements";
+    for token in [&owner, &member] {
+        assert_eq!(s.get(path, Some(token)).status, 403);
+        assert_eq!(
+            s.send_json(
+                "POST",
+                path,
+                Some(token),
+                &json!({"text":"denied","published":false})
+            )
+            .status,
+            403
+        );
+    }
+    assert_eq!(s.get(path, Some(&read)).status, 200);
+    assert_eq!(
+        s.send_json("POST", path, Some(&read), &json!({"text":"denied"}))
+            .status,
+        403
+    );
+    let created = s.send_json(
+        "POST",
+        path,
+        Some(&write),
+        &json!({"text":"draft","published":false}),
+    );
+    assert_eq!(created.status, 200);
+    assert_eq!(created.json_body()["published"], false);
+    assert_eq!(s.get(path, Some(&write)).status, 403);
+    let id = created.json_body()["id"].as_str().unwrap().to_string();
+    let detail = format!("{path}/{id}");
+    assert_eq!(
+        s.post_form(&format!("{detail}/publish"), Some(&member), &[])
+            .status,
+        403
+    );
+    assert_eq!(
+        s.post_form(&format!("{detail}/publish"), Some(&write), &[])
+            .status,
+        200
+    );
+    let updated = s.send_json(
+        "PUT",
+        &detail,
+        Some(&write),
+        &json!({"text":"edited","starts_at":"","ends_at":""}),
+    );
+    assert_eq!(updated.status, 200);
+    assert_eq!(updated.json_body()["published"], true);
+}
+
+#[test]
 fn aliases_and_group_dismissal_are_real() {
     let mut s = Server::provisioned();
     let alice = s.login("alice", "alicepw", "read write");

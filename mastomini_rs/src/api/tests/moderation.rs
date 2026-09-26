@@ -25,6 +25,101 @@ fn household() -> (Server, String, String, String) {
 }
 
 #[test]
+fn admin_pages_follow_filtered_links_and_enforce_role_and_scopes() {
+    let (mut s, alice, bob, carol) = household();
+    let target = me(&mut s, &carol);
+    let reporter = me(&mut s, &bob);
+    for _ in 0..3 {
+        assert_eq!(
+            s.send_json(
+                "POST",
+                "/api/v1/reports",
+                Some(&bob),
+                &json!({"account_id": target})
+            )
+            .status,
+            200
+        );
+    }
+    let readonly = s.login("alice", "alicepw", "admin:read:reports");
+    let path = format!("/api/v1/admin/reports?limit=2&resolved=false&account_id={reporter}&target_account_id={target}");
+    let first = s.get(&path, Some(&readonly));
+    assert_eq!(first.status, 200);
+    assert_eq!(first.json_body().as_array().unwrap().len(), 2);
+    assert!(first
+        .header("Access-Control-Expose-Headers")
+        .unwrap()
+        .contains("Link"));
+    let links = first.header("Link").unwrap();
+    let next = links.split('<').nth(1).unwrap().split('>').next().unwrap();
+    assert!(next.contains("resolved=false"));
+    assert!(next.contains(&format!("account_id={reporter}")));
+    assert!(next.contains(&format!("target_account_id={target}")));
+    let second = s.get(
+        next.strip_prefix("http://mastomini.test").unwrap(),
+        Some(&readonly),
+    );
+    assert_eq!(second.json_body().as_array().unwrap().len(), 1);
+    assert_ne!(first.json_body()[0]["id"], second.json_body()[0]["id"]);
+    let report = first.json_body()[0]["id"].as_str().unwrap().to_string();
+    let resolve = format!("/api/v1/admin/reports/{report}/resolve");
+    assert_eq!(s.post_form(&resolve, Some(&readonly), &[]).status, 403);
+    let member_admin_scope = s.login("bob", "secret", "admin:read admin:write");
+    assert_eq!(s.get(&path, Some(&member_admin_scope)).status, 403);
+    assert_eq!(
+        s.post_form(&resolve, Some(&member_admin_scope), &[]).status,
+        403
+    );
+
+    // Write scopes authorize the mutation AND its response; read is not
+    // silently required after committing the operation.
+    let writeonly = s.login(
+        "alice",
+        "alicepw",
+        "admin:write:reports admin:write:accounts",
+    );
+    let resolved = s.post_form(&resolve, Some(&writeonly), &[]);
+    assert_eq!(resolved.status, 200);
+    assert_eq!(resolved.json_body()["action_taken"], true);
+    assert_eq!(s.get(&path, Some(&writeonly)).status, 403);
+    let enable = format!("/api/v1/admin/accounts/{target}/enable");
+    assert_eq!(s.post_form(&enable, Some(&writeonly), &[]).status, 200);
+    assert_eq!(
+        s.get("/api/v1/admin/accounts", Some(&writeonly)).status,
+        403
+    );
+
+    // Empty rule selection must clear previously selected rules through JSON.
+    assert_eq!(
+        s.send_json(
+            "PUT",
+            "/api/mastomini/v1/admin/server",
+            Some(&alice),
+            &json!({"rules":["Be kind"]})
+        )
+        .status,
+        200
+    );
+    let detail = format!("/api/v1/admin/reports/{report}");
+    let classified = s.send_json(
+        "PUT",
+        &detail,
+        Some(&writeonly),
+        &json!({"category":"violation","rule_ids":["1"]}),
+    );
+    assert_eq!(classified.status, 200);
+    assert_eq!(classified.json_body()["rules"].as_array().unwrap().len(), 1);
+    let cleared = s.send_json(
+        "PUT",
+        &detail,
+        Some(&writeonly),
+        &json!({"category":"other","rule_ids":[""]}),
+    );
+    assert_eq!(cleared.status, 200);
+    assert_eq!(cleared.json_body()["rules"], json!([]));
+}
+
+#[test]
 fn block_and_mute_endpoints_and_lists() {
     let (mut s, alice, bob, carol) = household();
     let (bob_id, carol_id) = (me(&mut s, &bob), me(&mut s, &carol));

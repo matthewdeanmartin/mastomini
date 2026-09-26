@@ -1,0 +1,10 @@
+/target/
+/.embuild/
+# Household HTTPS certificate (make certs): never committed
+/certs/
+/.local/
+.env
+# Desktop settings store (holds API keys)
+mastomini-bots.json
+mastomini-bots.tmp
+__pycache__/

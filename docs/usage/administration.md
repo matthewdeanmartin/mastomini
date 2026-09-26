@@ -13,6 +13,31 @@ API (`/api/mastomini/v1`) and Mastodon apps with admin features work too. The ex
 access token (`$TOKEN`) and the board's address (`$BOARD`, for example
 `http://192.168.1.161`).
 
+## Reports and announcements
+
+Open **Moderation** or **Announcements** in the household app. On your first
+visit, choose **Authorize administration** and sign in again to grant this
+browser the required admin permissions. Existing ordinary sign-ins continue
+working for member management and server settings.
+
+**Moderation** lists open or resolved reports, with filters for reporter and
+reported member. Use **Next** and **Previous** to move through the queue.
+Open a report to assign it to yourself, edit its classification, review retained
+posts, or take action on the member. Member actions and post deletion do not
+automatically resolve the case: choose **Resolve report** when finished.
+Unavailable or private direct messages are not revealed by this screen.
+
+**Announcements** supports up to 16 notices. Choose **New draft**, enter plain
+text (up to 2,048 UTF-8 bytes), and save before publishing. Optional start/end
+times control when a published notice appears; the editor shows your timezone
+and the corresponding UTC times. The board clock must be set for this to work.
+**Unpublish** keeps a notice as a draft; **Delete** removes it and its reactions.
+
+If a connection fails while saving, refresh and inspect the current state
+before repeating the action. The editor keeps unsaved text and does not retry
+automatically. Coordinate edits with other admins: simultaneous edits currently
+have no conflict detection.
+
 ## Members
 
 The best way to add someone is an **invite link**. In the household app, open

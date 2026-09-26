@@ -242,7 +242,9 @@ impl Net {
             return;
         }
         log::warn!("Wi-Fi disconnected; reconnecting");
+        super::incidents::record(mastomini::incidents::Kind::Reconnect, 0);
         if let Err(e) = self.wifi.connect().and_then(|_| self.wifi.wait_netif_up()) {
+            super::incidents::record(mastomini::incidents::Kind::ReconnectFailed, e.code());
             log::warn!("Reconnect: {e}");
         }
     }

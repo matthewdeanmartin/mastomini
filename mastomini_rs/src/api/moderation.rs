@@ -274,7 +274,13 @@ fn admin_account_undo<S: Store>(c: &mut Call<'_, S>, id: &str, action: AdminActi
     c.svc
         .moderate(actor, slot, action, None, c.now)
         .map_err(fail)?;
-    admin_account(c, id)
+    // A write-only admin token may perform this mutation. Do not commit it
+    // and then report a misleading 403 from the separate read endpoint.
+    Ok(Response::ok(entities::admin_account(
+        c.svc,
+        c.ctx,
+        admin_target(c, id)?,
+    )))
 }
 
 /// Permanently delete a suspended account's data (Mastodon's rule: suspend
@@ -376,7 +382,15 @@ fn admin_report_op<S: Store>(c: &mut Call<'_, S>, id: &str, op: ReportOp) -> Rep
         }
     };
     result.map_err(fail)?;
-    admin_report(c, id)
+    let report = c
+        .svc
+        .state
+        .reports
+        .get(&report_id)
+        .ok_or_else(|| fail(Error::NotFound))?;
+    Ok(Response::ok(entities::admin_report(
+        c.svc, c.ctx, report, actor,
+    )))
 }
 
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {

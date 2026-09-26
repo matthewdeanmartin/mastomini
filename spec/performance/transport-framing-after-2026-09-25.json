@@ -1,0 +1,45 @@
+{
+  "rapid_http_idle_reclamation": "passed",
+  "before": {
+    "built_at": "2026-09-26T03:12:01.674Z",
+    "commit": "c3e6facdc2bd",
+    "dirty": true,
+    "features": [
+      "esp32",
+      "bundled-web"
+    ],
+    "fingerprint": "62fba4ca191b",
+    "profile": "release",
+    "target": "esp32s3",
+    "trace_timing": false,
+    "uptime_ms": 84471,
+    "version": "0.1.0"
+  },
+  "head_then_get": "passed",
+  "pipelined_get_body": "passed",
+  "hot_during_partial_request": {
+    "mean_ms": 52.09890500991605,
+    "max_ms": 107.15750005329028
+  },
+  "continue_large_body_then_reuse": "passed",
+  "ambiguous_framing_rejected": "passed",
+  "exact_large_asset": {
+    "compressed_bytes": 82026
+  },
+  "not_modified_then_reuse": "passed",
+  "after": {
+    "built_at": "2026-09-26T03:12:01.674Z",
+    "commit": "c3e6facdc2bd",
+    "dirty": true,
+    "features": [
+      "esp32",
+      "bundled-web"
+    ],
+    "fingerprint": "62fba4ca191b",
+    "profile": "release",
+    "target": "esp32s3",
+    "trace_timing": false,
+    "uptime_ms": 89981,
+    "version": "0.1.0"
+  }
+}

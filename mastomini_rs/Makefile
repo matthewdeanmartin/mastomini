@@ -90,6 +90,8 @@ scripts-check:
 	  clienttests/conftest.py clienttests/harness.py clienttests/smoke.py clienttests/test_mastodon_py.py \
 	  clienttests/test_https.py clienttests/test_bots_and_pages.py \
 	  clienttests/test_audit_tools.py scripts/api-coverage.py scripts/bench-api.py scripts/bench-desktop.py \
+	  scripts/probe-connection-queue.py scripts/probe-transport.py \
+	  loadtests/locustfile.py loadtests/sweep.py loadtests/test_readonly.py \
 	  conformance/conftest.py conformance/deviations.py conformance/sync_upstream.py
 	bash -n scripts/certs.sh
 	bash -n scripts/certs-check.sh

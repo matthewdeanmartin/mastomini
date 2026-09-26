@@ -5,11 +5,12 @@ import { describe } from '../api/api';
 import { Household } from '../api/household';
 import { Diag } from '../api/models';
 import { percent, when } from './format';
+import { IncidentHistoryPanel } from './incident-history';
 
 /** Board diagnostics (`/diag`) and the clock fallback (spec/05 "Time"). */
 @Component({
   selector: 'app-health',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, IncidentHistoryPanel],
   template: `
     <h1>Health</h1>
     @if (error()) {
@@ -95,6 +96,7 @@ import { percent, when } from './format';
         </dl>
       </section>
 
+      @if (d.incidents; as incidents) { <app-incident-history [history]="incidents" /> }
       <h2>Capacity</h2>
       <section class="panel">
         <dl class="facts">
@@ -127,6 +129,7 @@ export class HealthPage implements OnInit {
   protected async load(): Promise<void> {
     try {
       this.d.set(await this.household.diag());
+      this.error.set('');
     } catch (e) {
       this.error.set(describe(e));
     }

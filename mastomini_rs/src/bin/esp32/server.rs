@@ -1,419 +1,549 @@
-//! The board's HTTP and HTTPS listeners, on ESP-IDF's httpd directly.
-//!
-//! esp-idf-svc's `EspHttpServer` and `esp_https_server` were measured to cost
-//! most of a request's time on the board (spec/08):
-//!
-//! - A response went out as dozens of small writes: `httpd_resp_send*` sends
-//!   every header as four separate writes, then the body as chunks. Over TLS
-//!   each write is its own record, and with Nagle's algorithm the small
-//!   segments wait for the client's delayed ACK. Here a response is built in
-//!   one buffer and sent with one `httpd_send`.
-//! - Sockets kept Nagle's algorithm on, including during the TLS handshake,
-//!   whose four or five records then waited for ACKs too. `open` turns it off
-//!   before the handshake starts.
-//! - `esp_https_server` hard-codes TLS session tickets off (esp-idf-svc
-//!   0.52), so every reconnect paid for a full handshake (about a second of
-//!   CPU). Here a returning client resumes its session.
-//! - `esp_https_server` posts an event to the system event loop on every read
-//!   and write. This transport posts none.
-//!
-//! The server never stops, so what the listeners borrow is leaked once.
-
-use esp_idf_svc::sys::*;
+//! Bounded asynchronous TLS establishment on core 0; established HTTP(S)
+//! connections are multiplexed on core 1. No socket I/O holds the service lock.
+use crate::{net, now_ms, Net, Shared};
+use esp_idf_svc::{
+    hal::{cpu::Core, task::thread::ThreadSpawnConfiguration},
+    sys,
+};
+use mastomini::incidents::{Kind, LOG};
 use mastomini::{
     api::{self, Ctx},
-    http::{Request, Response, FORWARDED_HEADERS, UPLOAD_BODY_LIMIT},
+    http::{Request, Response},
+    http_transport::{self as http, Outgoing, Parsed},
 };
 use std::{
-    ffi::{c_char, c_int, c_void, CStr, CString},
-    sync::{
-        atomic::{AtomicPtr, Ordering},
-        Arc, Mutex,
-    },
-    time::Instant,
+    io::{self, Read, Write},
+    net::{TcpListener, TcpStream},
+    os::fd::AsRawFd,
+    ptr::NonNull,
+    sync::{mpsc, Arc, Mutex},
+    time::{Duration, Instant},
 };
 
-use crate::{net, now_ms, Net, Shared};
+const TLS_CLIENTS: usize = 8;
+const HTTP_CLIENTS: usize = 4;
+const HANDSHAKES: usize = 2;
+const IDLE: Duration = Duration::from_secs(60);
+const IO_DEADLINE: Duration = Duration::from_secs(10);
+// Pause dispatch at 512 KiB. One additional bounded response can cross the
+// threshold; queued responses retain their existing buffers, not full copies.
+const RESPONSE_BUDGET: usize = 512 * 1024;
+const INPUT_BUDGET: usize = 512 * 1024;
 
-/// What one listener's requests need.
-pub struct Listener {
-    pub secure: bool,
+pub struct Context {
     pub shared: Shared,
     pub ctx: Arc<Ctx>,
     pub net: Arc<Mutex<Net>>,
 }
 
-pub struct Settings {
-    pub port: u16,
-    /// httpd's internal control socket; distinct per server.
-    pub ctrl_port: u16,
-    pub sockets: u16,
-    /// Connections the kernel queues before httpd accepts them.
-    pub backlog: u16,
+/// The socket owns its fd. IDF 5.5.3 server_session_delete frees only the TLS
+/// context (unlike conn_destroy); TcpStream closes the descriptor exactly once.
+struct Socket {
+    tcp: TcpStream,
+    tls: Option<NonNull<sys::esp_tls_t>>,
 }
 
-/// The TLS server configuration shared by every HTTPS session.
-static TLS: AtomicPtr<esp_tls_cfg_server_t> = AtomicPtr::new(core::ptr::null_mut());
+// SAFETY: a Socket has a single owner, never shared access. The handshake task
+// transfers the completed TLS context through a channel and never touches it
+// again. All subsequent TLS calls and destruction happen on the receiving task.
+unsafe impl Send for Socket {}
 
-/// Set up HTTPS: certificate and key are NUL-terminated PEM. Session
-/// tickets let a client that reconnects skip the key exchange.
-pub fn init_tls(cert: &'static str, key: &'static str) -> Result<(), EspError> {
-    // SAFETY: a zeroed esp_tls_cfg_server_t is its documented default; the
-    // PEM buffers are 'static, and the config is leaked, so every pointer
-    // the TLS sessions keep stays valid.
-    unsafe {
-        let cfg: &'static mut esp_tls_cfg_server_t = Box::leak(Box::new(core::mem::zeroed()));
-        cfg.__bindgen_anon_3.servercert_buf = cert.as_ptr();
-        cfg.__bindgen_anon_4.servercert_bytes = cert.len() as _;
-        cfg.__bindgen_anon_5.serverkey_buf = key.as_ptr();
-        cfg.__bindgen_anon_6.serverkey_bytes = key.len() as _;
-        // One httpd task serves every HTTPS client, so a client that stalls
-        // mid-handshake stalls them all: give up after 4 s (a handshake
-        // takes about 1), not esp-tls's default 10 s.
-        cfg.tls_handshake_timeout_ms = 4000;
-        match esp!(esp_tls_cfg_server_session_tickets_init(cfg)) {
-            Ok(()) => log::info!("TLS session tickets on"),
-            Err(e) => log::warn!("TLS session tickets unavailable: {e}"),
+impl Drop for Socket {
+    fn drop(&mut self) {
+        if let Some(tls) = self.tls {
+            // SAFETY: exclusively owned, live context; TCP closes afterward.
+            unsafe { sys::esp_tls_server_session_delete(tls.as_ptr()) };
         }
-        TLS.store(cfg, Ordering::Release);
-    }
-    Ok(())
-}
-
-fn no_delay(fd: c_int) {
-    let on: c_int = 1;
-    // SAFETY: fd is the session's open socket; the option value outlives
-    // the call.
-    unsafe {
-        lwip_setsockopt(
-            fd,
-            IPPROTO_TCP as _,
-            TCP_NODELAY as _,
-            (&on as *const c_int).cast(),
-            core::mem::size_of::<c_int>() as _,
-        );
     }
 }
 
-unsafe extern "C" fn open_plain(_hd: httpd_handle_t, fd: c_int) -> esp_err_t {
-    no_delay(fd);
-    ESP_OK
-}
-
-/// A new HTTPS connection: handshake, then route the session's reads and
-/// writes through TLS.
-unsafe extern "C" fn open_tls(hd: httpd_handle_t, fd: c_int) -> esp_err_t {
-    no_delay(fd);
-    let cfg = TLS.load(Ordering::Acquire);
-    let tls = esp_tls_init();
-    if cfg.is_null() || tls.is_null() {
-        return ESP_ERR_NO_MEM;
-    }
-    let started = Instant::now();
-    if esp_tls_server_session_create(cfg, fd, tls) != 0 {
-        esp_tls_server_session_delete(tls);
-        return ESP_FAIL;
-    }
-    if option_env!("MASTOMINI_TRACE_TIMING") == Some("1") {
-        log::info!(
-            "timing tls_handshake_ms={:.3}",
-            started.elapsed().as_secs_f64() * 1000.0
-        );
-    }
-    httpd_sess_set_transport_ctx(hd, fd, tls.cast(), Some(close_tls));
-    httpd_sess_set_send_override(hd, fd, Some(send_tls));
-    httpd_sess_set_recv_override(hd, fd, Some(recv_tls));
-    httpd_sess_set_pending_override(hd, fd, Some(pending_tls));
-    ESP_OK
-}
-
-unsafe extern "C" fn close_tls(ctx: *mut c_void) {
-    esp_tls_server_session_delete(ctx.cast());
-}
-
-fn session(hd: httpd_handle_t, fd: c_int) -> *mut esp_tls_t {
-    // SAFETY: called by httpd for a live session that open_tls set up.
-    unsafe { httpd_sess_get_transport_ctx(hd, fd).cast() }
-}
-
-/// mbedTLS reports a socket timeout as "want read/write"; httpd retries only
-/// its own timeout code.
-fn sock_result(n: isize) -> c_int {
+fn tls_result(n: isize) -> io::Result<usize> {
     match n as i32 {
-        ESP_TLS_ERR_SSL_WANT_READ | ESP_TLS_ERR_SSL_WANT_WRITE => HTTPD_SOCK_ERR_TIMEOUT,
-        n if n < 0 => HTTPD_SOCK_ERR_FAIL,
-        n => n,
+        sys::ESP_TLS_ERR_SSL_WANT_READ | sys::ESP_TLS_ERR_SSL_WANT_WRITE => {
+            Err(io::ErrorKind::WouldBlock.into())
+        }
+        n if n < 0 => {
+            incident(Kind::SocketError, n, 0);
+            Err(io::ErrorKind::ConnectionAborted.into())
+        }
+        _ => Ok(n as usize),
     }
 }
 
-unsafe extern "C" fn send_tls(
-    hd: httpd_handle_t,
-    fd: c_int,
-    buf: *const c_char,
-    len: usize,
-    _flags: c_int,
-) -> c_int {
-    sock_result(esp_tls_conn_write(session(hd, fd), buf.cast(), len))
-}
-
-unsafe extern "C" fn recv_tls(
-    hd: httpd_handle_t,
-    fd: c_int,
-    buf: *mut c_char,
-    len: usize,
-    _flags: c_int,
-) -> c_int {
-    sock_result(esp_tls_conn_read(session(hd, fd), buf.cast(), len))
-}
-
-unsafe extern "C" fn pending_tls(hd: httpd_handle_t, fd: c_int) -> c_int {
-    esp_tls_get_bytes_avail(session(hd, fd)) as c_int
-}
-
-/// Start one listener (HTTPS when `listener.secure`) routing every path and
-/// method to the API.
-pub fn start(settings: &Settings, listener: Listener) -> Result<(), EspError> {
-    let secure = listener.secure;
-    let config = httpd_config_t {
-        task_priority: 5,
-        // serde_json rendering, plus the TLS handshake's frames.
-        stack_size: 32 * 1024,
-        core_id: 1,
-        task_caps: MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT,
-        server_port: settings.port,
-        ctrl_port: settings.ctrl_port,
-        max_open_sockets: settings.sockets,
-        max_uri_handlers: 8,
-        max_resp_headers: 8,
-        backlog_conn: settings.backlog,
-        // Evict the least recently used connection instead of refusing.
-        lru_purge_enable: true,
-        recv_wait_timeout: 5,
-        send_wait_timeout: 5,
-        open_fn: Some(if secure { open_tls } else { open_plain }),
-        uri_match_fn: Some(httpd_uri_match_wildcard),
-        ..Default::default()
-    };
-    let mut handle: httpd_handle_t = core::ptr::null_mut();
-    // SAFETY: config is fully initialized; httpd copies it.
-    esp!(unsafe { httpd_start(&mut handle, &config) })?;
-    let context: *mut c_void = Box::into_raw(Box::new(listener)).cast();
-    let uri: &'static CStr = c"/*";
-    for method in [
-        http_method_HTTP_GET,
-        http_method_HTTP_HEAD,
-        http_method_HTTP_POST,
-        http_method_HTTP_PUT,
-        http_method_HTTP_PATCH,
-        http_method_HTTP_DELETE,
-        http_method_HTTP_OPTIONS,
-    ] {
-        let handler = httpd_uri_t {
-            uri: uri.as_ptr(),
-            method: method as _,
-            handler: Some(handle_request),
-            user_ctx: context,
-            // SAFETY: the remaining fields are optional and zero by default.
-            ..unsafe { core::mem::zeroed() }
-        };
-        // SAFETY: handle is running; uri and context are leaked.
-        esp!(unsafe { httpd_register_uri_handler(handle, &handler) })?;
+impl Read for Socket {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        match self.tls {
+            // SAFETY: the context is exclusively owned and out is writable.
+            Some(tls) => tls_result(unsafe {
+                sys::esp_tls_conn_read(tls.as_ptr(), out.as_mut_ptr().cast(), out.len())
+            }),
+            None => self.tcp.read(out),
+        }
     }
-    log::info!(
-        "{} listening on port {} ({} sockets, backlog {})",
-        if secure { "HTTPS" } else { "HTTP" },
-        settings.port,
-        settings.sockets,
-        settings.backlog
-    );
-    Ok(())
 }
 
-fn method_name(method: c_int) -> &'static str {
-    match method as u32 {
-        http_method_HTTP_GET => "GET",
-        http_method_HTTP_HEAD => "HEAD",
-        http_method_HTTP_POST => "POST",
-        http_method_HTTP_PUT => "PUT",
-        http_method_HTTP_PATCH => "PATCH",
-        http_method_HTTP_DELETE => "DELETE",
-        http_method_HTTP_OPTIONS => "OPTIONS",
+impl Write for Socket {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self.tls {
+            // SAFETY: exclusive TLS context and valid input slice. A retry after
+            // WANT_WRITE uses the same response slice and length until progress.
+            Some(tls) => tls_result(unsafe {
+                sys::esp_tls_conn_write(tls.as_ptr(), bytes.as_ptr().cast(), bytes.len())
+            }),
+            None => self.tcp.write(bytes),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn socket(tcp: TcpStream) -> io::Result<Socket> {
+    tcp.set_nodelay(true)?;
+    tcp.set_nonblocking(true)?;
+    Ok(Socket { tcp, tls: None })
+}
+
+/// The TLS configuration and ticket keys live for this task's lifetime. Only
+/// this task creates sessions; no pointer to the config crosses the channel.
+fn handshakes(
+    listener: TcpListener,
+    ready: mpsc::SyncSender<Socket>,
+    cert: &'static str,
+    key: &'static str,
+) {
+    // SAFETY: zero is IDF's documented default; PEM inputs are static and NUL
+    // terminated. Config remains alive until after every pending handshake.
+    let mut cfg: sys::esp_tls_cfg_server_t = unsafe { core::mem::zeroed() };
+    let cert = cert.as_bytes();
+    let key = key.as_bytes();
+    cfg.__bindgen_anon_3.servercert_buf = cert.as_ptr();
+    cfg.__bindgen_anon_4.servercert_bytes = cert.len() as _;
+    cfg.__bindgen_anon_5.serverkey_buf = key.as_ptr();
+    cfg.__bindgen_anon_6.serverkey_bytes = key.len() as _;
+    // SAFETY: valid config owned on this task. Ticket context intentionally lives
+    // until reboot, including after a session moves to the serving task.
+    let tickets = unsafe { sys::esp_tls_cfg_server_session_tickets_init(&mut cfg) };
+    if tickets != sys::ESP_OK {
+        incident(Kind::TlsInitFailed, tickets, 0);
+        log::error!("TLS ticket initialization failed: {tickets}");
+    }
+    let mut pending: Vec<(Socket, Instant)> = Vec::with_capacity(HANDSHAKES);
+    loop {
+        LOG.beat(0, incident_now());
+        LOG.connections(0, pending.len());
+        if pending.len() < HANDSHAKES {
+            if let Ok((tcp, _)) = listener.accept() {
+                if let Ok(mut stream) = socket(tcp) {
+                    // SAFETY: init allocates an exclusively owned context. On
+                    // every failure Socket's Drop releases context and fd.
+                    if let Some(tls) = NonNull::new(unsafe { sys::esp_tls_init() }) {
+                        stream.tls = Some(tls);
+                        let result = unsafe {
+                            sys::esp_tls_server_session_init(
+                                &mut cfg,
+                                stream.tcp.as_raw_fd(),
+                                tls.as_ptr(),
+                            )
+                        };
+                        if result == sys::ESP_OK {
+                            pending.push((stream, Instant::now()));
+                            LOG.connections(0, pending.len());
+                        } else {
+                            incident(Kind::TlsInitFailed, result, 0);
+                        }
+                    } else {
+                        incident(Kind::AllocationFailed, 1, 0);
+                    }
+                }
+            }
+        }
+        let mut i = 0;
+        while i < pending.len() {
+            let (stream, began) = &pending[i];
+            if began.elapsed() >= Duration::from_secs(4) {
+                incident(Kind::TlsTimeout, 0, began.elapsed().as_millis() as u32);
+                pending.swap_remove(i);
+                continue;
+            }
+            // SAFETY: context exclusively owned here; socket is nonblocking.
+            let result =
+                unsafe { sys::esp_tls_server_session_continue_async(stream.tls.unwrap().as_ptr()) };
+            match result {
+                0 => {
+                    let (stream, began) = pending.swap_remove(i);
+                    log::debug!(
+                        "TLS established in {} ms on core 0",
+                        began.elapsed().as_millis()
+                    );
+                    // Bounded handoff; a full queue drops the newly established
+                    // session rather than retaining unbounded sockets/memory.
+                    LOG.handshake(began.elapsed().as_millis() as u32);
+                    if ready.try_send(stream).is_err() {
+                        incident(Kind::HandoffFull, 0, 0);
+                    }
+                }
+                sys::ESP_TLS_ERR_SSL_WANT_READ | sys::ESP_TLS_ERR_SSL_WANT_WRITE => i += 1,
+                _ => {
+                    incident(Kind::TlsFailed, result, began.elapsed().as_millis() as u32);
+                    pending.swap_remove(i);
+                }
+            }
+        }
+        // IDF's libc usleep busy-waits below one tick. Explicit FreeRTOS delay
+        // rounds up and lets IDLE0 run/feed its watchdog even with no traffic.
+        esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
+    }
+}
+
+struct Trace {
+    method: &'static str,
+    route: String,
+    status: u16,
+    bytes: usize,
+    began: Instant,
+    sending: Instant,
+}
+
+struct Client {
+    socket: Socket,
+    input: Vec<u8>,
+    used: usize,
+    response: Option<Outgoing>,
+    active: Instant,
+    request_started: Option<Instant>,
+    send_started: Option<Instant>,
+    continued: bool,
+    trace: Option<Trace>,
+}
+
+impl Client {
+    fn new(socket: Socket) -> Self {
+        Self {
+            socket,
+            input: vec![0; http::HEADER_LIMIT],
+            used: 0,
+            response: None,
+            active: Instant::now(),
+            request_started: None,
+            send_started: None,
+            continued: false,
+            trace: None,
+        }
+    }
+
+    /// One read and write at most per client/turn. Partial HTTP and uploads
+    /// retain bounded state while unrelated clients continue to run.
+    fn poll(&mut self, ctx: &Context, may_dispatch: bool, input_available: usize) -> bool {
+        if self.active.elapsed() > IDLE {
+            incident(Kind::IdleExpired, 0, 0);
+            return false;
+        }
+        if self
+            .request_started
+            .is_some_and(|t| t.elapsed() > IO_DEADLINE)
+            || self.send_started.is_some_and(|t| t.elapsed() > IO_DEADLINE)
+        {
+            incident(
+                Kind::RequestTimeout,
+                if self.send_started.is_some() { 1 } else { 0 },
+                IO_DEADLINE.as_millis() as u32,
+            );
+            return false;
+        }
+        if self.response.is_none() {
+            if !may_dispatch {
+                return true;
+            }
+            // Parse buffered pipelining before reading: the peer may already
+            // have half-closed its write side after sending the next request.
+            let secure = self.socket.tls.is_some();
+            let mut parsed = http::parse(&self.input[..self.used], secure);
+            if matches!(parsed, Ok(Parsed::Partial { .. })) {
+                if self.used == self.input.len() && self.input.len() < http::INPUT_LIMIT {
+                    let next = (self.input.len() * 2).min(http::INPUT_LIMIT);
+                    if next.saturating_sub(self.input.capacity()) > input_available {
+                        return true;
+                    }
+                    // reserve_exact avoids Vec's doubling past the upload cap.
+                    if self
+                        .input
+                        .try_reserve_exact(next - self.input.len())
+                        .is_err()
+                    {
+                        incident(Kind::AllocationFailed, 0, 0);
+                        return false;
+                    }
+                    self.input.resize(next, 0);
+                }
+                let end = (self.used + 4096).min(self.input.len());
+                match self.socket.read(&mut self.input[self.used..end]) {
+                    Ok(0) => return false,
+                    Ok(n) => {
+                        self.used += n;
+                        self.active = Instant::now();
+                        self.request_started.get_or_insert(self.active);
+                        parsed = http::parse(&self.input[..self.used], secure);
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => {
+                        if self.socket.tls.is_none() {
+                            incident(Kind::SocketError, e.raw_os_error().unwrap_or(0), 0);
+                        }
+                        return false;
+                    }
+                }
+            }
+            match parsed {
+                Ok(Parsed::Complete(incoming)) => {
+                    let began = self.request_started.unwrap_or_else(Instant::now);
+                    let body_ms = began.elapsed().as_secs_f64() * 1000.0;
+                    let reply = respond(ctx, &incoming.request, body_ms);
+                    let sending = Instant::now();
+                    self.trace = Some(Trace {
+                        method: if incoming.head {
+                            "HEAD"
+                        } else {
+                            method_name(&incoming.request.method)
+                        },
+                        route: mastomini::http::route_label(&incoming.request.path),
+                        status: reply.status,
+                        bytes: reply.body.len(),
+                        began,
+                        sending,
+                    });
+                    self.response = Some(Outgoing::new(reply, incoming.head, incoming.close));
+                    self.input.copy_within(incoming.consumed..self.used, 0);
+                    self.used -= incoming.consumed;
+                    // Release an upload buffer once its body has been consumed.
+                    if self.used <= http::HEADER_LIMIT && self.input.len() > http::HEADER_LIMIT {
+                        self.input.truncate(http::HEADER_LIMIT);
+                        self.input.shrink_to_fit();
+                    }
+                    self.request_started = if self.used == 0 {
+                        None
+                    } else {
+                        Some(Instant::now())
+                    };
+                    self.send_started = Some(Instant::now());
+                    self.continued = false;
+                }
+                Ok(Parsed::Partial { expect_continue }) => {
+                    if expect_continue && !self.continued {
+                        self.response = Some(Outgoing::continue_100());
+                        self.send_started = Some(Instant::now());
+                        self.continued = true;
+                    }
+                }
+                Err(status) => {
+                    incident(Kind::InvalidRequest, status as i32, 0);
+                    self.response = Some(Outgoing::new(
+                        Response::error(status, "Invalid HTTP request"),
+                        false,
+                        true,
+                    ));
+                    self.request_started = None;
+                    self.send_started = Some(Instant::now());
+                }
+            }
+        }
+        if let Some(response) = &mut self.response {
+            if !response.next().is_empty() {
+                match self.socket.write(response.next()) {
+                    Ok(0) => return false,
+                    Ok(n) => {
+                        response.advance(n);
+                        self.active = Instant::now();
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => {
+                        if self.socket.tls.is_none() {
+                            incident(Kind::SocketError, e.raw_os_error().unwrap_or(0), 0);
+                        }
+                        return false;
+                    }
+                }
+            }
+            if response.next().is_empty() {
+                if !response.interim {
+                    if let Some(trace) = self.trace.take() {
+                        if trace.began.elapsed().as_millis() >= 500 {
+                            incident(
+                                Kind::SlowRequest,
+                                trace.status as i32,
+                                trace.began.elapsed().as_millis() as u32,
+                            );
+                        }
+                        if trace.began.elapsed().as_millis() >= 250
+                            || option_env!("MASTOMINI_TRACE_TIMING") == Some("1")
+                        {
+                            log::info!("timing method={} route={} status={} bytes={} send_ms={:.3} accepted_total_ms={:.3}",
+                                trace.method, trace.route, trace.status, trace.bytes,
+                                trace.sending.elapsed().as_secs_f64() * 1000.0,
+                                trace.began.elapsed().as_secs_f64() * 1000.0);
+                        }
+                    }
+                }
+                if response.close {
+                    return false;
+                }
+                self.response = None;
+                self.send_started = None;
+            }
+        }
+        true
+    }
+}
+
+fn method_name(method: &str) -> &'static str {
+    match method {
+        "GET" => "GET",
+        "POST" => "POST",
+        "PUT" => "PUT",
+        "PATCH" => "PATCH",
+        "DELETE" => "DELETE",
+        "OPTIONS" => "OPTIONS",
         _ => "OTHER",
     }
 }
 
-fn header(req: *mut httpd_req_t, name: &str) -> Option<String> {
-    let name = CString::new(name).ok()?;
-    // SAFETY: req is the live request; the buffer holds len + 1 bytes.
-    unsafe {
-        let len = httpd_req_get_hdr_value_len(req, name.as_ptr());
-        if len == 0 {
-            return None;
-        }
-        let mut buf = vec![0u8; len + 1];
-        esp!(httpd_req_get_hdr_value_str(
-            req,
-            name.as_ptr(),
-            buf.as_mut_ptr().cast(),
-            buf.len()
-        ))
-        .ok()?;
-        buf.truncate(len);
-        String::from_utf8(buf).ok()
-    }
-}
-
-/// The request body, or `None` if the client stopped sending it.
-fn read_body(req: *mut httpd_req_t, len: usize) -> Option<Vec<u8>> {
-    let mut body = vec![0u8; len];
-    let mut done = 0;
-    let mut timeouts = 0;
-    while done < len {
-        // SAFETY: the destination range is within body.
-        let n = unsafe { httpd_req_recv(req, body[done..].as_mut_ptr().cast(), len - done) };
-        match n {
-            HTTPD_SOCK_ERR_TIMEOUT if timeouts < 2 => timeouts += 1,
-            n if n > 0 => done += n as usize,
-            _ => return None,
-        }
-    }
-    Some(body)
-}
-
-fn send_all(req: *mut httpd_req_t, mut data: &[u8]) -> bool {
-    let mut timeouts = 0;
-    while !data.is_empty() {
-        // SAFETY: data is a live slice.
-        let n = unsafe { httpd_send(req, data.as_ptr().cast(), data.len()) };
-        match n {
-            HTTPD_SOCK_ERR_TIMEOUT if timeouts < 2 => timeouts += 1,
-            n if n > 0 => data = &data[n as usize..],
-            _ => return false,
-        }
-    }
-    true
-}
-
-fn reason(status: u16) -> &'static str {
-    match status {
-        200 => "OK",
-        201 => "Created",
-        202 => "Accepted",
-        204 => "No Content",
-        206 => "Partial Content",
-        301 => "Moved Permanently",
-        302 => "Found",
-        303 => "See Other",
-        304 => "Not Modified",
-        307 => "Temporary Redirect",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        409 => "Conflict",
-        410 => "Gone",
-        413 => "Payload Too Large",
-        422 => "Unprocessable Entity",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        503 => "Service Unavailable",
-        _ => "",
-    }
-}
-
-/// Status line, headers and (except for HEAD) body, in one buffer.
-fn serialize(reply: &Response, head: bool) -> Vec<u8> {
-    let mut out = Vec::with_capacity(256 + if head { 0 } else { reply.body.len() });
-    out.extend_from_slice(
-        format!("HTTP/1.1 {} {}\r\n", reply.status, reason(reply.status)).as_bytes(),
-    );
-    for (name, value) in &reply.headers {
-        // Header values are built by this server, but never let one split
-        // the response.
-        if name.eq_ignore_ascii_case("Content-Length")
-            || [name, value].iter().any(|s| s.contains(['\r', '\n']))
+fn add_client(clients: &mut Vec<Client>, stream: Socket) {
+    let secure = stream.tls.is_some();
+    let limit = if secure { TLS_CLIENTS } else { HTTP_CLIENTS };
+    if clients
+        .iter()
+        .filter(|c| c.socket.tls.is_some() == secure)
+        .count()
+        >= limit
+    {
+        // Reclaim only idle sessions of the same transport, never an in-flight
+        // response or partial request. Allow active clients to finish.
+        if let Some(index) = clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.socket.tls.is_some() == secure && c.response.is_none() && c.used == 0
+            })
+            .max_by_key(|(_, c)| c.active.elapsed())
+            .map(|(i, _)| i)
         {
-            continue;
-        }
-        out.extend_from_slice(name.as_bytes());
-        out.extend_from_slice(b": ");
-        out.extend_from_slice(value.as_bytes());
-        out.extend_from_slice(b"\r\n");
-    }
-    out.extend_from_slice(format!("Content-Length: {}\r\n\r\n", reply.body.len()).as_bytes());
-    if !head {
-        out.extend_from_slice(&reply.body);
-    }
-    out
-}
-
-fn respond(listener: &Listener, req: *mut httpd_req_t, name: &'static str) -> esp_err_t {
-    let started = Instant::now();
-    let mut body_ms = 0.0;
-    let mut lock_ms = 0.0;
-    let head = name == "HEAD";
-    // SAFETY: httpd NUL-terminates the URI inside the live request.
-    let uri = unsafe { CStr::from_ptr((*req).uri.as_ptr()) }.to_string_lossy();
-    let mut request = Request::new(if head { "GET" } else { name }, &uri);
-    request.secure = listener.secure;
-    for name in FORWARDED_HEADERS {
-        if let Some(value) = header(req, name) {
-            request.headers.push((name.to_string(), value));
-        }
-    }
-    // SAFETY: a field of the live request.
-    let length = unsafe { (*req).content_len };
-    let reply = if length > UPLOAD_BODY_LIMIT {
-        Response::error(413, "Request body is too large")
-    } else if let Some(body) = read_body(req, length) {
-        request.body = body;
-        body_ms = started.elapsed().as_secs_f64() * 1000.0;
-        let net = &listener.net;
-        let shared = &listener.shared;
-        // Never hold the network and service locks together.
-        let (setup, joined) = {
-            let net = net.lock().unwrap();
-            (net.setup_mode, net.sta_ip.is_some())
-        };
-        if request.path == "/setup/wifi" {
-            let provisioned = shared.lock().unwrap().state.provisioned;
-            net.lock().unwrap().page(&request, provisioned)
-        } else if let Some(to) = setup.then(|| net::captive(&request.path, joined)).flatten() {
-            Response::redirect(&format!("http://{}{to}", net::AP_IP))
+            clients.swap_remove(index);
         } else {
-            let waiting = Instant::now();
-            let mut service = shared.lock().unwrap();
-            lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
-            api::handle(&mut service, &listener.ctx, &request, now_ms())
+            incident(Kind::AdmissionRejected, i32::from(secure), 0);
+            return;
         }
-    } else {
-        Response::error(400, "Request body ended early")
-    };
-    let reply = reply.with_timing(&format!("body;dur={body_ms:.3}, lock;dur={lock_ms:.3}"));
-    let sending = Instant::now();
-    let sent = send_all(req, &serialize(&reply, head));
-    if started.elapsed().as_millis() >= 250 || option_env!("MASTOMINI_TRACE_TIMING") == Some("1") {
-        log::info!(
-            "timing method={name} route={} status={} bytes={} body_ms={body_ms:.3} lock_ms={lock_ms:.3} send_ms={:.3} accepted_total_ms={:.3}",
-            mastomini::http::route_label(&request.path),
-            reply.status,
-            reply.body.len(),
-            sending.elapsed().as_secs_f64() * 1000.0,
-            started.elapsed().as_secs_f64() * 1000.0
-        );
     }
-    // Anything else makes httpd close the connection.
-    if sent {
-        ESP_OK
-    } else {
-        ESP_FAIL
-    }
+    clients.push(Client::new(stream));
 }
 
-unsafe extern "C" fn handle_request(req: *mut httpd_req_t) -> esp_err_t {
-    // SAFETY: user_ctx is the leaked Listener registered with this handler.
-    let listener = &*((*req).user_ctx as *const Listener);
-    respond(listener, req, method_name((*req).method))
+pub fn start(
+    ctx: Context,
+    cert: &'static str,
+    key: &'static str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tls_listener = TcpListener::bind(("0.0.0.0", 443))?;
+    let http_listener = TcpListener::bind(("0.0.0.0", 80))?;
+    tls_listener.set_nonblocking(true)?;
+    http_listener.set_nonblocking(true)?;
+    let (ready, completed) = mpsc::sync_channel(2);
+    ThreadSpawnConfiguration {
+        name: Some(c"mastomini-tls"),
+        priority: 4,
+        pin_to_core: Some(Core::Core0),
+        ..Default::default()
+    }
+    .set()?;
+    // Rust supplies pthread attributes, whose stack size overrides IDF's
+    // ThreadSpawnConfiguration. Set it on Builder or this gets only 3 KiB.
+    std::thread::Builder::new()
+        .stack_size(24 * 1024)
+        .spawn(move || handshakes(tls_listener, ready, cert, key))?;
+    ThreadSpawnConfiguration {
+        name: Some(c"mastomini-http"),
+        priority: 5,
+        pin_to_core: Some(Core::Core1),
+        ..Default::default()
+    }
+    .set()?;
+    std::thread::Builder::new()
+        .stack_size(32 * 1024)
+        .spawn(move || {
+            let mut clients: Vec<Client> = Vec::with_capacity(TLS_CLIENTS + HTTP_CLIENTS);
+            loop {
+                let mut queued: usize = clients
+                    .iter()
+                    .filter_map(|c| c.response.as_ref())
+                    .map(Outgoing::retained_bytes)
+                    .sum();
+                let mut input_bytes: usize = clients.iter().map(|c| c.input.capacity()).sum();
+                LOG.beat(1, incident_now());
+                LOG.connections(1, clients.iter().filter(|c| c.socket.tls.is_some()).count());
+                LOG.connections(2, clients.iter().filter(|c| c.socket.tls.is_none()).count());
+                clients.retain_mut(|client| {
+                    let before = client.response.as_ref().map_or(0, Outgoing::retained_bytes);
+                    let input_before = client.input.capacity();
+                    let keep = client.poll(
+                        &ctx,
+                        queued < RESPONSE_BUDGET,
+                        INPUT_BUDGET.saturating_sub(input_bytes),
+                    );
+                    queued -= before;
+                    input_bytes -= input_before;
+                    if keep {
+                        queued += client.response.as_ref().map_or(0, Outgoing::retained_bytes);
+                        input_bytes += client.input.capacity();
+                    }
+                    keep
+                });
+                // Drain EOF and ready work before admitting peers, then reclaim
+                // the least recently used idle slot even if it is <1s old.
+                // Otherwise rapid sequential requests can fill the table with
+                // recently closed/idle sessions and have their next call reset.
+                if let Ok(stream) = completed.try_recv() {
+                    add_client(&mut clients, stream);
+                }
+                if let Ok((tcp, _)) = http_listener.accept() {
+                    if let Ok(stream) = socket(tcp) {
+                        add_client(&mut clients, stream);
+                    }
+                }
+                esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
+            }
+        })?;
+    ThreadSpawnConfiguration::default().set()?;
+    Ok(())
+}
+
+fn respond(listener: &Context, request: &Request, body_ms: f64) -> Response {
+    // Never hold network and service locks together; preserve setup routing
+    // and the transport-neutral API's authentication and durable writes.
+    let (setup, joined) = {
+        let net = listener.net.lock().unwrap();
+        (net.setup_mode, net.sta_ip.is_some())
+    };
+    let mut lock_ms = 0.0;
+    let reply = if request.path == "/setup/wifi" {
+        let provisioned = listener.shared.lock().unwrap().state.provisioned;
+        listener.net.lock().unwrap().page(request, provisioned)
+    } else if let Some(to) = setup.then(|| net::captive(&request.path, joined)).flatten() {
+        Response::redirect(&format!("http://{}{to}", net::AP_IP))
+    } else {
+        let waiting = Instant::now();
+        let mut service = listener.shared.lock().unwrap();
+        lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
+        let failed_before = service.latched().is_some();
+        let reply = api::handle(&mut service, &listener.ctx, request, now_ms());
+        if !failed_before && service.latched().is_some() {
+            incident(Kind::StorageFailed, 0, 0);
+        }
+        reply
+    };
+    reply.with_timing(&format!("body;dur={body_ms:.3}, lock;dur={lock_ms:.3}"))
+}
+
+fn incident_now() -> u64 {
+    unsafe { (sys::esp_timer_get_time() / 1000) as u64 }
+}
+fn incident(kind: Kind, code: i32, ms: u32) {
+    LOG.record(incident_now(), kind, code, ms);
 }

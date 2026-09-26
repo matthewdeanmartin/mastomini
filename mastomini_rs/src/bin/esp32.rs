@@ -34,6 +34,9 @@ mod net;
 mod nvs_store;
 #[path = "esp32/server.rs"]
 mod server;
+
+#[path = "esp32/incidents.rs"]
+mod incidents;
 use net::Net;
 use nvs_store::NvsStore;
 
@@ -54,8 +57,6 @@ type Shared = Arc<Mutex<Service<NvsStore>>>;
 
 /// Before this instant the RTC has not been set by SNTP (2024-01-01).
 const CLOCK_VALID_AFTER_MS: u128 = 1_704_067_200_000;
-
-/// Request headers the API reads. esp-idf's server cannot enumerate headers.
 
 fn now_ms() -> Option<u64> {
     let ms = SystemTime::now()
@@ -114,10 +115,19 @@ fn platform() -> Platform {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    incidents::start()?;
     log::info!("mastomini {} starting", env!("CARGO_PKG_VERSION"));
 
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
+    let _wifi_events = event_loop.subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
+        if let esp_idf_svc::wifi::WifiEvent::StaDisconnected(info) = event {
+            incidents::record(
+                mastomini::incidents::Kind::WifiDown,
+                i32::from(info.reason()),
+            );
+        }
+    })?;
     // Never auto-erase NVS on a version/full error: it may contain data.
     let system_nvs = EspDefaultNvsPartition::take_with(false)?;
     // The custom-partition convenience constructor can erase on some init
@@ -181,12 +191,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             net.start_setup(Some(reason))?;
             ThreadSpawnConfiguration {
                 name: Some(c"mm-dns"),
-                stack_size: 6 * 1024,
                 pin_to_core: Some(Core::Core0),
                 ..Default::default()
             }
             .set()?;
-            std::thread::Builder::new().spawn(net::dns_responder)?;
+            std::thread::Builder::new()
+                .stack_size(6 * 1024)
+                .spawn(net::dns_responder)?;
             ThreadSpawnConfiguration::default().set()?;
             None
         }
@@ -207,43 +218,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _sntp = EspSntp::new(&time_config)?;
 
-    // Two listeners, one service (spec/05 "Easy mode"), on httpd directly
-    // (server.rs). Sockets: each httpd takes its open sockets plus a
-    // listening and a control socket, and both together must fit
-    // CONFIG_LWIP_MAX_SOCKETS (20) with the captive DNS socket:
-    // (7 + 2) + (4 + 2) + 1 = 16. Seven HTTPS sockets let a browser or a
-    // chatty app keep its usual six connections open without least-recently-
-    // used purging forcing reconnects. TLS sessions' buffers live in PSRAM
-    // (sdkconfig.defaults).
-    server::init_tls(SERVER_CERT, SERVER_KEY)?;
+    // Core 0 establishes TLS asynchronously; core 1 multiplexes established
+    // HTTP(S) clients. Neither handshake nor socket I/O holds the service lock.
     server::start(
-        &server::Settings {
-            port: 443,
-            ctrl_port: 32769,
-            sockets: 7,
-            backlog: 8,
-        },
-        server::Listener {
-            secure: true,
+        server::Context {
             shared: Arc::clone(&shared),
             ctx: Arc::clone(&ctx),
             net: Arc::clone(&net),
         },
+        SERVER_CERT,
+        SERVER_KEY,
     )?;
-    server::start(
-        &server::Settings {
-            port: 80,
-            ctrl_port: 32768,
-            sockets: 4,
-            backlog: 8,
-        },
-        server::Listener {
-            secure: false,
-            shared: Arc::clone(&shared),
-            ctx: Arc::clone(&ctx),
-            net: Arc::clone(&net),
-        },
-    )?;
+    log::info!("TLS handshakes core 0; HTTP/API core 1; 8 TLS + 4 HTTP clients");
 
     let mut mdns = EspMdns::take()?;
     mdns.set_hostname(HOSTNAME)?;
@@ -273,6 +259,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut ticks: u32 = 0;
+    incidents::record(mastomini::incidents::Kind::Ready, 0);
     loop {
         std::thread::sleep(Duration::from_secs(5));
         ticks = ticks.wrapping_add(1);

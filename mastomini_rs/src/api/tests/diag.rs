@@ -32,6 +32,10 @@ fn diag_is_for_admins() {
     assert_eq!(s.get("/api/mastomini/v1/diag", None).status, 401);
     let d = s.get("/api/mastomini/v1/diag", Some(&alice)).json_body();
     assert_eq!(d["platform"]["target"], "desktop");
+    assert_eq!(d["incidents"]["volatile"], true);
+    assert!(d["incidents"]["retained_bytes"].as_u64().unwrap() < 4096);
+    assert!(d["incidents"]["events"].is_array());
+    assert!(d["incidents"]["samples"].is_array());
     assert_eq!(d["clock"]["source"], "synced");
     assert_eq!(d["records"]["accounts"], json!([2, 16]));
     assert_eq!(d["store"]["available"], true);

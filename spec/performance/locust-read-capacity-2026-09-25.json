@@ -1,0 +1,838 @@
+{
+  "started": "2026-09-26T03:19:58.737248+00:00",
+  "host": "https://192.168.1.161",
+  "seconds": 30,
+  "warmup_seconds": 10,
+  "before": {
+    "available": true,
+    "accounts": 2,
+    "statuses": 2,
+    "uptime_ms": 175531
+  },
+  "stages": [
+    {
+      "users": 1,
+      "warmup": {
+        "requests": 323,
+        "failures": 0,
+        "mean_ms": 33.80827089496268,
+        "p50_ms": 24,
+        "p95_ms": 63,
+        "p99_ms": 170,
+        "max_ms": 965.6687999959104
+      },
+      "requests": 542,
+      "failures": 0,
+      "mean_ms": 55.19183321004971,
+      "p50_ms": 43,
+      "p95_ms": 130,
+      "p99_ms": 210,
+      "max_ms": 323.61279998440295,
+      "requests_per_second": 18.066666666666666,
+      "endpoints": {
+        "/api/v1/instance/rules": {
+          "requests": 73,
+          "failures": 0,
+          "mean_ms": 42.338247946782474,
+          "p50_ms": 34,
+          "p95_ms": 100,
+          "p99_ms": 170,
+          "max_ms": 165.01289996085688
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 87,
+          "failures": 0,
+          "mean_ms": 47.24508850506089,
+          "p50_ms": 37,
+          "p95_ms": 100,
+          "p99_ms": 110,
+          "max_ms": 114.88930002087727
+        },
+        "/nodeinfo/2.0": {
+          "requests": 54,
+          "failures": 0,
+          "mean_ms": 58.29736851888743,
+          "p50_ms": 47,
+          "p95_ms": 180,
+          "p99_ms": 200,
+          "max_ms": 201.54339994769543
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 76,
+          "failures": 0,
+          "mean_ms": 55.50777500090925,
+          "p50_ms": 45,
+          "p95_ms": 120,
+          "p99_ms": 290,
+          "max_ms": 287.7417000127025
+        },
+        "/api/v2/instance": {
+          "requests": 63,
+          "failures": 0,
+          "mean_ms": 100.32441904897698,
+          "p50_ms": 90,
+          "p95_ms": 250,
+          "p99_ms": 320,
+          "max_ms": 323.61279998440295
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 58,
+          "failures": 0,
+          "mean_ms": 45.10544309420672,
+          "p50_ms": 32,
+          "p95_ms": 130,
+          "p99_ms": 190,
+          "max_ms": 185.8199000125751
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 69,
+          "failures": 0,
+          "mean_ms": 49.4660072482488,
+          "p50_ms": 45,
+          "p95_ms": 100,
+          "p99_ms": 130,
+          "max_ms": 126.84470001840964
+        },
+        "/api/mastomini/v1/status": {
+          "requests": 62,
+          "failures": 0,
+          "mean_ms": 48.33228064554503,
+          "p50_ms": 42,
+          "p95_ms": 110,
+          "p99_ms": 170,
+          "max_ms": 172.47460002545267
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 220771
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 2,
+      "warmup": {
+        "requests": 422,
+        "failures": 0,
+        "mean_ms": 54.26618649298215,
+        "p50_ms": 40,
+        "p95_ms": 110,
+        "p99_ms": 150,
+        "max_ms": 1378.7687000003643
+      },
+      "requests": 1552,
+      "failures": 0,
+      "mean_ms": 38.48048543771903,
+      "p50_ms": 32,
+      "p95_ms": 81,
+      "p99_ms": 120,
+      "max_ms": 212.4558999785222,
+      "requests_per_second": 51.733333333333334,
+      "endpoints": {
+        "/api/v1/custom_emojis": {
+          "requests": 190,
+          "failures": 0,
+          "mean_ms": 34.451412105026016,
+          "p50_ms": 28,
+          "p95_ms": 77,
+          "p99_ms": 130,
+          "max_ms": 140.43050003238022
+        },
+        "/nodeinfo/2.0": {
+          "requests": 172,
+          "failures": 0,
+          "mean_ms": 37.34884128146426,
+          "p50_ms": 31,
+          "p95_ms": 88,
+          "p99_ms": 150,
+          "max_ms": 182.03720002202317
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 216,
+          "failures": 0,
+          "mean_ms": 37.17061157550671,
+          "p50_ms": 32,
+          "p95_ms": 81,
+          "p99_ms": 98,
+          "max_ms": 200.67869999911636
+        },
+        "/api/mastomini/v1/status": {
+          "requests": 215,
+          "failures": 0,
+          "mean_ms": 34.469401861032,
+          "p50_ms": 30,
+          "p95_ms": 65,
+          "p99_ms": 120,
+          "max_ms": 199.4465999887325
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 197,
+          "failures": 0,
+          "mean_ms": 34.10993959059759,
+          "p50_ms": 28,
+          "p95_ms": 72,
+          "p99_ms": 120,
+          "max_ms": 180.36040000151843
+        },
+        "/api/v1/instance/rules": {
+          "requests": 196,
+          "failures": 0,
+          "mean_ms": 35.610556630393944,
+          "p50_ms": 30,
+          "p95_ms": 74,
+          "p99_ms": 110,
+          "max_ms": 212.4558999785222
+        },
+        "/api/v2/instance": {
+          "requests": 183,
+          "failures": 0,
+          "mean_ms": 63.0649311450193,
+          "p50_ms": 58,
+          "p95_ms": 100,
+          "p99_ms": 140,
+          "max_ms": 181.9213000126183
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 183,
+          "failures": 0,
+          "mean_ms": 33.180116393979986,
+          "p50_ms": 29,
+          "p95_ms": 69,
+          "p99_ms": 120,
+          "max_ms": 121.48879998130724
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 266841
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 4,
+      "warmup": {
+        "requests": 563,
+        "failures": 0,
+        "mean_ms": 88.297963409654,
+        "p50_ms": 51,
+        "p95_ms": 220,
+        "p99_ms": 450,
+        "max_ms": 2303.093300026376
+      },
+      "requests": 1742,
+      "failures": 0,
+      "mean_ms": 68.6859171642763,
+      "p50_ms": 53,
+      "p95_ms": 160,
+      "p99_ms": 250,
+      "max_ms": 354.0970000321977,
+      "requests_per_second": 58.06666666666667,
+      "endpoints": {
+        "/api/mastomini/v1/status": {
+          "requests": 207,
+          "failures": 0,
+          "mean_ms": 65.05571787806839,
+          "p50_ms": 49,
+          "p95_ms": 150,
+          "p99_ms": 210,
+          "max_ms": 320.3876999905333
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 211,
+          "failures": 0,
+          "mean_ms": 60.236489098470535,
+          "p50_ms": 46,
+          "p95_ms": 160,
+          "p99_ms": 270,
+          "max_ms": 319.83569997828454
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 210,
+          "failures": 0,
+          "mean_ms": 59.6114995254625,
+          "p50_ms": 45,
+          "p95_ms": 140,
+          "p99_ms": 200,
+          "max_ms": 306.90389999654144
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 215,
+          "failures": 0,
+          "mean_ms": 62.10703767408335,
+          "p50_ms": 48,
+          "p95_ms": 160,
+          "p99_ms": 210,
+          "max_ms": 249.2989000165835
+        },
+        "/api/v2/instance": {
+          "requests": 237,
+          "failures": 0,
+          "mean_ms": 108.61249957877145,
+          "p50_ms": 95,
+          "p95_ms": 210,
+          "p99_ms": 320,
+          "max_ms": 354.0970000321977
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 214,
+          "failures": 0,
+          "mean_ms": 59.718243455705796,
+          "p50_ms": 43,
+          "p95_ms": 160,
+          "p99_ms": 210,
+          "max_ms": 329.40059999236837
+        },
+        "/nodeinfo/2.0": {
+          "requests": 199,
+          "failures": 0,
+          "mean_ms": 62.72245829207729,
+          "p50_ms": 50,
+          "p95_ms": 160,
+          "p99_ms": 250,
+          "max_ms": 254.36289998469874
+        },
+        "/api/v1/instance/rules": {
+          "requests": 249,
+          "failures": 0,
+          "mean_ms": 66.6681574278859,
+          "p50_ms": 53,
+          "p95_ms": 150,
+          "p99_ms": 210,
+          "max_ms": 292.8777999477461
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 315021
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 6,
+      "warmup": {
+        "requests": 1072,
+        "failures": 0,
+        "mean_ms": 75.14384253835175,
+        "p50_ms": 56,
+        "p95_ms": 150,
+        "p99_ms": 310,
+        "max_ms": 2345.435199968051
+      },
+      "requests": 2427,
+      "failures": 0,
+      "mean_ms": 73.79678199454804,
+      "p50_ms": 60,
+      "p95_ms": 160,
+      "p99_ms": 240,
+      "max_ms": 331.85620000585914,
+      "requests_per_second": 80.85687633261382,
+      "endpoints": {
+        "/.well-known/oauth-authorization-server": {
+          "requests": 300,
+          "failures": 0,
+          "mean_ms": 68.41047966775174,
+          "p50_ms": 59,
+          "p95_ms": 160,
+          "p99_ms": 210,
+          "max_ms": 256.8625999847427
+        },
+        "/api/v1/instance/rules": {
+          "requests": 293,
+          "failures": 0,
+          "mean_ms": 64.99020853350035,
+          "p50_ms": 55,
+          "p95_ms": 150,
+          "p99_ms": 260,
+          "max_ms": 313.9433999895118
+        },
+        "/api/mastomini/v1/status": {
+          "requests": 328,
+          "failures": 0,
+          "mean_ms": 66.73844451355896,
+          "p50_ms": 59,
+          "p95_ms": 140,
+          "p99_ms": 180,
+          "max_ms": 311.49450002703816
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 305,
+          "failures": 0,
+          "mean_ms": 68.18186524476795,
+          "p50_ms": 55,
+          "p95_ms": 160,
+          "p99_ms": 250,
+          "max_ms": 308.19550005253404
+        },
+        "/nodeinfo/2.0": {
+          "requests": 299,
+          "failures": 0,
+          "mean_ms": 67.6732036807998,
+          "p50_ms": 58,
+          "p95_ms": 150,
+          "p99_ms": 200,
+          "max_ms": 321.03220000863075
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 277,
+          "failures": 0,
+          "mean_ms": 64.0194043319585,
+          "p50_ms": 55,
+          "p95_ms": 130,
+          "p99_ms": 200,
+          "max_ms": 293.4030999895185
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 317,
+          "failures": 0,
+          "mean_ms": 64.80338580429712,
+          "p50_ms": 55,
+          "p95_ms": 150,
+          "p99_ms": 210,
+          "max_ms": 315.2797999791801
+        },
+        "/api/v2/instance": {
+          "requests": 308,
+          "failures": 0,
+          "mean_ms": 124.49188311542717,
+          "p50_ms": 110,
+          "p95_ms": 220,
+          "p99_ms": 280,
+          "max_ms": 331.85620000585914
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 365151
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 8,
+      "warmup": {
+        "requests": 1224,
+        "failures": 0,
+        "mean_ms": 94.08414828390556,
+        "p50_ms": 63,
+        "p95_ms": 220,
+        "p99_ms": 410,
+        "max_ms": 3195.2992000151426
+      },
+      "requests": 2600,
+      "failures": 0,
+      "mean_ms": 89.106532769712,
+      "p50_ms": 70,
+      "p95_ms": 160,
+      "p99_ms": 630,
+      "max_ms": 2326.8353000166826,
+      "requests_per_second": 86.62335498913177,
+      "endpoints": {
+        "/api/v1/custom_emojis": {
+          "requests": 310,
+          "failures": 0,
+          "mean_ms": 75.09204935744374,
+          "p50_ms": 68,
+          "p95_ms": 120,
+          "p99_ms": 230,
+          "max_ms": 661.065399996005
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 321,
+          "failures": 0,
+          "mean_ms": 75.85496199426076,
+          "p50_ms": 67,
+          "p95_ms": 130,
+          "p99_ms": 250,
+          "max_ms": 747.7302000042982
+        },
+        "/nodeinfo/2.0": {
+          "requests": 319,
+          "failures": 0,
+          "mean_ms": 83.15789342097366,
+          "p50_ms": 67,
+          "p95_ms": 150,
+          "p99_ms": 630,
+          "max_ms": 1051.8904000055045
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 324,
+          "failures": 0,
+          "mean_ms": 83.66406234725017,
+          "p50_ms": 67,
+          "p95_ms": 140,
+          "p99_ms": 640,
+          "max_ms": 1428.338400030043
+        },
+        "/api/mastomini/v1/status": {
+          "requests": 326,
+          "failures": 0,
+          "mean_ms": 84.78717269726594,
+          "p50_ms": 68,
+          "p95_ms": 130,
+          "p99_ms": 770,
+          "max_ms": 1441.8797999969684
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 303,
+          "failures": 0,
+          "mean_ms": 76.50170659914569,
+          "p50_ms": 68,
+          "p95_ms": 130,
+          "p99_ms": 180,
+          "max_ms": 1073.0103999958374
+        },
+        "/api/v2/instance": {
+          "requests": 323,
+          "failures": 0,
+          "mean_ms": 157.95343188873863,
+          "p50_ms": 140,
+          "p95_ms": 220,
+          "p99_ms": 800,
+          "max_ms": 2326.8353000166826
+        },
+        "/api/v1/instance/rules": {
+          "requests": 374,
+          "failures": 0,
+          "mean_ms": 76.40344652292482,
+          "p50_ms": 66,
+          "p95_ms": 150,
+          "p99_ms": 320,
+          "max_ms": 774.9762000166811
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 418891
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 10,
+      "warmup": {
+        "requests": 1542,
+        "failures": 5,
+        "mean_ms": 95.46662418949526,
+        "p50_ms": 67,
+        "p95_ms": 150,
+        "p99_ms": 300,
+        "max_ms": 4056.224600004498
+      },
+      "requests": 2851,
+      "failures": 21,
+      "mean_ms": 106.38128295406469,
+      "p50_ms": 74,
+      "p95_ms": 170,
+      "p99_ms": 230,
+      "max_ms": 4401.80719998898,
+      "requests_per_second": 94.98267590617306,
+      "endpoints": {
+        "/api/mastomini/v1/status": {
+          "requests": 345,
+          "failures": 2,
+          "mean_ms": 90.56057681133835,
+          "p50_ms": 71,
+          "p95_ms": 130,
+          "p99_ms": 210,
+          "max_ms": 3233.4150999668054
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 324,
+          "failures": 4,
+          "mean_ms": 83.07025864121022,
+          "p50_ms": 69,
+          "p95_ms": 130,
+          "p99_ms": 180,
+          "max_ms": 2885.755399998743
+        },
+        "/api/v2/instance": {
+          "requests": 358,
+          "failures": 2,
+          "mean_ms": 165.16541592307212,
+          "p50_ms": 150,
+          "p95_ms": 210,
+          "p99_ms": 230,
+          "max_ms": 3291.885500017088
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 374,
+          "failures": 1,
+          "mean_ms": 114.07159786141617,
+          "p50_ms": 74,
+          "p95_ms": 170,
+          "p99_ms": 3000,
+          "max_ms": 4395.389700017404
+        },
+        "/api/v1/instance/rules": {
+          "requests": 354,
+          "failures": 3,
+          "mean_ms": 87.27734915301794,
+          "p50_ms": 70,
+          "p95_ms": 130,
+          "p99_ms": 170,
+          "max_ms": 2888.4124000323936
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 387,
+          "failures": 5,
+          "mean_ms": 97.71206589248416,
+          "p50_ms": 71,
+          "p95_ms": 130,
+          "p99_ms": 210,
+          "max_ms": 4276.611200009938
+        },
+        "/nodeinfo/2.0": {
+          "requests": 348,
+          "failures": 2,
+          "mean_ms": 111.98041322035581,
+          "p50_ms": 69,
+          "p95_ms": 130,
+          "p99_ms": 3000,
+          "max_ms": 4187.697000044864
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 361,
+          "failures": 2,
+          "mean_ms": 98.78931717590463,
+          "p50_ms": 71,
+          "p95_ms": 120,
+          "p99_ms": 280,
+          "max_ms": 4401.80719998898
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 474601
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 12,
+      "warmup": {
+        "requests": 1691,
+        "failures": 8,
+        "mean_ms": 111.98679704414207,
+        "p50_ms": 71,
+        "p95_ms": 160,
+        "p99_ms": 330,
+        "max_ms": 7369.927400024608
+      },
+      "requests": 2768,
+      "failures": 19,
+      "mean_ms": 127.2161350073848,
+      "p50_ms": 76,
+      "p95_ms": 170,
+      "p99_ms": 300,
+      "max_ms": 7580.511400010437,
+      "requests_per_second": 92.26666666666667,
+      "endpoints": {
+        "/api/v2/instance": {
+          "requests": 342,
+          "failures": 2,
+          "mean_ms": 168.8597049711855,
+          "p50_ms": 150,
+          "p95_ms": 230,
+          "p99_ms": 320,
+          "max_ms": 4876.685900031589
+        },
+        "/api/v1/instance/rules": {
+          "requests": 311,
+          "failures": 0,
+          "mean_ms": 165.2876366561704,
+          "p50_ms": 74,
+          "p95_ms": 140,
+          "p99_ms": 6100,
+          "max_ms": 7381.945200031623
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 355,
+          "failures": 8,
+          "mean_ms": 135.77119408660687,
+          "p50_ms": 73,
+          "p95_ms": 140,
+          "p99_ms": 280,
+          "max_ms": 7244.929199980106
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 356,
+          "failures": 5,
+          "mean_ms": 110.23448651680707,
+          "p50_ms": 73,
+          "p95_ms": 120,
+          "p99_ms": 180,
+          "max_ms": 6228.985499998089
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 332,
+          "failures": 1,
+          "mean_ms": 125.59118855489328,
+          "p50_ms": 73,
+          "p95_ms": 130,
+          "p99_ms": 270,
+          "max_ms": 6060.190700052772
+        },
+        "/api/mastomini/v1/status": {
+          "requests": 391,
+          "failures": 1,
+          "mean_ms": 128.61711739087858,
+          "p50_ms": 72,
+          "p95_ms": 140,
+          "p99_ms": 300,
+          "max_ms": 7580.511400010437
+        },
+        "/nodeinfo/2.0": {
+          "requests": 314,
+          "failures": 2,
+          "mean_ms": 96.30424490292663,
+          "p50_ms": 73,
+          "p95_ms": 140,
+          "p99_ms": 160,
+          "max_ms": 6199.987500032876
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 367,
+          "failures": 0,
+          "mean_ms": 90.76958065373539,
+          "p50_ms": 70,
+          "p95_ms": 130,
+          "p99_ms": 210,
+          "max_ms": 6281.075100007001
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 534401
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    },
+    {
+      "users": 16,
+      "warmup": {
+        "requests": 2267,
+        "failures": 364,
+        "mean_ms": 115.09071914339458,
+        "p50_ms": 71,
+        "p95_ms": 170,
+        "p99_ms": 410,
+        "max_ms": 11084.20580002712
+      },
+      "requests": 3356,
+      "failures": 802,
+      "mean_ms": 140.48004043516434,
+      "p50_ms": 75,
+      "p95_ms": 170,
+      "p99_ms": 260,
+      "max_ms": 12724.303200026043,
+      "requests_per_second": 111.80703624732261,
+      "endpoints": {
+        "/api/mastomini/v1/status": {
+          "requests": 436,
+          "failures": 92,
+          "mean_ms": 125.02717431191432,
+          "p50_ms": 75,
+          "p95_ms": 150,
+          "p99_ms": 230,
+          "max_ms": 11487.532099999953
+        },
+        "/api/v1/instance/rules": {
+          "requests": 389,
+          "failures": 111,
+          "mean_ms": 154.40285295636482,
+          "p50_ms": 70,
+          "p95_ms": 150,
+          "p99_ms": 240,
+          "max_ms": 11671.730900008697
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 428,
+          "failures": 100,
+          "mean_ms": 152.85510701022903,
+          "p50_ms": 71,
+          "p95_ms": 160,
+          "p99_ms": 320,
+          "max_ms": 11674.299200007226
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 444,
+          "failures": 106,
+          "mean_ms": 149.42791306378052,
+          "p50_ms": 72,
+          "p95_ms": 150,
+          "p99_ms": 280,
+          "max_ms": 12724.303200026043
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 424,
+          "failures": 103,
+          "mean_ms": 103.33105589618428,
+          "p50_ms": 73,
+          "p95_ms": 140,
+          "p99_ms": 200,
+          "max_ms": 12521.123999962583
+        },
+        "/nodeinfo/2.0": {
+          "requests": 439,
+          "failures": 109,
+          "mean_ms": 151.6214747136726,
+          "p50_ms": 71,
+          "p95_ms": 150,
+          "p99_ms": 320,
+          "max_ms": 12591.286000038963
+        },
+        "/api/v2/instance": {
+          "requests": 405,
+          "failures": 93,
+          "mean_ms": 187.95754641903864,
+          "p50_ms": 150,
+          "p95_ms": 230,
+          "p99_ms": 290,
+          "max_ms": 11509.2178999912
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 391,
+          "failures": 88,
+          "mean_ms": 98.75058133171186,
+          "p50_ms": 71,
+          "p95_ms": 140,
+          "p99_ms": 170,
+          "max_ms": 10087.338199955411
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 602931
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    }
+  ]
+}

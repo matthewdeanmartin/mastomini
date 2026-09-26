@@ -38,6 +38,39 @@ function write(key: string, value: string | null): void {
 
 export type Body = Record<string, unknown>;
 
+export interface Page<T> {
+  items: T[];
+  next: string | null;
+  prev: string | null;
+}
+
+/** Only follow links to the same API resource, never forward a bearer elsewhere. */
+export function pageLinks(header: string | null, path: string): Pick<Page<never>, 'next' | 'prev'> {
+  const result = { next: null as string | null, prev: null as string | null };
+  const base = new URL(path, location.origin);
+  for (const match of (header ?? '').matchAll(/<([^>]+)>\s*((?:;\s*[^,]*)*)/g)) {
+    const rel = /;\s*rel\s*=\s*(?:"([^"]+)"|([^;\s,]+))/i.exec(match[2]);
+    if (!rel) continue;
+    try {
+      const url = new URL(match[1], base);
+      if (
+        url.origin !== location.origin ||
+        url.pathname !== base.pathname ||
+        url.username ||
+        url.password ||
+        url.hash
+      )
+        continue;
+      for (const name of (rel[1] ?? rel[2]).split(/\s+/)) {
+        if (name === 'next' || name === 'prev') result[name] = url.pathname + url.search;
+      }
+    } catch {
+      /* Ignore malformed links. */
+    }
+  }
+  return result;
+}
+
 @Injectable({ providedIn: 'root' })
 export class Api {
   /** The bearer token, or null when signed out. */
@@ -53,6 +86,13 @@ export class Api {
 
   get<T>(path: string): Promise<T> {
     return this.request<T>('GET', path);
+  }
+
+  async page<T>(path: string, signal?: AbortSignal): Promise<Page<T>> {
+    const authed = this.token() !== null;
+    const response = await this.send('GET', path, undefined, signal);
+    const items = await this.parse<T[]>(response, authed);
+    return { items, ...pageLinks(response.headers.get('Link'), path) };
   }
 
   post<T>(path: string, body: Body = {}): Promise<T> {
@@ -78,21 +118,47 @@ export class Api {
   }
 
   private async request<T>(method: string, path: string, body?: Body): Promise<T> {
+    const authed = this.token() !== null;
+    return this.parse<T>(await this.send(method, path, body), authed);
+  }
+
+  private async send(
+    method: string,
+    path: string,
+    body?: Body,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const url = new URL(path, location.origin);
+    if (
+      url.origin !== location.origin ||
+      !url.pathname.startsWith('/api/') ||
+      url.username ||
+      url.password
+    ) {
+      throw new ApiError(0, 'Refusing a request outside this server’s API.');
+    }
     const headers: Record<string, string> = { Accept: 'application/json' };
     const token = this.token();
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     let response: Response;
     try {
-      response = await fetch(path, {
+      response = await fetch(url.pathname + url.search, {
         method,
         headers,
+        signal,
+        redirect: 'error',
+        cache: 'no-store',
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-    } catch {
-      throw new ApiError(0, 'Could not reach the server. Is the board on, and are you on the home Wi-Fi?');
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw new ApiError(
+        0,
+        'Could not reach the server. Is the board on, and are you on the home Wi-Fi?',
+      );
     }
-    return this.parse<T>(response, token !== null);
+    return response;
   }
 
   private async parse<T>(response: Response, authed: boolean): Promise<T> {

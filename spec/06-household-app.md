@@ -98,13 +98,50 @@ first sign-in, with its own `/app/` URL as the redirect URI. The redirect URI
 then always matches the address typed (IP, `mastomini.local`, or the dev
 server). A stored registration is checked with a `client_credentials` grant
 before each sign-in, since the server drops apps without tokens when its 32
-slots fill. Scopes: `read write` (the household API checks roles, not admin
-scopes).
+slots fill. Ordinary sign-in requests `read write` (the household API retains
+its role-based contract). The Moderation and Announcements routes require a
+separate **Authorize administration** sign-in requesting
+`read write admin:read admin:write`. These Mastodon-shaped admin APIs check
+both scopes and the current account role on every request.
+
+The app stores the granted token scopes with the token, not inferred from the
+app registration. Legacy or insufficient registrations are replaced before
+requesting broader scopes; compatible registrations are reused. A successful
+authorization replaces the browser token and attempts to revoke its prior
+token. OAuth callbacks are tied to their pending registration and PKCE state.
+
+### Moderation and announcements
+
+`/app/#/admin/moderation` is a lazy route for open/resolved report queues with
+reporter and target filters, ten-row pages, case details, assignment,
+classification/rules, post deletion, member moderation, and resolve/reopen.
+Account actions and resolution are separate, so a partial failure cannot be
+mistaken for a completed workflow. Report HTML uses Angular sanitization;
+server-side DM visibility restrictions remain authoritative.
+
+`/app/#/admin/announcements` manages drafts, edits, publication, unpublication,
+deletion, and optional visibility windows. New records explicitly start
+unpublished. Text is limited to 2,048 UTF-8 bytes and the store to 16 records.
+Local dates are converted to RFC3339 UTC; the screen shows a UTC preview and
+warns when board time is unset. Edits do not implicitly change publication.
+After an ambiguous save failure, the text is retained and another save is
+blocked until the administrator inspects refreshed state and explicitly starts
+or opens an editor again. Neither screen automatically retries mutations.
+Unsaved edits prompt before navigating within the app.
+
+The fetch wrapper exposes `Page<T> { items, next, prev }`, follows same-origin
+`Link` URLs only for the same API resource, and supports cancellation. The
+server already exposes `Link` through CORS. An empty trailing page retains a
+way back. Screens refresh on entry and after relevant actions; they do not poll.
+Durable case notes, audit history, bulk operations, and concurrent-editor
+revision protection remain future work.
 
 ## `/api/mastomini/v1` (household admin API)
 
-JSON, bearer token, same error shape as the Mastodon API. Every mutation takes an
-`Idempotency-Key`.
+JSON, bearer token, same error shape as the Mastodon API. Household mutations
+currently do not deduplicate `Idempotency-Key`; clients must inspect state after
+an ambiguous failure before retrying. The status-creation API has its own
+idempotency support.
 
 | Method & path | Role | Notes |
 |---|---|---|

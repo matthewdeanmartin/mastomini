@@ -1,0 +1,140 @@
+{
+  "started": "2026-09-26T03:27:44.060058+00:00",
+  "host": "https://192.168.1.161",
+  "seconds": 60,
+  "warmup_seconds": 10,
+  "before": {
+    "available": true,
+    "accounts": 2,
+    "statuses": 2,
+    "uptime_ms": 640841,
+    "fingerprint": "62fba4ca191b",
+    "paths": [
+      "/api/v2/instance",
+      "/api/v1/instance/rules",
+      "/api/v1/custom_emojis",
+      "/api/v1/instance/extended_description",
+      "/.well-known/oauth-authorization-server",
+      "/nodeinfo/2.0",
+      "/api/mastomini/v1/version",
+      "/api/mastomini/v1/status"
+    ]
+  },
+  "stages": [
+    {
+      "users": 8,
+      "warmup": {
+        "requests": 1418,
+        "failures": 0,
+        "mean_ms": 81.3705430185729,
+        "p50_ms": 62,
+        "p95_ms": 150,
+        "p99_ms": 270,
+        "max_ms": 3887.538400013
+      },
+      "requests": 5725,
+      "failures": 0,
+      "mean_ms": 83.64228616579432,
+      "p50_ms": 70,
+      "p95_ms": 160,
+      "p99_ms": 270,
+      "max_ms": 684.9756999872625,
+      "requests_per_second": 95.41666666666667,
+      "successful_requests_per_second": 95.41666666666667,
+      "endpoints": {
+        "/api/mastomini/v1/status": {
+          "requests": 671,
+          "failures": 0,
+          "mean_ms": 76.44336840549717,
+          "p50_ms": 70,
+          "p95_ms": 140,
+          "p99_ms": 250,
+          "max_ms": 608.6747000226751
+        },
+        "/api/v2/instance": {
+          "requests": 728,
+          "failures": 0,
+          "mean_ms": 151.35797060321528,
+          "p50_ms": 140,
+          "p95_ms": 250,
+          "p99_ms": 550,
+          "max_ms": 684.9756999872625
+        },
+        "/api/v1/instance/rules": {
+          "requests": 691,
+          "failures": 0,
+          "mean_ms": 71.68680665641888,
+          "p50_ms": 66,
+          "p95_ms": 140,
+          "p99_ms": 200,
+          "max_ms": 422.3455999745056
+        },
+        "/api/v1/instance/extended_description": {
+          "requests": 713,
+          "failures": 0,
+          "mean_ms": 72.86348765747633,
+          "p50_ms": 67,
+          "p95_ms": 140,
+          "p99_ms": 200,
+          "max_ms": 508.2376000354998
+        },
+        "/.well-known/oauth-authorization-server": {
+          "requests": 736,
+          "failures": 0,
+          "mean_ms": 77.02944415778684,
+          "p50_ms": 69,
+          "p95_ms": 140,
+          "p99_ms": 260,
+          "max_ms": 609.9977999692783
+        },
+        "/api/mastomini/v1/version": {
+          "requests": 738,
+          "failures": 0,
+          "mean_ms": 72.97421029813368,
+          "p50_ms": 67,
+          "p95_ms": 130,
+          "p99_ms": 210,
+          "max_ms": 405.70419997675344
+        },
+        "/api/v1/custom_emojis": {
+          "requests": 721,
+          "failures": 0,
+          "mean_ms": 70.73401345446094,
+          "p50_ms": 66,
+          "p95_ms": 120,
+          "p99_ms": 200,
+          "max_ms": 269.4519000360742
+        },
+        "/nodeinfo/2.0": {
+          "requests": 727,
+          "failures": 0,
+          "mean_ms": 74.7384781289642,
+          "p50_ms": 67,
+          "p95_ms": 140,
+          "p99_ms": 240,
+          "max_ms": 510.7677999767475
+        }
+      },
+      "after": {
+        "available": true,
+        "accounts": 2,
+        "statuses": 2,
+        "uptime_ms": 723111,
+        "fingerprint": "62fba4ca191b",
+        "paths": [
+          "/api/v2/instance",
+          "/api/v1/instance/rules",
+          "/api/v1/custom_emojis",
+          "/api/v1/instance/extended_description",
+          "/.well-known/oauth-authorization-server",
+          "/nodeinfo/2.0",
+          "/api/mastomini/v1/version",
+          "/api/mastomini/v1/status"
+        ]
+      },
+      "recovered": true,
+      "counts_unchanged": true,
+      "no_reboot": true
+    }
+  ]
+}

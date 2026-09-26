@@ -143,6 +143,7 @@ fn diag<S: Store>(c: &mut Call<'_, S>) -> Reply {
         "build": build(),
         "household_app": crate::web::bundled(),
         "platform": platform,
+        "incidents": crate::incidents::LOG.snapshot(),
         "clock": {
             "source": c.clock.as_str(),
             "now": (c.clock != Clock::Unset).then(|| time::iso(c.now)),

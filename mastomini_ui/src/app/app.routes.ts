@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { adminOnly, ownerOnly, signedIn } from './api/guards';
+import { adminOnly, ownerOnly, signedIn, scopedAdminOnly, unsavedAdminChanges } from './api/guards';
 
 /**
  * Lazy, so members never download the admin screens. Connect and Trust are
@@ -33,6 +33,20 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/members').then((m) => m.MembersPage),
     title: 'Members — mastomini',
     canActivate: [adminOnly],
+  },
+  {
+    path: 'admin/moderation',
+    loadComponent: () => import('./pages/moderation').then((m) => m.ModerationPage),
+    title: 'Moderation — mastomini',
+    canActivate: [scopedAdminOnly],
+    canDeactivate: [unsavedAdminChanges],
+  },
+  {
+    path: 'admin/announcements',
+    loadComponent: () => import('./pages/announcements').then((m) => m.AnnouncementsPage),
+    title: 'Announcements — mastomini',
+    canActivate: [scopedAdminOnly],
+    canDeactivate: [unsavedAdminChanges],
   },
   {
     path: 'admin/server',
