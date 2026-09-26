@@ -377,3 +377,25 @@ Add a row after every first install. Update the address when it changes.
   (likely after a power cut, when the router boots slower than the board).
   Probe passed; `make board-version` matched; `/@matt`, `/tags/…` and
   `/web/signin` serve pages over HTTP and HTTPS.
+- **2026-09-26 — upgrade to revision `9688221`** on COM11 (MAC
+  `ac:a7:04:2c:29:9c`, the only board attached). Clean tree except
+  `spec/api-coverage.json`. The coverage gate first failed because
+  `api/diag.rs` (an `incidents` field in `/diag`) and `api/moderation.rs`
+  (admin undo and report actions answer directly instead of through the
+  read endpoint) had changed without review. Both were reviewed: no
+  endpoint changed classification. Both were acknowledged, which is the
+  ledger change.
+- A desktop mastomini (port 18081, not started here) held
+  `target/debug/mastomini.exe`, so `make check` ran with
+  `CARGO_TARGET_DIR=target-deploycheck` rather than stopping that server. It
+  passed: 176 Rust tests, 38 UI tests, smoke, 25 client tests, 138
+  conformance tests (58 skipped, 14 xfailed).
+- Before: the board was offline because it had been unplugged and plugged
+  back in. `make boot-log` found it healthy with
+  `provisioned=true accounts=2 statuses=2 repairs=0`, running a build from
+  03:12 that day. The install dry run refused (mastomini layout), so
+  procedure A: 2,260,944 bytes, hash verified.
+- After: boot `store: provisioned=true accounts=2 statuses=2 repairs=0`,
+  ready at `192.168.1.161`. Probe passed by IP and by `mastomini.local`; the
+  name took about three minutes to resolve on Windows. `make board-version`
+  matched.
