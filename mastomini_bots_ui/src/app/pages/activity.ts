@@ -39,24 +39,32 @@ export class ActivityPage implements OnInit, OnDestroy {
   protected readonly error = signal('');
   protected readonly when = when;
   private timer?: ReturnType<typeof setInterval>;
+  private destroyed = false;
+  private loading = false;
 
   async ngOnInit(): Promise<void> {
     await this.load();
-    this.timer = setInterval(() => void this.load(), 3000);
+    if (this.destroyed) return;
+    this.timer = setInterval(() => { if (!document.hidden) void this.load(); }, 10_000);
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     clearInterval(this.timer);
   }
 
   /** Only what is new since the newest event shown. */
   private async load(): Promise<void> {
+    if (this.destroyed || this.loading) return;
+    this.loading = true;
     try {
       const since = this.events()[0]?.seq ?? 0;
       const fresh = await this.session.activity(since, 200);
       if (fresh.length) this.events.set([...fresh, ...this.events()].slice(0, 200));
     } catch (e) {
       this.error.set(describe(e));
+    } finally {
+      this.loading = false;
     }
   }
 }

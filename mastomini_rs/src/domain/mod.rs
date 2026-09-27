@@ -19,6 +19,7 @@ mod oauth;
 mod polls;
 pub mod query;
 pub mod records;
+pub mod scheduled;
 mod server;
 pub mod social;
 mod statuses;
@@ -76,7 +77,8 @@ const HOUR_MS: u64 = 60 * 60 * 1000;
 /// An older store is upgraded in place at boot (only the marker changes),
 /// so older firmware refuses the store instead of misreading new records.
 /// 5: local tag preferences, notes, suggestion dismissals and announcements.
-pub const SCHEMA: u16 = 5;
+/// 6: durable scheduled drafts and the bots scheduler integration.
+pub const SCHEMA: u16 = 6;
 /// Previous versions kept per edited status, and in all (spec/03).
 pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
 pub const MAX_REVISIONS: usize = 1024;
@@ -555,6 +557,7 @@ pub(crate) mod keys {
 }
 
 pub struct Service<S: Store> {
+    pub scheduling: scheduled::Scheduling,
     store: S,
     pub state: State,
     ids: IdGen,
@@ -1100,6 +1103,7 @@ impl<S: Store> Service<S> {
         }
 
         let mut service = Service {
+            scheduling: Default::default(),
             store,
             state,
             ids: idgen,
@@ -1107,6 +1111,7 @@ impl<S: Store> Service<S> {
             latched: None,
         };
         service.load_social()?;
+        service.load_scheduled()?;
         service.check_invariants()?;
         Ok(service)
     }

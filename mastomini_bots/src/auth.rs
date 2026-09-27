@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PASSWORD_MIN: usize = 8;
+pub const PASSWORD_MIN: usize = 4;
 pub const ROUNDS: u32 = 10_000;
 const SESSION_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 const MAX_SESSIONS: usize = 8;
@@ -37,7 +37,7 @@ fn derive(password: &str, salt: &str, rounds: u32) -> String {
 }
 
 /// Constant-time comparison of equal-length strings.
-fn same(a: &str, b: &str) -> bool {
+pub(crate) fn same(a: &str, b: &str) -> bool {
     a.len() == b.len()
         && a.bytes()
             .zip(b.bytes())
@@ -120,7 +120,10 @@ mod tests {
 
     #[test]
     fn passwords_and_sessions() {
-        assert!(Verifier::new("short").is_err());
+        assert!(Verifier::new("abc").is_err());
+        let short = Verifier::new("1234").unwrap();
+        assert!(short.check("1234"));
+        assert!(!short.check("1235"));
         let v = Verifier::new("correct horse").unwrap();
         assert!(v.check("correct horse"));
         assert!(!v.check("correct horsf"));

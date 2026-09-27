@@ -215,5 +215,5 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         }),
         _ => return None,
     };
-    Some(Ok(Response::ok(body)))
+    Some(Ok(Response::ok(body).public_cache(c.req, 60)))
 }

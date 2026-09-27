@@ -22,6 +22,7 @@ nav:
       - Usage:
           - Connecting Mastodon apps: usage/connecting-apps.md
           - Running the household: usage/administration.md
+          - Scheduled posts: usage/scheduled-posts.md
       - Security:
           - Encryption at rest: security/encryption.md
           - HTTPS and certificates: security/https.md

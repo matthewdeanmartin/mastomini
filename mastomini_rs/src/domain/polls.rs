@@ -5,7 +5,7 @@
 use super::*;
 
 /// `poll[...]` from a new or edited status.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NewPoll {
     pub options: Vec<String>,
     pub expires_in_s: u64,

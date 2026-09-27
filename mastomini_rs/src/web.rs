@@ -58,7 +58,7 @@ pub fn serve(req: &Request) -> Response {
 fn serve_from(assets: &[Asset], req: &Request) -> Response {
     if req.method != "GET" && req.method != "HEAD" {
         return Response::new(405, "text/plain; charset=utf-8", "Method not allowed")
-            .with_header("Allow", "GET");
+            .with_header("Allow", "GET, HEAD");
     }
     let path = match req.path.as_str() {
         "/app" => return Response::redirect("/app/"),
@@ -87,17 +87,17 @@ fn serve_from(assets: &[Asset], req: &Request) -> Response {
             .with_header("X-Content-Type-Options", "nosniff")
             .with_header("Referrer-Policy", "no-referrer")
     };
-    if req.header("If-None-Match") == Some(asset.etag) {
-        let mut r = common(Response::new(304, asset.mime, Vec::new()));
-        r.headers.retain(|(k, _)| k != "Content-Type");
-        return r;
-    }
     if !accepts_gzip(req.header("Accept-Encoding")) {
         return Response::new(
             406,
             "text/plain; charset=utf-8",
             "The household app needs a browser that accepts gzip",
         );
+    }
+    if crate::http::etag_matches(req.header("If-None-Match"), asset.etag) {
+        let mut r = common(Response::new(304, asset.mime, Vec::new()));
+        r.headers.retain(|(k, _)| k != "Content-Type");
+        return r;
     }
     let body = if req.method == "HEAD" {
         Vec::new()
@@ -131,6 +131,36 @@ mod tests {
     fn get(path: &str, accept: &str) -> Response {
         let req = Request::new("GET", path).with_header("Accept-Encoding", accept);
         serve_from(FAKE, &req)
+    }
+
+    #[test]
+    fn conditional_requests_accept_weak_tags_lists_and_wildcards() {
+        for value in ["W/\"idx\"", "\"old\", \"idx\"", "*"] {
+            let response = serve_from(
+                FAKE,
+                &Request::new("GET", "/app/").with_header("If-None-Match", value),
+            );
+            assert_eq!(response.status, 304);
+            assert!(response.body.is_empty());
+            assert_eq!(response.header("ETag"), Some("\"idx\""));
+            assert_eq!(response.header("Cache-Control"), Some("no-cache"));
+        }
+        assert_eq!(
+            serve_from(
+                FAKE,
+                &Request::new("POST", "/app/").with_header("If-None-Match", "*")
+            )
+            .status,
+            405
+        );
+        assert_eq!(
+            serve_from(
+                FAKE,
+                &Request::new("GET", "/app/").with_header("If-None-Match", "\"old\"")
+            )
+            .status,
+            200
+        );
     }
 
     #[test]

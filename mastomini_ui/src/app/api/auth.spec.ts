@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Api } from './api';
+import { Api, ApiError } from './api';
 import { Auth, OAUTH_NAVIGATE } from './auth';
 
 const owner = {
@@ -45,6 +45,102 @@ afterEach(() => {
 });
 
 describe('admin OAuth authorization', () => {
+  it('signs in after sign-out with the array scopes saved by the older app', async () => {
+    localStorage.setItem(
+      'mastomini.app',
+      JSON.stringify({
+        ...credentials,
+        redirect_uri: `${location.origin}/app/`,
+        scopes: ['read', 'write'],
+      }),
+    );
+    const auth = TestBed.inject(Auth);
+    await auth.signOut();
+    api.form.mockClear();
+    await auth.signIn('/me');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.form).toHaveBeenCalledWith(
+      '/oauth/token',
+      expect.objectContaining({
+        grant_type: 'client_credentials',
+        client_id: credentials.client_id,
+      }),
+    );
+    expect(new URL(navigate.mock.calls[0][0], location.origin).pathname).toBe('/oauth/authorize');
+    expect(JSON.parse(localStorage.getItem('mastomini.app')!).scopes).toBe('read write');
+  });
+  it('does not upgrade legacy array scopes into admin permissions', async () => {
+    localStorage.setItem(
+      'mastomini.app',
+      JSON.stringify({
+        ...credentials,
+        redirect_uri: `${location.origin}/app/`,
+        scopes: ['read', 'write'],
+      }),
+    );
+    await TestBed.inject(Auth).signIn('/admin/moderation', true);
+    expect(api.post).toHaveBeenCalledWith(
+      '/api/v1/apps',
+      expect.objectContaining({
+        scopes: 'read write admin:read admin:write',
+      }),
+    );
+  });
+  it.each([123, {}, ['read', 42]])(
+    'replaces malformed cached scopes %j instead of throwing',
+    async (scopes) => {
+      localStorage.setItem(
+        'mastomini.app',
+        JSON.stringify({
+          ...credentials,
+          redirect_uri: `${location.origin}/app/`,
+          scopes,
+        }),
+      );
+      await TestBed.inject(Auth).signIn('/me');
+      expect(api.post).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledOnce();
+    },
+  );
+  it('reports blocked session storage before navigation without logging secrets', async () => {
+    const auth = TestBed.inject(Auth);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === 'mastomini.pending')
+        throw new DOMException('private-secret', 'QuotaExceededError');
+      setItem.call(this, key, value);
+    });
+    await expect(auth.signIn('/me')).rejects.toThrow('Allow site storage');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      'mastomini: sign-in failed',
+      expect.objectContaining({
+        code: 'signin/storage/QuotaExceededError',
+        status: null,
+      }),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private-secret');
+    expect(JSON.stringify(log.mock.calls)).not.toContain(credentials.client_secret);
+  });
+  it('identifies a browser crypto failure without logging the exception or verifier', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation(() => {
+      throw new TypeError('private-secret');
+    });
+    await expect(TestBed.inject(Auth).signIn('/me')).rejects.toThrow('signin/security/TypeError');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private-secret');
+    expect(JSON.stringify(log.mock.calls)).not.toContain(credentials.client_secret);
+  });
+  it('keeps server failures actionable and names the failing sign-in stage', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.post.mockRejectedValue(new ApiError(503, 'Store unavailable.'));
+    await expect(TestBed.inject(Auth).signIn('/me')).rejects.toMatchObject({
+      status: 503,
+      message: 'Store unavailable. (signin/registration/ApiError)',
+    });
+  });
   it('replaces a legacy registration before requesting admin scopes, then keeps granted scopes with the token', async () => {
     localStorage.setItem(
       'mastomini.app',

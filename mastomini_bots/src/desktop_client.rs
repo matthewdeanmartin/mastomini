@@ -63,6 +63,14 @@ impl DesktopClient {
     /// `household_ca`: PEM of the household CA, if there is one.
     /// `resolve`: `name=ip[,name=ip...]`.
     pub fn new(household_ca: Option<&[u8]>, resolve: &str) -> Result<DesktopClient, String> {
+        Self::with_timeout(household_ca, resolve, Duration::from_secs(90))
+    }
+
+    pub fn with_timeout(
+        household_ca: Option<&[u8]>,
+        resolve: &str,
+        timeout: Duration,
+    ) -> Result<DesktopClient, String> {
         let mut roots = rustls::RootCertStore::empty();
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         if let Some(pem) = household_ca {
@@ -99,7 +107,7 @@ impl DesktopClient {
             .resolver(resolver.clone())
             .timeout_connect(Duration::from_secs(10))
             // Model answers can take tens of seconds.
-            .timeout(Duration::from_secs(90))
+            .timeout(timeout)
             .redirects(0)
             .build();
         Ok(DesktopClient { agent, resolver })

@@ -440,3 +440,31 @@ For any long-lived cache, set an explicit entry/byte bound (ESP32), report hits,
 misses and bytes, and keep correctness tests for mutation/invalidation. Success
 means improved p50/p95 and fewer long-tail failures at the same concurrency,
 without new stale data or heap exhaustion. The implemented caches are bounded and invalidated immediately; no five-minute response cache or socket-limit change was introduced.
+
+
+## HTTP cache policy (2026-09-27)
+
+Public instance metadata (including rules, policies and custom emoji), OAuth
+server discovery and NodeInfo use `public, max-age=60, must-revalidate` with
+SHA-256 ETags of the response body. Counts and configuration may be up to one
+minute old in a fresh client cache. Revalidation renders current data, so edits
+and origin-dependent discovery URLs change the validator immediately. This
+saves requests during freshness and transfer bytes on a 304; it does not avoid
+serialization work on the server during revalidation or retain response bodies
+in ESP32 RAM.
+
+Avatars, fallback images and site icons retain seven-day caching and now have
+ETags. Other main-server responses default to `no-store` unless a handler sets
+an explicit policy. Bots JSON retains its existing `no-store` policy.
+
+Both embedded apps retain revalidation for the index and one-year immutable
+caching for fingerprinted JS/CSS names only. Other bundled files revalidate;
+copied public files must not inherit an immutable policy merely for being
+non-HTML. Static validators accept weak tags, lists and `*`.
+
+The household frontend allows browser caching only for explicitly listed
+public metadata routes. It forces metadata revalidation while a write is in
+flight and for 60 seconds after any API write (including uncertain failures)
+or token change. Private reads remain `no-store`; there is no additional
+session cache of private responses. Other clients/tabs can see old public
+metadata for the documented 60-second freshness interval.

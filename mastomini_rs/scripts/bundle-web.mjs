@@ -63,8 +63,8 @@ const entries = found.sort().map((file, i) => {
   total += gzip.length;
   writeFileSync(join(out, 'files', `${i}.gz`), gzip);
   const etag = `"${createHash('sha256').update(gzip).digest('hex').slice(0, 16)}"`;
-  // Angular's output hashing puts a content hash in every name but index.html.
-  const immutable = name !== 'index.html';
+  // Public files are copied without hashes; only fingerprinted bundles are immutable.
+  const immutable = /-[A-Za-z0-9_-]{8,}\.(?:js|css)$/.test(name);
   return `    Asset {
         path: ${rust('/app/' + name)},
         mime: ${rust(mime)},

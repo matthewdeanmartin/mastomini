@@ -195,8 +195,18 @@ exactly `certs/household-ca.der` at `/ca`: the files of this build. Never
 substitute `curl -k` or a browser warning bypass for them. The `info provisioned=…` line reports
 the household state; after an upgrade it must match before the upgrade.
 
-If only `mastomini.local` fails, mDNS is blocked on this computer: report it,
-it is not a deployment failure.
+If only `mastomini.local` fails, report the name failure separately from
+firmware/IP health. Run `make probe-mdns ADDRESS=192.168.x.y` to distinguish
+direct mDNS replies, multicast-query delivery, and the OS resolver. A name
+failure alone does not prove mDNS is blocked on this computer. See
+`../docs/installation.md` for the diagnostic interpretation and limitations.
+
+Optional status light: default off; configure `MASTOMINI_STATUS_LED_PIN=48`
+or `38` only after confirming the board's WS2812 GRB LED pin. Put it in this
+crate's gitignored `.env` or prefix every build/deploy command. `off` disables
+output. Verify the boot log's `Status LED` line; the firmware source
+fingerprint does not include environment-based pin selection. See the light
+patterns and limitations in `../docs/installation.md`.
 
 Then confirm the board runs exactly this working tree (read-only):
 
@@ -285,6 +295,124 @@ Report, without credentials or household content:
 Add a row after every first install. Update the address when it changes.
 
 ## Deployment comments
+
+- **2026-09-26 — dark cold-start investigation and clearer boot light.**
+  The owner reported power red on but RGB dark for more than 30 seconds;
+  HTTP at `.161` and mDNS did not answer. Reattached COM11, confirmed MAC
+  `ac:a7:04:2c:29:9c`. Eight seconds of passive serial capture yielded no
+  messages. A runbook watchdog restart of the existing firmware restored
+  normal boot: GPIO48 initialized at 1.149 seconds, store had six accounts,
+  two statuses and zero repairs, Wi-Fi joined `.161` and server ready by
+  6.849 seconds. Strict IP/HTTPS probe passed. The original dark boot's
+  cause remains unknown; do not infer it was Wi-Fi or download mode.
+- The startup white marker now lasts 1.5 seconds, followed by a 0.5-second
+  gap and reset-class flashes. LED initialization precedes the incident
+  recorder, NVS and Wi-Fi. This still cannot signal a ROM/download-mode
+  stop, a failure before application startup, or loss of CPU/LED power.
+  An ordinary power-on observation is needed in addition to software-reset
+  deployment checks. `make check` passed (180 Rust, 46 UI, smoke, 27 client,
+  138 conformance; 58 skipped, 14 xfailed).
+- Deployed with procedure A on COM11: 2,287,904 bytes, hash verified.
+  Build `2026-09-26T22:35:45.583Z`, fingerprint `3e6d268211f7`, revision
+  `7a2d172a522c` plus uncommitted changes. Boot shows the LED initialized
+  before the reset-reason log, six accounts, two statuses and zero repairs;
+  ready at `.161` by 6.779 seconds. Strict IP/HTTPS probe passed and
+  `make board-version` matched. Cold power-on behavior remains unverified.
+  The hostname probe subsequently passed all strict HTTP/HTTPS checks too.
+- The owner then confirmed that using the board's other USB connector for
+  power makes it boot, visibly confirmed by the diagnostic light. This
+  identifies the dark-start symptom as dependent on the USB power path;
+  the exact connector labeling and electrical cause were not established.
+  Use the known-working power connector. A red power LED alone did not
+  establish that the CPU had booted. Do not attribute this occurrence to
+  Wi-Fi, mDNS, authentication, or the status-light task.
+
+- **2026-09-26 — household app sign-in cache compatibility.** After signing
+  out, the browser failed before requesting the OAuth form, at
+  `stored.scopes?.split(' ')`. Older UI bundles cached the server's scope
+  array; the newer UI expected a string. Optional chaining does not make
+  an array support `split`. This was a browser exception, not LED load.
+  Normalize and validate cached registrations before use, retain the existing
+  server validation and scope checks, and save the normalized record. No
+  clearing site data is required. Malformed records are replaced through
+  normal app registration. Sign-in failures now show a stage/error code in
+  the page and console without logging credentials, tokens or OAuth state.
+  Required session storage failures are reported before leaving the page.
+  The regression reproduced the exact TypeError before the fix. `make check`
+  passed: 180 Rust tests, 46 UI tests, smoke, 27 client tests, and 138
+  conformance tests (58 skipped, 14 xfailed). After upgrading, resume any
+  paused debugger, hard-refresh the app (Ctrl+Shift+R), then try Sign in;
+  an already-open tab may still be executing the old bundle.
+- Deployed the sign-in fix with procedure A on COM11, MAC
+  `ac:a7:04:2c:29:9c`: 2,287,824 bytes at `0x10000`, hash verified.
+  Fingerprint `76b325b635a7`, revision `7a2d172a522c` plus uncommitted
+  changes, built `2026-09-26T22:03:40.929Z`. Boot reports GPIO48 enabled,
+  `provisioned=true accounts=6 statuses=2 repairs=0`, mDNS registered,
+  ready at `192.168.1.161`. Strict IP/HTTPS probe passed with the existing
+  household certificate and CA; `make board-version` matched the tree.
+  The hostname probe also passed every HTTP/HTTPS check, with slow Windows
+  name resolution as previously observed.
+  The owner confirmed that sign-in works again with the existing browser data.
+
+- **2026-09-26 — GPIO48 LED trial deployed at the user's request.** The user
+  explicitly asked to try the likely pin rather than wait for a schematic.
+  Confirmed COM11, MAC `ac:a7:04:2c:29:9c`; pre-flash probe passed. The install
+  dry run read the existing mastomini layout (`nvs`, `phy_init`, 4 MiB
+  `factory`, 8 MiB `store`, 3 MiB `media`, `coredump`) and correctly refused
+  first installation. Used procedure A with `MASTOMINI_STATUS_LED_PIN=48`,
+  revision `7a2d172a522c` plus the tested diagnostics changes. The 2,287,296-byte
+  app hash verified; `Application updated. The board restarts; household data
+  was not touched.`
+- Boot log reports `Status LED: WS2812 GRB, GPIO 48, dim output`, reset reason
+  `power on` (one white flash), no LED driver error, and
+  `provisioned=true accounts=2 statuses=2 repairs=0`. Wi-Fi and mDNS came up
+  at `192.168.1.161`. The strict IP probe passed; `make board-version` matched
+  fingerprint `5945ba61c182`, built `2026-09-26T21:37:24.450Z`. LED appearance
+  is awaiting the user's observation; driver success alone cannot confirm
+  a WS2812 is physically connected. Generic firmware still defaults to off.
+  The hostname probe subsequently passed every HTTP/HTTPS check as well,
+  with the same slow Windows name lookups. No household settings were changed.
+- The user visually confirmed the dim green heartbeat: GPIO48 is now verified
+  for board `ac:a7:04:2c:29:9c`. Saved `MASTOMINI_STATUS_LED_PIN=48` in this
+  checkout's gitignored `mastomini_rs/.env` so routine upgrades retain it.
+  This is a local build setting, not a change to the generic default. For
+  another board, explicitly select its verified pin or override with `off`.
+
+- **2026-09-26 — mDNS investigation and optional status LED work.** The
+  first attached board was COM9, MAC `ac:a7:04:2c:2c:04`; passive serial
+  output identified nanacoin. It was not reset or flashed. The user then
+  attached mastomini on COM11, MAC `ac:a7:04:2c:29:9c`.
+  Before reset, HTTP at the last-known IP `192.168.1.161` timed out and
+  Windows name resolution failed. An eight-second passive serial capture
+  had no diagnostic output; the pre-reset cause is unknown.
+- `make boot-log PORT=COM11` restarted the existing firmware and passed:
+  `provisioned=true accounts=2 statuses=2 repairs=0`, Wi-Fi joined and ready
+  at `192.168.1.161`. No firmware was written for this diagnosis.
+  `scripts/probe-mdns.py` then found HTTP healthy (installed fingerprint
+  `e0293f0824a5`), direct and multicast mDNS queries answered with the correct
+  IP, and Windows resolved it after about 14 seconds. This establishes a
+  slow client lookup after recovery, not the cause of the pre-reset outage.
+  A repeat measured first mDNS replies at 125 ms for both query paths versus
+  13.89 s for Windows `getaddrinfo`; IPv4-only lookup still took 11.14 s.
+  The trailing-dot form `mastomini.local.` failed, so it is not a workaround
+  on this PC. The strict IP HTTP/HTTPS board probe passed with both accounts
+  and posts preserved. Network and firewall settings were not changed.
+- Optional dim WS2812 diagnostics now use completed HTTP/TLS worker turns,
+  Wi-Fi IP events, setup state, errors and reset reason. Default output is
+  off; no LED is probed or autodetected. An mDNS registration error now logs
+  a warning and leaves IP HTTP(S) serving, instead of aborting startup.
+  Hardware LED verification remains pending pin confirmation and deployment.
+  The GPIO48-enabled ESP32-S3 release build passed at 2,287,296 / 4,194,304
+  application bytes. An LED-off build also compiled successfully during
+  validation. Neither image was flashed in this investigation.
+- Final `make check` passed: formatting, clippy, script syntax, strict docs,
+  180 Rust tests (also with bundled web), UI tests, smoke, 27 client tests,
+  and 138 conformance tests (58 skipped, 14 expected failures). Regression
+  coverage includes missing/invalid LED configuration, disconnected and
+  stalled states, both-worker progress including timer wrap, dim patterns,
+  and malformed/compressed mDNS packets. An earlier gate run was invalidated
+  by editing firmware sources while its fingerprint check was running;
+  rerunning against settled sources passed.
 
 - **2026-09-24 — upgrade on COM11** (ESP32-S3, MAC `ac:a7:04:2c:29:9c`),
   checkout revision `780f7e5` with a dirty working tree. `make check` passed:
@@ -399,3 +527,12 @@ Add a row after every first install. Update the address when it changes.
   ready at `192.168.1.161`. Probe passed by IP and by `mastomini.local`; the
   name took about three minutes to resolve on Windows. `make board-version`
   matched.
+
+### 2026-09-26: UI polling audit
+
+Reviewed the Angular UI and Rust-generated web pages while investigating
+NanaCoin's global five-second `/status` watch. No recurring network polling
+timer or immediate request feedback loop was found in Mastomini's own pages.
+Its incident-history timeout only releases a downloaded object URL. No
+Mastomini code change or reflash was needed. Third-party Mastodon clients have
+their own refresh behavior and were not part of this source audit.

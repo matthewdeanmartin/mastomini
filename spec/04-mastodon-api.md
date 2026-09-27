@@ -74,7 +74,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 |---|---|
 | Streaming (`/api/v1/streaming`, WebSocket + SSE) | **Later.** `configuration.urls.streaming` (v2) and `urls.streaming_api` (v1) are `null`, the standard "no streaming" signal: clients such as Elk then open no WebSockets. `/api/v1/streaming/health` is 404, never `OK`. A client that ignores the signal and connects anyway is refused by ESP-IDF's HTTP server itself (400, about 30 ms, before any app code: WebSocket support is not compiled in). Measured on the board (2026-09-23): refused attempts mixed with API calls stay at median 40–75 ms up to 4 simultaneous connections; at 8 simultaneous connects a few requests wait 1 or 3 s (TCP SYN retries after the listen backlog of 5 overflows). Raising the HTTP sockets from 6 to 10 changed nothing, so it stays 6. When implemented: 2 concurrent streams max, user + public only; it holds a socket (a TLS session once HTTPS exists), so revisit the socket budget |
 | Polls | **Done** (moved up). `poll[options][]` (2–4, ≤ 50 characters, distinct), `poll[expires_in]` (5 minutes to 7 days), `multiple`, `hide_totals`; `GET /api/v1/polls/:id`, `POST /:id/votes`. Votes are a `u16` bitmask per option, so one write per vote. No voting on your own poll, once only. Not allowed in direct messages (the options would be unencrypted). When a poll ends, author and voters get a `poll` notification (RAM, checked on each request). Editing the options resets the votes |
-| Scheduled statuses | Never in v1 (`[]` from `GET /api/v1/scheduled_statuses`). Needs a timer and a valid clock |
+| Scheduled statuses | Supported through the trusted bots board: durable drafts, list/read/reschedule/cancel, 16-job bound, no lateness cutoff. See [scheduled posts](../docs/usage/scheduled-posts.md). Requires integration configuration and a valid clock; direct messages are excluded. |
 | Media (`/api/v1/media`, `/api/v2/media`) | `422` "media attachments are not supported"; `configuration.media_attachments` advertises `max_media_attachments: 0` if clients tolerate it (check in the client matrix) |
 | Push (`/api/v1/push/subscription`) | `404` in v1. Later maybe, if the board has internet access |
 | Account creation (`POST /api/v1/accounts`) | `registrations: false`. Returns `403`. Members are created in the household app |
@@ -210,7 +210,7 @@ Household rules:
 `POST /api/v1/statuses` accepts both form and JSON bodies (clients use both), and
 `status`, `spoiler_text`, `sensitive`, `visibility`, `language`,
 `in_reply_to_id`, and `poll[...]` (not with `direct`). `media_ids[]` must be empty
-(`422` otherwise), and `scheduled_at` gives `422`.
+(`422` otherwise). `scheduled_at` queues a draft through the configured bots scheduler.
 
 Processing order: auth → governor check → parse/validate (length, visibility,
 reply target visible to author) → idempotency lookup (RAM, 1 h, per account + key)

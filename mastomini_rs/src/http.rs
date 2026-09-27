@@ -171,6 +171,30 @@ impl Response {
         )
     }
 
+    /// Opt-in caching for successful, public representations only.
+    pub fn public_cache(mut self, req: &Request, max_age: u32) -> Response {
+        use sha2::{Digest, Sha256};
+        if self.status != 200 || !matches!(req.method.as_str(), "GET" | "HEAD") {
+            return self;
+        }
+        let etag = format!("\"{:x}\"", Sha256::digest(&self.body));
+        self.headers
+            .retain(|(k, _)| !k.eq_ignore_ascii_case("Cache-Control"));
+        self = self
+            .with_header(
+                "Cache-Control",
+                &format!("public, max-age={max_age}, must-revalidate"),
+            )
+            .with_header("ETag", &etag);
+        if etag_matches(req.header("If-None-Match"), &etag) {
+            self.status = 304;
+            self.body.clear();
+            self.headers
+                .retain(|(k, _)| !k.eq_ignore_ascii_case("Content-Type"));
+        }
+        self
+    }
+
     pub fn ok(value: Value) -> Response {
         Response::json(200, &value)
     }
@@ -499,5 +523,44 @@ mod tests {
         let req = Request::new("GET", "/").with_header("authorization", "Bearer abc");
         assert_eq!(req.bearer(), Some("abc"));
         assert_eq!(Request::new("GET", "/").bearer(), None);
+    }
+}
+
+/// If-None-Match uses weak comparison, including lists and the wildcard.
+/// Commas inside a quoted opaque tag are not list separators.
+pub fn etag_matches(header: Option<&str>, etag: &str) -> bool {
+    let Some(header) = header else {
+        return false;
+    };
+    if header.trim() == "*" {
+        return true;
+    }
+    let mut quoted = false;
+    header
+        .split(|ch| {
+            if ch == '"' {
+                quoted = !quoted;
+            }
+            ch == ',' && !quoted
+        })
+        .any(|candidate| {
+            let candidate = candidate.trim();
+            candidate.strip_prefix("W/").unwrap_or(candidate)
+                == etag.strip_prefix("W/").unwrap_or(etag)
+        })
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    #[test]
+    fn conditional_tags_use_weak_list_comparison() {
+        for value in ["\"abc\"", "W/\"abc\"", " \"other\", W/\"abc\" ", "*"] {
+            assert!(etag_matches(Some(value), "\"abc\""), "{value}");
+        }
+        assert!(etag_matches(Some("\"a,b\", \"abc\""), "\"a,b\""));
+        assert!(!etag_matches(Some("\"a,b\""), "\"b\""));
+        assert!(!etag_matches(Some("\"other\""), "\"abc\""));
+        assert!(!etag_matches(None, "\"abc\""));
     }
 }

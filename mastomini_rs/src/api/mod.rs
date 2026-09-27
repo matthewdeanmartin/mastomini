@@ -17,6 +17,7 @@ mod moderation;
 mod notification_groups;
 mod oauth;
 mod pages;
+mod scheduled;
 mod setup;
 mod social;
 mod statuses;
@@ -229,7 +230,7 @@ pub fn handle<S: Store>(
             )
             .with_header(
                 "Access-Control-Allow-Headers",
-                "Authorization, Content-Type, Idempotency-Key",
+                "Authorization, Content-Type, Idempotency-Key, If-None-Match, Cache-Control",
             )
             .with_header("Access-Control-Max-Age", "86400")
     } else {
@@ -244,8 +245,16 @@ pub fn handle<S: Store>(
             .with_header("Access-Control-Allow-Origin", "*")
             .with_header(
                 "Access-Control-Expose-Headers",
-                "Link, X-RateLimit-Reset, Server-Timing",
+                "Link, X-RateLimit-Reset, Server-Timing, ETag",
             );
+    }
+    // Everything else requires an explicit opt-in before it can be stored.
+    if !response
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("Cache-Control"))
+    {
+        response = response.with_header("Cache-Control", "no-store");
     }
     response.with_header(
         "Server-Timing",
@@ -315,6 +324,9 @@ fn dispatch<S: Store>(
 
 fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
     let method = c.req.method.as_str();
+    if let Some(reply) = scheduled::route(c, method, seg) {
+        return Some(reply);
+    }
     if let Some(reply) = social::route(c, method, seg) {
         return Some(reply);
     }
@@ -356,8 +368,7 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         (
             "GET",
             ["avatars", "original", "missing.png"] | ["headers", "original", "missing.png"],
-        ) => Ok(Response::new(200, "image/png", MISSING_PNG)
-            .with_header("Cache-Control", "public, max-age=604800")),
+        ) => Ok(Response::new(200, "image/png", MISSING_PNG).public_cache(c.req, 604800)),
         ("GET", ["avatars", file]) => Ok(avatar(c, file)),
         // The `url`s of posts, profiles and hashtags: plain pages.
         (_, ["web", "signin" | "signout"] | ["tags", _]) => return pages::route(c, method, seg),
@@ -365,11 +376,11 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
             return pages::route(c, method, seg)
         }
         // Browsers ask for these at the root of every site.
-        ("GET", ["favicon.ico"]) => Ok(Response::new(200, "image/x-icon", FAVICON)
-            .with_header("Cache-Control", "public, max-age=604800")),
+        ("GET", ["favicon.ico"]) => {
+            Ok(Response::new(200, "image/x-icon", FAVICON).public_cache(c.req, 604800))
+        }
         ("GET", ["apple-touch-icon.png" | "apple-touch-icon-precomposed.png"]) => {
-            Ok(Response::new(200, "image/png", TOUCH_ICON)
-                .with_header("Cache-Control", "public, max-age=604800"))
+            Ok(Response::new(200, "image/png", TOUCH_ICON).public_cache(c.req, 604800))
         }
         _ => return timelines::route(c, method, seg).or_else(|| misc::route(c, method, seg)),
     })
@@ -388,7 +399,7 @@ fn avatar<S: Store>(c: &Call<'_, S>, file: &str) -> Response {
             "image/png",
             crate::avatar::png(a.rec.id, &a.rec.username),
         )
-        .with_header("Cache-Control", "public, max-age=604800"),
+        .public_cache(c.req, 604800),
         None => Response::error(404, "Record not found"),
     }
 }

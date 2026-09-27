@@ -21,7 +21,7 @@ use mastobots::{
 use std::{
     ffi::{c_char, c_int, c_void, CStr, CString},
     sync::{
-        atomic::{AtomicPtr, Ordering},
+        atomic::{AtomicBool, AtomicPtr, Ordering},
         Arc,
     },
     time::Instant,
@@ -47,6 +47,42 @@ pub struct Settings {
 
 /// The TLS server configuration shared by every HTTPS session.
 static TLS: AtomicPtr<esp_tls_cfg_server_t> = AtomicPtr::new(core::ptr::null_mut());
+
+// One outstanding probe per httpd task. Only an executed work callback
+// counts as progress: a timer alone must not keep a stalled server green.
+static HANDLES: [AtomicPtr<c_void>; 2] = [
+    AtomicPtr::new(core::ptr::null_mut()),
+    AtomicPtr::new(core::ptr::null_mut()),
+];
+static PENDING: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
+static INDICES: [usize; 2] = [0, 1];
+unsafe extern "C" fn progress(ctx: *mut c_void) {
+    // SAFETY: points to one of the immutable static INDICES below.
+    let index = *(ctx as *const usize);
+    super::status_led::server_beat(index == 1);
+    PENDING[index].store(false, Ordering::Release);
+}
+
+pub fn probe_progress() {
+    for index in 0..2 {
+        let handle = HANDLES[index].load(Ordering::Acquire);
+        if !handle.is_null() && !PENDING[index].swap(true, Ordering::AcqRel) {
+            // SAFETY: server handles and callback contexts live for the
+            // process lifetime; no stack pointer is queued.
+            let result = unsafe {
+                httpd_queue_work(
+                    handle,
+                    Some(progress),
+                    (&INDICES[index] as *const usize).cast_mut().cast(),
+                )
+            };
+            if result != ESP_OK {
+                PENDING[index].store(false, Ordering::Release);
+                super::status_led::error();
+            }
+        }
+    }
+}
 
 /// Set up HTTPS: certificate and key are NUL-terminated PEM. Session
 /// tickets let a client that reconnects skip the key exchange.
@@ -212,6 +248,7 @@ pub fn start(settings: &Settings, listener: Listener) -> Result<(), EspError> {
         // SAFETY: handle is running; uri and context are leaked.
         esp!(unsafe { httpd_register_uri_handler(handle, &handler) })?;
     }
+    HANDLES[usize::from(secure)].store(handle, Ordering::Release);
     log::info!(
         "{} listening on port {} ({} sockets, backlog {})",
         if secure { "HTTPS" } else { "HTTP" },
@@ -336,8 +373,11 @@ fn serialize(reply: &Response, head: bool) -> Vec<u8> {
         out.extend_from_slice(value.as_bytes());
         out.extend_from_slice(b"\r\n");
     }
-    out.extend_from_slice(format!("Content-Length: {}\r\n\r\n", reply.body.len()).as_bytes());
-    if !head {
+    if !matches!(reply.status, 204 | 304) {
+        out.extend_from_slice(format!("Content-Length: {}\r\n", reply.body.len()).as_bytes());
+    }
+    out.extend_from_slice(b"\r\n");
+    if !head && !matches!(reply.status, 204 | 304) {
         out.extend_from_slice(&reply.body);
     }
     out
@@ -377,6 +417,9 @@ fn respond(listener: &Listener, req: *mut httpd_req_t, name: &'static str) -> es
     );
     let sending = Instant::now();
     let sent = send_all(req, &serialize(&reply, head));
+    if !sent || reply.status >= 500 {
+        super::status_led::error();
+    }
     if started.elapsed().as_millis() >= 250 || option_env!("MASTOMINI_TRACE_TIMING") == Some("1") {
         log::info!(
             "timing method={name} route={} status={} bytes={} body_ms={body_ms:.3} lock_ms={lock_ms:.3} send_ms={:.3} accepted_total_ms={:.3}",

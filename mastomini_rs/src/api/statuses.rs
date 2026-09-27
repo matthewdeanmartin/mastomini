@@ -66,12 +66,6 @@ fn create<S: Store>(c: &mut Call<'_, S>) -> Reply {
     no_media(c)?;
     let poll = poll_param(c)?;
     let p = &c.params;
-    if p.text("scheduled_at").is_some() {
-        return Err(Response::error(
-            422,
-            "Scheduled posts are not supported on this server",
-        ));
-    }
     let visibility = match p.text("visibility") {
         Some(v) => Some(
             Visibility::parse(v)
@@ -94,6 +88,13 @@ fn create<S: Store>(c: &mut Call<'_, S>) -> Reply {
         app_id: c.principal.as_ref().map(|p| p.app_id),
         poll,
     };
+    if let Some(at) = p.text("scheduled_at") {
+        let at = super::time::parse_iso(at)
+            .ok_or_else(|| Response::error(422, "Invalid scheduled_at; use RFC3339"))?;
+        let id = c.svc.schedule_post(slot, new, at, c.now).map_err(fail)?;
+        let job = c.svc.scheduled_post(id).map_err(fail)?;
+        return Ok(Response::ok(super::scheduled::entity(&job, c.svc)));
+    }
     let id = c.svc.post_status(slot, new, c.now).map_err(fail)?;
     render(c, id, slot)
 }

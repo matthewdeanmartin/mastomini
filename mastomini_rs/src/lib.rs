@@ -7,6 +7,7 @@
 pub mod api;
 pub mod auth;
 pub mod avatar;
+pub mod board_status;
 pub mod captive;
 pub mod codec;
 pub mod crypto;
@@ -19,3 +20,5 @@ pub mod store;
 pub mod text;
 pub mod tls;
 pub mod web;
+
+pub mod scheduler_bridge;

@@ -837,3 +837,78 @@ fn notification_requests_are_never_pending() {
         401
     );
 }
+
+#[test]
+fn public_cache_revalidates_and_changes_after_edits() {
+    let mut s = Server::provisioned();
+    for path in [
+        "/api/v1/instance",
+        "/api/v2/instance",
+        "/api/v1/instance/rules",
+        "/api/v1/custom_emojis",
+        "/.well-known/nodeinfo",
+        "/nodeinfo/2.0",
+        "/.well-known/oauth-authorization-server",
+        "/favicon.ico",
+        "/apple-touch-icon.png",
+        "/avatars/original/missing.png",
+    ] {
+        let first = s.get(path, None);
+        assert_eq!(first.status, 200, "{path}");
+        let tag = first.header("ETag").unwrap();
+        let again = s.send(
+            Request::new("GET", path).with_header("If-None-Match", &format!("\"old\", W/{tag}")),
+        );
+        assert_eq!(again.status, 304, "{path}");
+        assert!(again.body.is_empty());
+        assert_eq!(again.header("ETag"), Some(tag));
+        assert_eq!(again.header("Cache-Control"), first.header("Cache-Control"));
+    }
+    let path = "/api/v1/instance/rules";
+    let old = s.get(path, None);
+    let alice = s.login("alice", "alicepw", "read write follow");
+    assert_eq!(
+        s.send_json(
+            "PUT",
+            "/api/mastomini/v1/admin/server",
+            Some(&alice),
+            &json!({"rules": ["A new rule"]})
+        )
+        .status,
+        200
+    );
+    let changed =
+        s.send(Request::new("GET", path).with_header("If-None-Match", old.header("ETag").unwrap()));
+    assert_eq!(changed.status, 200);
+    assert_ne!(changed.header("ETag"), old.header("ETag"));
+    for path in [
+        "/api/v1/accounts/verify_credentials",
+        "/api/v1/timelines/home",
+        "/api/mastomini/v1/admin/server",
+        "/api/does-not-exist",
+    ] {
+        let response = s.get(path, Some(&alice));
+        assert_eq!(response.header("Cache-Control"), Some("no-store"), "{path}");
+        assert_eq!(response.header("ETag"), None);
+    }
+    let missing =
+        s.send(Request::new("GET", "/avatars/nonexistent.png").with_header("If-None-Match", "*"));
+    assert_eq!(missing.status, 404);
+    assert_eq!(missing.header("Cache-Control"), Some("no-store"));
+}
+
+#[test]
+fn discovery_etags_depend_on_request_origin() {
+    let mut s = Server::provisioned();
+    let path = "/.well-known/oauth-authorization-server";
+    let first = s.send(Request::new("GET", path).with_header("Host", "first.local"));
+    let second = s.send(
+        Request::new("GET", path)
+            .with_header("Host", "second.local")
+            .with_header("If-None-Match", first.header("ETag").unwrap()),
+    );
+    assert_eq!(second.status, 200);
+    assert_ne!(first.header("ETag"), second.header("ETag"));
+}
+
+mod scheduled;

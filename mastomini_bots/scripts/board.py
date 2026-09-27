@@ -41,12 +41,12 @@ TABLE = 'mastomini-bots-partitions.bin'
 BOOTLOADER = 'mastomini-bots-bootloader.bin'
 
 
-def esptool(port: str) -> list[str]:
+def esptool(port: str, *, after: str = 'watchdog_reset') -> list[str]:
     # `--after watchdog_reset`: esptool's default USB-Serial/JTAG hard reset
     # leaves these boards latched in download mode, so the firmware never
     # starts. An RTC watchdog reset clears the latch and boots the app.
     return [sys.executable, '-m', 'esptool', '--chip', 'esp32s3', '--port', port,
-            '--after', 'watchdog_reset']
+            '--after', after]
 
 
 def parse_table(data: bytes) -> dict[str, tuple[int, int, int, int]]:
@@ -66,10 +66,10 @@ def parse_table(data: bytes) -> dict[str, tuple[int, int, int, int]]:
     return found
 
 
-def read_table(port: str) -> dict[str, tuple[int, int, int, int]]:
+def read_table(port: str, *, after: str = 'watchdog_reset') -> dict[str, tuple[int, int, int, int]]:
     with tempfile.TemporaryDirectory(prefix='mastobots-pt-') as temp:
         path = pathlib.Path(temp) / 'pt.bin'
-        subprocess.run([*esptool(port), 'read_flash', '0x8000', '0x1000', str(path)], check=True)
+        subprocess.run([*esptool(port, after=after), 'read_flash', '0x8000', '0x1000', str(path)], check=True)
         try:
             return parse_table(path.read_bytes())
         except ValueError:
@@ -81,8 +81,8 @@ def describe(table: dict[str, tuple[int, int, int, int]]) -> str:
                      for n, (k, s, o, z) in table.items()) or '  (empty or unreadable)'
 
 
-def read_mac(port: str) -> str:
-    out = subprocess.run([*esptool(port), 'read_mac'], check=True, capture_output=True, text=True).stdout
+def read_mac(port: str, *, after: str = 'watchdog_reset') -> str:
+    out = subprocess.run([*esptool(port, after=after), 'read_mac'], check=True, capture_output=True, text=True).stdout
     match = re.search(r'MAC:\s*([0-9a-f:]{17})', out, re.I)
     if not match:
         raise SystemExit('Could not read the board MAC')

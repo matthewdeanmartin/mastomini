@@ -5,7 +5,7 @@ CARGO ?= cargo
 UV ?= uv
 ESP_PYTHON ?= /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
 
-.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board board-version api-coverage
+.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board probe-mdns board-version api-coverage
 
 help:
 	@printf '%s\n' \
@@ -37,6 +37,7 @@ help:
 	  'make install PORT=COM11 MAC=..  FIRST INSTALL ONLY: backup, erase, flash (DEPLOY.md)' \
 	  'make boot-log PORT=COM11        Capture the boot log and the board address' \
 	  'make probe-board ADDRESS=ip     Strict read-only check of a running board' \
+	  'make probe-mdns ADDRESS=ip      Compare IP access, mDNS replies and OS name lookup' \
 	  'make board-version ADDRESS=ip   Does the board run this working tree? (exit 1: flash it)'
 
 # HTTPS next to HTTP once make certs has run (docs/security/https.md).
@@ -90,7 +91,7 @@ scripts-check:
 	  clienttests/conftest.py clienttests/harness.py clienttests/smoke.py clienttests/test_mastodon_py.py \
 	  clienttests/test_https.py clienttests/test_bots_and_pages.py \
 	  clienttests/test_audit_tools.py scripts/api-coverage.py scripts/bench-api.py scripts/bench-desktop.py \
-	  scripts/probe-connection-queue.py scripts/probe-transport.py \
+	  scripts/probe-connection-queue.py scripts/probe-transport.py scripts/probe-mdns.py \
 	  loadtests/locustfile.py loadtests/sweep.py loadtests/test_readonly.py \
 	  conformance/conftest.py conformance/deviations.py conformance/sync_upstream.py
 	bash -n scripts/certs.sh
@@ -153,3 +154,6 @@ probe-board:
 
 board-version:
 	$(UV) run --project clienttests python scripts/firmware-version.py --address "$(ADDRESS)"
+
+probe-mdns:
+	$(UV) run --project clienttests python -u scripts/probe-mdns.py --address "$(ADDRESS)"

@@ -74,15 +74,17 @@ pub struct Runtime {
     pub retry_at: Option<u64>,
     pub manual_requested: bool,
     pub check_requested: bool,
+    pub model_check_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobKind {
     Scheduled,
     Manual,
-    /// Sign in to the server only: does the API key work? (And for a bot
-    /// that uses a model: does OpenRouter answer?)
+    /// Verify the Mastodon key without a model request.
     Check,
+    /// Explicit opt-in test: Mastodon key plus one tiny OpenRouter request.
+    ModelCheck,
 }
 
 #[derive(Debug, Clone)]
@@ -167,7 +169,8 @@ pub struct OpenRouterUpdate {
 }
 
 pub struct Service<S: KvStore> {
-    store: S,
+    pub(crate) store: S,
+    pub scheduler: crate::scheduler::Scheduler,
     pub bots: Arc<Vec<Box<dyn Bot>>>,
     pub infos: Vec<BotInfo>,
     pub records: Vec<BotRecord>,
@@ -217,7 +220,9 @@ impl<S: KvStore> Service<S> {
             "info",
             format!("Started with {} bots", bots.len()),
         );
+        let scheduler = crate::scheduler::load(&store)?;
         Ok(Service {
+            scheduler,
             store,
             runtime: vec![Runtime::default(); bots.len()],
             bots: Arc::new(bots),
@@ -354,7 +359,14 @@ impl<S: KvStore> Service<S> {
         if !self.configured(i) {
             return Err("Choose a server and an API key first".into());
         }
+        if kind == JobKind::ModelCheck && !self.infos[i].uses_llm {
+            return Err("This bot does not use a language model".into());
+        }
         let what = match kind {
+            JobKind::ModelCheck => {
+                self.runtime[i].model_check_requested = true;
+                "Testing OpenRouter (one model request)"
+            }
             JobKind::Check => {
                 self.runtime[i].check_requested = true;
                 "Checking the API key"
@@ -392,6 +404,8 @@ impl<S: KvStore> Service<S> {
             };
             let next = if std::mem::take(&mut self.runtime[i].check_requested) {
                 Some((JobKind::Check, now))
+            } else if std::mem::take(&mut self.runtime[i].model_check_requested) {
+                Some((JobKind::ModelCheck, now))
             } else if std::mem::take(&mut self.runtime[i].manual_requested) {
                 Some((JobKind::Manual, now))
             } else if self.records[i].config.enabled {
@@ -497,7 +511,7 @@ impl<S: KvStore> Service<S> {
             if ok { "ok" } else { "error" },
             summary,
         );
-        if job.kind == JobKind::Check {
+        if matches!(job.kind, JobKind::Check | JobKind::ModelCheck) {
             self.records[i].last_check = Some(record);
             let _ = self.save(i);
             return;
@@ -559,7 +573,7 @@ pub fn execute(
     http: &mut dyn HttpClient,
     now_ms: u64,
 ) -> Outcome {
-    if job.kind == JobKind::Check {
+    if matches!(job.kind, JobKind::Check | JobKind::ModelCheck) {
         return Outcome {
             result: check(job, http),
             log: Vec::new(),
@@ -586,12 +600,12 @@ pub fn execute(
     }
 }
 
-/// Does the API key work, and (for a bot that uses a model) does
-/// OpenRouter answer? One tiny completion, a fraction of a cent.
+/// A key check never calls a model. Only the explicit model-test action
+/// makes one tiny completion.
 fn check(job: &Job, http: &mut dyn HttpClient) -> Result<String, RunError> {
     let acct = Mastodon::new(http, &job.instance, &job.token).verify_credentials()?;
     let mastodon = format!("The API key works: {acct} on {}", job.instance);
-    if !job.uses_llm {
+    if job.kind != JobKind::ModelCheck {
         return Ok(mastodon);
     }
     let config = job.openrouter.as_ref().ok_or_else(|| {
@@ -762,6 +776,52 @@ mod tests {
         assert_eq!(
             s.next_run(0, slot() + 13 * MINUTE_MS),
             Some(utc(2026, 9, 27, 11, 30))
+        );
+    }
+
+    #[test]
+    fn llm_key_check_is_free_of_model_calls_and_model_test_is_explicit() {
+        let mut s = Service::open(MemStore::default(), crate::bots::all()).unwrap();
+        let i = s.index("llm_reply").unwrap();
+        s.configure(
+            i,
+            ConfigUpdate {
+                instance: Some("https://mastomini.local".into()),
+                token: Some("K".into()),
+                ..Default::default()
+            },
+            Some(slot()),
+        )
+        .unwrap();
+        s.openrouter.key = "model-key".into();
+        let mut http = Scripted::default();
+        s.request(i, JobKind::Check, Some(slot())).unwrap();
+        http.answer(200, json!({"acct": "replyguy"}));
+        let done = step(&mut s, &mut http, slot());
+        assert!(done[0].result.as_ref().unwrap().contains("@replyguy"));
+        assert_eq!(http.sent.lock().unwrap().len(), 1);
+        assert_eq!(http.sent.lock().unwrap()[0].method, "GET");
+
+        s.request(i, JobKind::ModelCheck, Some(slot() + 1)).unwrap();
+        http.answer(200, json!({"acct": "replyguy"}));
+        http.answer(200, json!({"choices": [{"message": {"content": "ready"}}]}));
+        let done = step(&mut s, &mut http, slot() + 1);
+        assert!(done[0]
+            .result
+            .as_ref()
+            .unwrap()
+            .contains("OpenRouter answers"));
+        let sent = http.sent.lock().unwrap();
+        assert_eq!(sent.len(), 3);
+        assert_eq!(
+            sent.iter()
+                .filter(|r| r.url.contains("openrouter.ai"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            s.records[i].runs, 0,
+            "checks must not post or count as bot runs"
         );
     }
 

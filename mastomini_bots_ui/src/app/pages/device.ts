@@ -20,14 +20,18 @@ import { bytes, duration, when } from './format';
       <section class="panel">
         <dl class="facts">
           <dt>Running</dt>
-          <dd>{{ d.build.name }} {{ d.build.version }}
-            ({{ d.build.commit || 'no commit' }}{{ d.build.dirty ? ', uncommitted changes' : '' }}),
-            built {{ when(d.build.built_at) }}</dd>
+          <dd>
+            {{ d.build.name }} {{ d.build.version }} ({{ d.build.commit || 'no commit'
+            }}{{ d.build.dirty ? ', uncommitted changes' : '' }}), built
+            {{ when(d.build.built_at) }}
+          </dd>
           <dt>Up for</dt>
-          <dd>{{ duration(d.platform.uptime_ms) }} on {{ d.platform.target }}
+          <dd>
+            {{ duration(d.platform.uptime_ms) }} on {{ d.platform.target }}
             @if (d.platform.reset_reason) {
               (last restart: {{ d.platform.reset_reason }})
-            }</dd>
+            }
+          </dd>
           <dt>Clock</dt>
           <dd>{{ d.clock ? when(d.clock) : 'Not set yet: bots wait for internet time' }}</dd>
           @if (d.platform.wifi_rssi !== null) {
@@ -36,9 +40,11 @@ import { bytes, duration, when } from './format';
           }
           @if (d.platform.heap_internal_free !== null) {
             <dt>Memory</dt>
-            <dd>{{ bytes(d.platform.heap_internal_free) }} internal free
-              (lowest {{ bytes(d.platform.heap_internal_min_free) }}),
-              {{ bytes(d.platform.psram_free) }} PSRAM free</dd>
+            <dd>
+              {{ bytes(d.platform.heap_internal_free) }} internal free (lowest
+              {{ bytes(d.platform.heap_internal_min_free) }}),
+              {{ bytes(d.platform.psram_free) }} PSRAM free
+            </dd>
           }
         </dl>
       </section>
@@ -51,6 +57,23 @@ import { bytes, duration, when } from './format';
         can <a href="/ca">download the household CA</a>.
       </p>
     }
+    <h2>Scheduled posts</h2>
+    @if (scheduler(); as s) {
+      <section class="panel">
+        <p>
+          {{
+            s.instance
+              ? 'Serving ' + s.instance
+              : 'Waiting for the first scheduled post from mastomini.'
+          }}
+        </p>
+        <p>{{ s.jobs.length }} posts waiting. Overdue posts publish at the first opportunity.</p>
+        @for (job of s.jobs; track job.id) {
+          <p class="muted">Post {{ job.id }} � {{ scheduledTime(job.at) }}</p>
+        }
+        <button class="btn" type="button" (click)="refreshScheduler()">Refresh</button>
+      </section>
+    }
     <h2>OpenRouter</h2>
     <p class="muted small">
       Bots that write with a language model use this one key.
@@ -62,17 +85,32 @@ import { bytes, duration, when } from './format';
     @if (openRouter(); as o) {
       <form class="panel" (ngSubmit)="saveOpenRouter()">
         <label for="or-key">API key</label>
-        <input id="or-key" name="orKey" type="password" autocomplete="off" [(ngModel)]="orKey"
-               [placeholder]="o.key_set ? 'Saved — type a new one to replace it' : 'sk-or-…'" />
+        <input
+          id="or-key"
+          name="orKey"
+          type="password"
+          autocomplete="off"
+          [(ngModel)]="orKey"
+          [placeholder]="o.key_set ? 'Saved — type a new one to replace it' : 'sk-or-…'"
+        />
         <label for="or-model">Default model</label>
-        <input id="or-model" name="orModel" type="text" autocapitalize="none" [(ngModel)]="orModel"
-               [placeholder]="o.default_model" />
+        <input
+          id="or-model"
+          name="orModel"
+          type="text"
+          autocapitalize="none"
+          [(ngModel)]="orModel"
+          [placeholder]="o.default_model"
+        />
         <p class="muted small">
-          An OpenRouter model id. Empty: {{ o.default_model }}. A bot's own Model setting overrides it.
+          An OpenRouter model id. Empty: {{ o.default_model }}. A bot's own Model setting overrides
+          it.
         </p>
         <button class="btn" type="submit" [disabled]="busy()">Save</button>
         @if (o.key_set) {
-          <button class="btn btn--danger" type="button" (click)="removeOpenRouterKey()">Remove key</button>
+          <button class="btn btn--danger" type="button" (click)="removeOpenRouterKey()">
+            Remove key
+          </button>
         }
         @if (saved()) {
           <span class="ok small"> Saved.</span>
@@ -82,11 +120,27 @@ import { bytes, duration, when } from './format';
     <h2>Admin password</h2>
     <form class="panel" (ngSubmit)="changePassword()">
       <label for="current">Current password</label>
-      <input id="current" name="current" type="password" autocomplete="current-password"
-             [(ngModel)]="current" required />
+      <input
+        id="current"
+        name="current"
+        type="password"
+        autocomplete="current-password"
+        [(ngModel)]="current"
+        required
+      />
       <label for="next">New password</label>
-      <input id="next" name="next" type="password" autocomplete="new-password" [(ngModel)]="next" required />
-      <p class="muted small">At least 8 characters. Every session, this one included, is signed out.</p>
+      <input
+        id="next"
+        name="next"
+        type="password"
+        autocomplete="new-password"
+        [(ngModel)]="next"
+        required
+      />
+      <p class="muted small">
+        At least 4 characters. No special characters required. Every session, this one included, is
+        signed out.
+      </p>
       <button class="btn" type="submit" [disabled]="busy()">Change password</button>
     </form>
   `,
@@ -95,6 +149,15 @@ export class DevicePage implements OnInit {
   protected readonly session = inject(Session);
   private readonly router = inject(Router);
   protected readonly diag = signal<Diag | null>(null);
+  protected readonly scheduler = signal<Awaited<ReturnType<Session['scheduler']>> | null>(null);
+  protected readonly scheduledTime = (ms: number) => new Date(ms).toLocaleString();
+  protected async refreshScheduler(): Promise<void> {
+    try {
+      this.scheduler.set(await this.session.scheduler());
+    } catch (e) {
+      this.error.set(describe(e));
+    }
+  }
   protected readonly openRouter = signal<OpenRouterStatus | null>(null);
   protected readonly saved = signal(false);
   protected orKey = '';
@@ -113,6 +176,7 @@ export class DevicePage implements OnInit {
       const o = await this.session.openRouter();
       this.openRouter.set(o);
       this.orModel = o.model;
+      await this.refreshScheduler();
     } catch (e) {
       this.error.set(describe(e));
     }

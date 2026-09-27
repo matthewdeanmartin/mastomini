@@ -8,6 +8,12 @@ import { adminOnly, ownerOnly, signedIn, scopedAdminOnly, unsavedAdminChanges } 
  */
 export const routes: Routes = [
   {
+    path: 'scheduled',
+    loadComponent: () => import('./pages/scheduled').then((m) => m.ScheduledPage),
+    title: 'Scheduled posts � mastomini',
+    canActivate: [signedIn],
+  },
+  {
     path: 'connect',
     loadComponent: () => import('./pages/connect').then((m) => m.ConnectPage),
     title: 'Set up a device — mastomini',

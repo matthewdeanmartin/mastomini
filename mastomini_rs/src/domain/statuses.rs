@@ -4,7 +4,7 @@
 use super::*;
 use crate::text;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct NewStatus {
     pub text: String,
     pub spoiler_text: String,
@@ -31,6 +31,16 @@ impl<S: Store> Service<S> {
     /// `POST /api/v1/statuses`. Returns the new (or idempotently repeated)
     /// status id.
     pub fn post_status(&mut self, slot: u8, new: NewStatus, now_ms: u64) -> Result<u64> {
+        self.post_status_with_id(slot, new, now_ms, None)
+    }
+
+    pub(super) fn post_status_with_id(
+        &mut self,
+        slot: u8,
+        new: NewStatus,
+        now_ms: u64,
+        forced_id: Option<u64>,
+    ) -> Result<u64> {
         self.writable()?;
         let author = self.state.account(slot).ok_or(Error::NotFound)?;
         let default_visibility = author.rec.privacy;
@@ -85,7 +95,7 @@ impl<S: Store> Service<S> {
         self.govern(Some(slot), now_ms)?;
         self.make_room(Room::Status)?;
         let mut rec = StatusRec {
-            id: self.next_id(now_ms),
+            id: forced_id.unwrap_or_else(|| self.next_id(now_ms)),
             author: slot,
             text,
             spoiler_text: spoiler,

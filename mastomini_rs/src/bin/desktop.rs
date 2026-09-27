@@ -99,6 +99,18 @@ fn main() -> Result<(), BoxError> {
     }
     let svc: Shared = Arc::new(Mutex::new(svc));
     let ctx = Arc::new(ctx);
+    {
+        let shared = Arc::clone(&svc);
+        let ca = std::fs::read(env("MASTOMINI_SCHEDULER_CA", "certs/household-ca.crt"))
+            .unwrap_or_default();
+        let agent = mastomini::scheduler_bridge::desktop_agent(&ca)?;
+        std::thread::spawn(move || loop {
+            mastomini::scheduler_bridge::transfer(&shared, |job| {
+                mastomini::scheduler_bridge::desktop_send(&agent, job)
+            });
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        });
+    }
     if let Some((server, url)) = https {
         println!("HTTPS on {url} (devices trust it via {url}/trust)");
         let (svc, ctx) = (Arc::clone(&svc), Arc::clone(&ctx));

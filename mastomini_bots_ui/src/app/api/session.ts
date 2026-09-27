@@ -62,7 +62,7 @@ export class Session {
   }
 
   /** `run` posts now; `check` only signs in with the API key. */
-  request(id: string, action: 'run' | 'check'): Promise<Bot> {
+  request(id: string, action: 'run' | 'check' | 'check-model'): Promise<Bot> {
     return this.api.post(`${V1}/bots/${encodeURIComponent(id)}/${action}`);
   }
 
@@ -77,6 +77,10 @@ export class Session {
   /** An empty key removes it; omitted fields stay. */
   setOpenRouter(update: { key?: string; model?: string }): Promise<OpenRouterStatus> {
     return this.api.put(`${V1}/integrations/openrouter`, { ...update });
+  }
+
+  scheduler(): Promise<{ instance: string; key_set: boolean; jobs: { id: string; at: number }[] }> {
+    return this.api.get(`${V1}/scheduler`);
   }
 
   diag(): Promise<Diag> {

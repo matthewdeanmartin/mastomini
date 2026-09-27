@@ -16,3 +16,6 @@ Tiny dataset; public metadata reads, one request per client at a time.
 Board recovered; two accounts and two posts unchanged. See the
 [load-test README](loadtests/README.md) and [full performance findings](../spec/08-performance.md)
 for workload, timings, limitations and reproduction commands.
+
+Scheduled posts can use the trusted bots board for timing; see
+[scheduled-post setup](../docs/usage/scheduled-posts.md).

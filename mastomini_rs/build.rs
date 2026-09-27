@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 const CREDENTIAL_FILES: [&str; 2] = [".env", "../.env"];
 
-const SETTINGS: [(&str, &[&str]); 5] = [
+const SETTINGS: [(&str, &[&str]); 6] = [
+    ("MASTOMINI_STATUS_LED_PIN", &["MASTOMINI_STATUS_LED_PIN"]),
     ("MASTOMINI_WIFI_SSID", &["MASTOMINI_WIFI_SSID", "WIFI_SSID"]),
     (
         "MASTOMINI_WIFI_PASSWORD",
@@ -59,7 +60,9 @@ fn parse(text: &str, want: &str) -> Option<String> {
 /// `scripts/firmware-version.py` has the same list and rules; a client test
 /// checks that both agree. Test-only files are left out so that editing a
 /// test does not make the board look out of date.
-const FINGERPRINT_INPUTS: [&str; 20] = [
+const FINGERPRINT_INPUTS: [&str; 22] = [
+    "mastomini_bots/src/household_trust.rs",
+    "mastomini_bots/src/bin/esp32/household_tls.rs",
     "mastomini_rs/Cargo.toml",
     "mastomini_rs/Cargo.lock",
     "mastomini_rs/build.rs",
@@ -198,6 +201,8 @@ fn build_identity(root: &Path) {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=../mastomini_bots/src/household_trust.rs");
+    println!("cargo:rerun-if-changed=../mastomini_bots/src/bin/esp32/household_tls.rs");
     println!("cargo:rerun-if-changed=build.rs");
     // Development only: boot into the setup network even with saved Wi-Fi.
     println!("cargo:rerun-if-env-changed=MASTOMINI_FORCE_SETUP");

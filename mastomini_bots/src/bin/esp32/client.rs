@@ -14,6 +14,7 @@
 //! against the household CA; everything else against the public CA bundle.
 
 use esp_idf_svc::sys::*;
+use mastobots::household_trust::household_host;
 use mastobots::mastodon::{HttpClient, HttpRequest, HttpResponse};
 use std::collections::HashMap;
 use std::ffi::{c_char, CString};
@@ -25,9 +26,9 @@ const BODY_LIMIT: usize = 256 * 1024;
 /// Per socket operation; a model can think for tens of seconds.
 const TIMEOUT_MS: i32 = 60_000;
 
-/// NUL-terminated PEM of the household CA.
+/// Persistent connections and mDNS cache.
 pub struct EspClient {
-    household_ca: &'static str,
+    timeout_ms: i32,
     clients: HashMap<String, Handle>,
     resolved: HashMap<String, (Ipv4Addr, Instant)>,
 }
@@ -46,16 +47,6 @@ impl Drop for Handle {
         // SAFETY: created by esp_http_client_init and not yet cleaned up.
         unsafe { esp_http_client_cleanup(self.raw) };
     }
-}
-
-fn household(host: &str) -> bool {
-    let host = host.to_ascii_lowercase();
-    if let Ok(ip) = host.parse::<Ipv4Addr>() {
-        return ip.is_private() || ip.is_loopback() || ip.is_link_local();
-    }
-    [".local", ".lan", ".home.arpa", ".internal"]
-        .iter()
-        .any(|suffix| host.ends_with(suffix))
 }
 
 /// scheme, host, port, path+query
@@ -84,12 +75,18 @@ fn cstr(text: &str) -> Result<CString, String> {
 }
 
 impl EspClient {
-    pub fn new(household_ca: &'static str) -> EspClient {
+    pub fn new() -> EspClient {
         EspClient {
-            household_ca,
+            timeout_ms: TIMEOUT_MS,
             clients: HashMap::new(),
             resolved: HashMap::new(),
         }
+    }
+
+    pub fn scheduler() -> EspClient {
+        let mut client = Self::new();
+        client.timeout_ms = 5_000;
+        client
     }
 
     /// The address of a `.local` name, over mDNS, cached.
@@ -129,10 +126,9 @@ impl EspClient {
         let port = port.map_or(String::new(), |p| format!(":{p}"));
         let url = cstr(&format!("{scheme}://{connect_to}{port}/"))?;
         let name = cstr(host)?;
-        let ca = cstr(self.household_ca.trim_end_matches('\0'))?;
         let mut config = esp_http_client_config_t {
             url: url.as_ptr(),
-            timeout_ms: TIMEOUT_MS,
+            timeout_ms: self.timeout_ms,
             keep_alive_enable: true,
             disable_auto_redirect: true,
             buffer_size: 2048,
@@ -142,8 +138,9 @@ impl EspClient {
         };
         if scheme == "https" {
             config.common_name = name.as_ptr();
-            if household(host) {
-                config.__bindgen_anon_1.cert_pem = ca.as_ptr();
+            if household_host(host) {
+                super::household_tls::prepare(super::CA_DER)?;
+                config.crt_bundle_attach = Some(super::household_tls::attach);
             } else {
                 config.crt_bundle_attach = Some(esp_crt_bundle_attach);
             }
@@ -157,7 +154,7 @@ impl EspClient {
             key,
             Handle {
                 raw,
-                _strings: vec![url, name, ca],
+                _strings: vec![url, name],
             },
         );
         Ok(raw)
@@ -189,8 +186,22 @@ impl EspClient {
                 let (name, value) = (cstr(name)?, cstr(value)?);
                 esp_http_client_set_header(h, name.as_ptr(), value.as_ptr());
             }
-            esp!(esp_http_client_open(h, req.body.len() as i32))
-                .map_err(|e| format!("connect: {e}"))?;
+            if let Err(error) = esp!(esp_http_client_open(h, req.body.len() as i32)) {
+                // Capture before forget() destroys the handle. Report only
+                // numeric transport diagnostics, never headers or credentials.
+                let socket_error = esp_http_client_get_errno(h);
+                let mut tls_code = 0;
+                let mut verify_flags = 0;
+                let tls_error = esp_http_client_get_and_clear_last_tls_error(
+                    h,
+                    &mut tls_code,
+                    &mut verify_flags,
+                );
+                return Err(format!(
+                    "connect: {error} (socket={socket_error}, tls=0x{tls_error:x}, \
+                     mbedtls={tls_code}, verify=0x{verify_flags:x})"
+                ));
+            }
             let mut written = 0;
             while written < req.body.len() {
                 let n = esp_http_client_write(
@@ -232,7 +243,24 @@ impl EspClient {
 impl HttpClient for EspClient {
     fn send(&mut self, req: &HttpRequest) -> Result<HttpResponse, String> {
         let started = Instant::now();
-        let result = self.exchange(req);
+        let reused = split(&req.url).is_some_and(|(scheme, host, port, _)| {
+            self.clients
+                .contains_key(&format!("{scheme}://{host}:{port:?}"))
+        });
+        let mut result = self.exchange(req);
+        if result.is_err() && reused && req.method == "GET" {
+            // An idle keep-alive socket may have been closed by the server.
+            // Reconnect once for reads only: never duplicate a post or a
+            // paid model request whose response may have been lost.
+            if let Some((scheme, host, port, _)) = split(&req.url) {
+                self.forget(scheme, host, port);
+                log::info!("Reconnecting an idle client for one GET retry");
+                result = self.exchange(req);
+            }
+        }
+        if result.as_ref().map_or(true, |r| r.status >= 400) {
+            super::status_led::error();
+        }
         if result.is_err() {
             // A fresh connection (and name lookup) next time.
             if let Some((scheme, host, port, _)) = split(&req.url) {

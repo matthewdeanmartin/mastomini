@@ -51,3 +51,6 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
 # Boot logs also on the USB port, so deploys can read boot evidence.
 CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+# Resolve the trusted bots board for scheduler handoffs.
+CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=y

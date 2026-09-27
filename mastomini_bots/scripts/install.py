@@ -41,8 +41,10 @@ def main():
     check_image(table_bin, 0x1000)
     check_image(boot, 0x8000)
 
-    mac = read_mac(args.port)
-    table = read_table(args.port)
+    # Factory USB CDC firmware can enumerate on a different COM port from
+    # the ROM bootloader. Stay in the bootloader until verification finishes.
+    mac = read_mac(args.port, after='no_reset')
+    table = read_table(args.port, after='no_reset')
     print(f'Board on {args.port}: MAC {mac}')
     print(f'Current partition table:\n{describe(table)}')
     refuse_mastomini(mac, table)
@@ -60,14 +62,14 @@ def main():
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     backup = args.backup_dir / f'{mac.replace(":", "")}-{stamp}-full16MB.bin'
     print(f'Backing up the whole flash to {backup} (about 4 minutes)...')
-    subprocess.run([*esptool(args.port), '-b', '921600', 'read_flash', '0', hex(FLASH_SIZE), str(backup)],
+    subprocess.run([*esptool(args.port, after='no_reset'), '-b', '921600', 'read_flash', '0', hex(FLASH_SIZE), str(backup)],
                    check=True)
     data = backup.read_bytes()
     if len(data) != FLASH_SIZE:
         raise SystemExit('Backup is incomplete; nothing was written.')
     print(f'Backup sha256 {hashlib.sha256(data).hexdigest()}')
 
-    tool = esptool(args.port)
+    tool = esptool(args.port, after='no_reset')
     for name in ERASE:
         _, _, offset, size = BOTS_LAYOUT[name]
         subprocess.run([*tool, 'erase_region', hex(offset), hex(size)], check=True)

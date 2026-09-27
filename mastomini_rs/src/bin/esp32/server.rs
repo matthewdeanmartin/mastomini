@@ -130,7 +130,6 @@ fn handshakes(
     }
     let mut pending: Vec<(Socket, Instant)> = Vec::with_capacity(HANDSHAKES);
     loop {
-        LOG.beat(0, incident_now());
         LOG.connections(0, pending.len());
         if pending.len() < HANDSHAKES {
             if let Ok((tcp, _)) = listener.accept() {
@@ -190,6 +189,8 @@ fn handshakes(
                 }
             }
         }
+        // Completed a TLS worker turn, even if idle.
+        LOG.beat(0, incident_now());
         // IDF's libc usleep busy-waits below one tick. Explicit FreeRTOS delay
         // rounds up and lets IDLE0 run/feed its watchdog even with no traffic.
         esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
@@ -476,7 +477,6 @@ pub fn start(
                     .map(Outgoing::retained_bytes)
                     .sum();
                 let mut input_bytes: usize = clients.iter().map(|c| c.input.capacity()).sum();
-                LOG.beat(1, incident_now());
                 LOG.connections(1, clients.iter().filter(|c| c.socket.tls.is_some()).count());
                 LOG.connections(2, clients.iter().filter(|c| c.socket.tls.is_none()).count());
                 clients.retain_mut(|client| {
@@ -507,6 +507,7 @@ pub fn start(
                         add_client(&mut clients, stream);
                     }
                 }
+                LOG.beat(1, incident_now()); // completed an HTTP worker turn
                 esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
             }
         })?;

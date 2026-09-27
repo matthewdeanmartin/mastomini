@@ -8,6 +8,17 @@ import { Injectable, signal } from '@angular/core';
 
 const TOKEN_KEY = 'mastomini.token';
 
+// Match only the public metadata routes that opt into HTTP caching server-side.
+function publicMetadata(path: string): boolean {
+  return (
+    /^\/api\/v[12]\/instance$/.test(path) ||
+    /^\/api\/v1\/instance\/(rules|peers|activity|domain_blocks|languages|extended_description|privacy_policy|terms_of_service)$/.test(
+      path,
+    ) ||
+    path === '/api/v1/custom_emojis'
+  );
+}
+
 /** The server's `{"error": "..."}`, with the HTTP status. */
 export class ApiError extends Error {
   constructor(
@@ -79,7 +90,13 @@ export class Api {
   /** Fired when the server stops accepting the token (401). */
   onUnauthorized: () => void = () => {};
 
+  // Revalidate all metadata after writes, including requests racing a write.
+  // The window covers the server's entire freshness lifetime.
+  private revalidateUntil = 0;
+  private pendingWrites = 0;
+
   setToken(token: string | null): void {
+    this.revalidateUntil = Date.now() + 60_000;
     write(TOKEN_KEY, token);
     this.token.set(token);
   }
@@ -95,8 +112,8 @@ export class Api {
     return { items, ...pageLinks(response.headers.get('Link'), path) };
   }
 
-  post<T>(path: string, body: Body = {}): Promise<T> {
-    return this.request<T>('POST', path, body);
+  post<T>(path: string, body: Body = {}, idempotencyKey?: string): Promise<T> {
+    return this.request<T>('POST', path, body, idempotencyKey);
   }
 
   put<T>(path: string, body: Body): Promise<T> {
@@ -117,9 +134,14 @@ export class Api {
     return this.parse<T>(response, false);
   }
 
-  private async request<T>(method: string, path: string, body?: Body): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: Body,
+    idempotencyKey?: string,
+  ): Promise<T> {
     const authed = this.token() !== null;
-    return this.parse<T>(await this.send(method, path, body), authed);
+    return this.parse<T>(await this.send(method, path, body, undefined, idempotencyKey), authed);
   }
 
   private async send(
@@ -127,6 +149,7 @@ export class Api {
     path: string,
     body?: Body,
     signal?: AbortSignal,
+    idempotencyKey?: string,
   ): Promise<Response> {
     const url = new URL(path, location.origin);
     if (
@@ -141,6 +164,15 @@ export class Api {
     const token = this.token();
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+    const writing = method !== 'GET';
+    if (writing) this.pendingWrites++;
+    const cache: RequestCache =
+      method === 'GET' && publicMetadata(url.pathname)
+        ? this.pendingWrites > 0 || Date.now() < this.revalidateUntil
+          ? 'no-cache'
+          : 'default'
+        : 'no-store';
     let response: Response;
     try {
       response = await fetch(url.pathname + url.search, {
@@ -148,7 +180,7 @@ export class Api {
         headers,
         signal,
         redirect: 'error',
-        cache: 'no-store',
+        cache,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
@@ -157,6 +189,11 @@ export class Api {
         0,
         'Could not reach the server. Is the board on, and are you on the home Wi-Fi?',
       );
+    } finally {
+      if (writing) {
+        this.pendingWrites--;
+        this.revalidateUntil = Date.now() + 60_000;
+      }
     }
     return response;
   }

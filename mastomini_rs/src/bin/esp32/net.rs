@@ -155,6 +155,7 @@ impl Net {
             self.wifi.start()?;
         }
         self.setup_mode = true;
+        super::status_led::setup(true);
         self.reason = reason;
         Ok(())
     }
@@ -227,6 +228,7 @@ impl Net {
         match self.wifi.set_configuration(&Configuration::Client(conf)) {
             Ok(()) => {
                 self.setup_mode = false;
+                super::status_led::setup(false);
                 log::info!("Setup network closed");
                 if !self.wifi.is_connected().unwrap_or(false) {
                     let _ = self.wifi.connect();

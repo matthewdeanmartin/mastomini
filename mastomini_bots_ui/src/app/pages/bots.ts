@@ -55,14 +55,21 @@ interface Draft {
             <a routerLink="/device">Device</a> page first.
           </p>
         }
+        @if (isReply(bot)) {
+          <p class="small">
+            The schedule checks Mastodon for new mentions. No new mentions means no OpenRouter calls.
+            A model call is made only for an eligible, unanswered mention; failed attempts may be retried.
+            The first check starts watching from now and skips older mentions.
+          </p>
+        }
         <dl class="facts">
-          <dt>Schedule</dt>
+          <dt>{{ isReply(bot) ? 'Check for mentions' : 'Schedule' }}</dt>
           <dd>{{ bot.schedule }}</dd>
-          <dt>Next run</dt>
+          <dt>{{ isReply(bot) ? 'Next mention check' : 'Next run' }}</dt>
           <dd>{{ bot.enabled ? when(bot.next_run_at) : 'Off' }}</dd>
           <dt>Server</dt>
           <dd>{{ bot.instance || '—' }} · {{ bot.key_set ? 'API key saved' : 'no API key' }}</dd>
-          <dt>Last run</dt>
+          <dt>{{ isReply(bot) ? 'Last mention check' : 'Last run' }}</dt>
           <dd>
             @if (bot.last_run; as run) {
               <span [class]="run.ok ? 'ok' : 'error'">{{ run.ok ? '✓' : '✗' }} {{ run.summary }}</span>
@@ -72,19 +79,25 @@ interface Draft {
             }
           </dd>
           @if (bot.last_check; as check) {
-            <dt>Key check</dt>
+            <dt>Connection check</dt>
             <dd>
               <span [class]="check.ok ? 'ok' : 'error'">{{ check.ok ? '✓' : '✗' }} {{ check.summary }}</span>
               <span class="muted small"> — {{ when(check.finished_at) }}</span>
             </dd>
           }
-          <dt>Runs</dt>
+          <dt>{{ isReply(bot) ? 'Checks' : 'Runs' }}</dt>
           <dd>{{ bot.runs }} ({{ bot.failures }} failed)</dd>
         </dl>
         <button class="btn" type="button" (click)="act(bot, 'run')"
-                [disabled]="!bot.key_set || bot.running || bot.queued">Run now</button>
+                [disabled]="!bot.key_set || bot.running || bot.queued">{{ isReply(bot) ? 'Check mentions now' : 'Run now' }}</button>
         <button class="btn btn--quiet" type="button" (click)="act(bot, 'check')"
-                [disabled]="!bot.key_set || bot.running || bot.queued">Check API key</button>
+                [disabled]="!bot.key_set || bot.running || bot.queued">Check Mastodon key</button>
+        @if (bot.uses_llm) {
+          <button class="btn btn--quiet" type="button" (click)="act(bot, 'check-model')"
+                  [disabled]="!bot.key_set || !openRouter()?.key_set || bot.running || bot.queued">
+            Test OpenRouter (1 model request)
+          </button>
+        }
         <button class="btn btn--quiet" type="button" (click)="edit(bot)">
           {{ editing() === bot.id ? 'Close settings' : 'Settings' }}
         </button>
@@ -134,24 +147,37 @@ export class BotsPage implements OnInit, OnDestroy {
   protected readonly values = signal<Record<string, string>>({});
   protected readonly openRouter = signal<OpenRouterStatus | null>(null);
   private timer?: ReturnType<typeof setInterval>;
+  private destroyed = false;
+  private loading = false;
 
   async ngOnInit(): Promise<void> {
     await this.load();
+    if (this.destroyed) return;
     this.session.openRouter().then((s) => this.openRouter.set(s), () => undefined);
     // Runs take seconds: keep the page current without a reload.
-    this.timer = setInterval(() => void this.load(), 3000);
+    this.timer = setInterval(() => { if (!document.hidden) void this.load(); }, 10_000);
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     clearInterval(this.timer);
   }
 
   private async load(): Promise<void> {
+    if (this.destroyed || this.loading) return;
+    this.loading = true;
     try {
       this.bots.set(await this.session.bots());
     } catch (e) {
       this.error.set(describe(e));
+    } finally {
+      this.loading = false;
     }
+  }
+
+  protected isReply(bot: Bot): boolean {
+    const mode = bot.settings.find((field) => field.key === 'mode');
+    return bot.uses_llm && (mode?.value ?? mode?.default) === 'reply';
   }
 
   protected edit(bot: Bot): void {
@@ -195,7 +221,7 @@ export class BotsPage implements OnInit, OnDestroy {
     }
   }
 
-  protected async act(bot: Bot, action: 'run' | 'check'): Promise<void> {
+  protected async act(bot: Bot, action: 'run' | 'check' | 'check-model'): Promise<void> {
     this.error.set('');
     try {
       await this.session.request(bot.id, action);

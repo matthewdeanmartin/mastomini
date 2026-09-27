@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { describe } from '../api/api';
+import { Api, describe } from '../api/api';
 import { Household } from '../api/household';
 
 /** Name, description, rules and terms (`/admin/server`). */
@@ -42,10 +42,93 @@ import { Household } from '../api/household';
         <button class="btn" type="submit" [disabled]="busy()">Save</button>
       </form>
     }
+    <h2>Scheduled posts</h2>
+    <p>
+      The bots board handles publication times. Use the same mastomini API key already saved on a
+      bot there; the scheduler registers automatically when it receives its first post.
+    </p>
+    <form class="panel" (ngSubmit)="saveScheduler()">
+      <label for="bots-url">Bots board address</label>
+      <input
+        id="bots-url"
+        name="botsUrl"
+        type="url"
+        [(ngModel)]="botsUrl"
+        placeholder="https://mastomini-bots.local"
+        required
+      />
+      <label for="scheduler-key">Existing mastomini API key</label>
+      <input
+        id="scheduler-key"
+        name="schedulerKey"
+        type="password"
+        autocomplete="off"
+        [(ngModel)]="schedulerKey"
+        required
+      />
+      <p class="muted">
+        Saving authorizes this trusted bots board to publish members� queued posts when due. The key
+        must allow posting. Overdue posts publish at the first opportunity.
+      </p>
+      @if (scheduler(); as state) {
+        <p>
+          {{ state.key_set ? 'An API key is configured.' : 'Not configured yet.' }} Waiting to hand
+          off: {{ state.pending_handoff }}.
+        </p>
+        @if (state.last_error) {
+          <p class="error">{{ state.last_error }}</p>
+        }
+      }
+      <button class="btn" type="submit" [disabled]="busy()">Save scheduler</button>
+      <button class="btn" type="button" (click)="refreshScheduler()" [disabled]="busy()">
+        Refresh status
+      </button>
+    </form>
   `,
 })
 export class ServerPage implements OnInit {
   private readonly household = inject(Household);
+  private readonly api = inject(Api);
+  protected readonly scheduler = signal<{
+    bots_url: string;
+    key_set: boolean;
+    pending_handoff: number;
+    last_error: string | null;
+  } | null>(null);
+  protected botsUrl = 'https://mastomini-bots.local';
+  protected schedulerKey = '';
+
+  protected async refreshScheduler(): Promise<void> {
+    try {
+      const state = await this.api.get<NonNullable<ReturnType<typeof this.scheduler>>>(
+        '/api/mastomini/v1/admin/scheduler',
+      );
+      this.scheduler.set(state);
+      if (state.bots_url) this.botsUrl = state.bots_url;
+    } catch (e) {
+      this.error.set(describe(e));
+    }
+  }
+
+  protected async saveScheduler(): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.saved.set(false);
+    try {
+      await this.api.put('/api/mastomini/v1/admin/scheduler', {
+        bots_url: this.botsUrl,
+        api_key: this.schedulerKey,
+      });
+      this.schedulerKey = '';
+      await this.refreshScheduler();
+      this.saved.set(true);
+    } catch (e) {
+      this.error.set(describe(e));
+    } finally {
+      this.busy.set(false);
+    }
+  }
   protected readonly loaded = signal(false);
   protected readonly busy = signal(false);
   protected readonly saved = signal(false);
@@ -62,6 +145,7 @@ export class ServerPage implements OnInit {
     try {
       this.apply(await this.household.server());
       this.loaded.set(true);
+      await this.refreshScheduler();
     } catch (e) {
       this.error.set(describe(e));
     }

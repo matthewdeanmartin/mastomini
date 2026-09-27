@@ -10,13 +10,16 @@
 
 pub mod api;
 pub mod auth;
+pub mod board_status;
 pub mod bot;
 pub mod bots;
 #[cfg(feature = "desktop")]
 pub mod desktop_client;
+pub mod household_trust;
 pub mod http;
 pub mod mastodon;
 pub mod openrouter;
+pub mod recovery;
 pub mod runner;
 pub mod schedule;
 pub mod service;
@@ -26,3 +29,5 @@ pub mod template;
 pub mod text;
 pub mod tz;
 pub mod web;
+
+pub mod scheduler;

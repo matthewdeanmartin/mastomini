@@ -1,0 +1,10 @@
+[package]
+name = "scheduler-integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+mastomini_rs = { path = "../../mastomini_rs", default-features = false }
+mastomini_bots = { path = "../../mastomini_bots", default-features = false }
+serde_json = "1"

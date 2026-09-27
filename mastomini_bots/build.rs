@@ -10,11 +10,15 @@ use std::path::{Path, PathBuf};
 
 const CREDENTIAL_FILES: [&str; 3] = [".env", "../.env", "../mastomini_rs/.env"];
 
-const SETTINGS: [(&str, &[&str]); 4] = [
+const SETTINGS: [(&str, &[&str]); 5] = [
     ("MASTOMINI_WIFI_SSID", &["MASTOMINI_WIFI_SSID", "WIFI_SSID"]),
     (
         "MASTOMINI_WIFI_PASSWORD",
         &["MASTOMINI_WIFI_PASSWORD", "WIFI_PASSWORD"],
+    ),
+    (
+        "MASTOMINI_BOTS_STATUS_LED_PIN",
+        &["MASTOMINI_BOTS_STATUS_LED_PIN"],
     ),
     ("MASTOMINI_BOTS_HOSTNAME", &["MASTOMINI_BOTS_HOSTNAME"]),
     (
@@ -91,6 +95,18 @@ fn main() {
     #[cfg(feature = "esp32")]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("espidf") {
         embuild::espidf::sysenv::output();
+    }
+
+    // Recovery is deliberately process-environment-only, never loaded from
+    // .env. Normal upgrades cannot accidentally generate another reset.
+    println!("cargo:rerun-if-env-changed=MASTOMINI_BOTS_RESET_ADMIN_ONCE");
+    if let Ok(id) = std::env::var("MASTOMINI_BOTS_RESET_ADMIN_ONCE") {
+        assert!(
+            id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "Invalid admin recovery identifier"
+        );
+        println!("cargo:rustc-env=MASTOMINI_BOTS_RESET_ADMIN_ONCE={id}");
+        println!("cargo:warning=One-time admin password recovery enabled");
     }
 
     // The firmware embeds the admin site's certificate (scripts/certs.sh).

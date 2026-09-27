@@ -13,8 +13,7 @@ import { Session } from '../api/session';
     @if (setup()) {
       <h1>Set up mastomini-bots</h1>
       <p class="lede">
-        Choose the admin password. Whoever knows it can change what the bots post and where, so
-        make it a good one: at least 8 characters.
+        Choose an admin password of at least 4 characters. No special characters are required.
       </p>
     } @else {
       <h1>Sign in</h1>

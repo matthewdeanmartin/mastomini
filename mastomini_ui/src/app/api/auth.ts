@@ -38,6 +38,76 @@ interface Pending {
   app: Registration;
 }
 
+/** Older bundles cached the server's `scopes: string[]` unchanged. Treat
+ * browser storage as untrusted input and normalize without granting scopes. */
+function registrationFrom(value: unknown): Registration | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const app = value as Record<string, unknown>;
+  if (
+    typeof app['client_id'] !== 'string' ||
+    !app['client_id'] ||
+    typeof app['client_secret'] !== 'string' ||
+    !app['client_secret'] ||
+    typeof app['redirect_uri'] !== 'string' ||
+    !app['redirect_uri']
+  )
+    return null;
+  const raw = app['scopes'];
+  let scopes: string;
+  if (typeof raw === 'string') scopes = raw.trim().split(/\s+/).filter(Boolean).join(' ');
+  else if (
+    Array.isArray(raw) &&
+    raw.every((scope) => typeof scope === 'string' && !/\s/.test(scope))
+  ) {
+    scopes = raw.filter(Boolean).join(' ');
+  } else if (raw === undefined || raw === null) scopes = '';
+  else return null;
+  return {
+    client_id: app['client_id'],
+    client_secret: app['client_secret'],
+    redirect_uri: app['redirect_uri'],
+    scopes,
+  };
+}
+
+type SignInStage = 'registration' | 'security' | 'storage' | 'navigation';
+
+/** Never log the exception object, OAuth URL, registration, token or verifier. */
+function signInFailure(error: unknown, stage: SignInStage): ApiError {
+  const names = [
+    'TypeError',
+    'SecurityError',
+    'QuotaExceededError',
+    'NotSupportedError',
+    'OperationError',
+    'AbortError',
+    'NetworkError',
+    'ApiError',
+  ];
+  const kind =
+    (error instanceof Error || error instanceof DOMException) && names.includes(error.name)
+      ? error.name
+      : 'Error';
+  const code = `signin/${stage}/${kind}`;
+  console.error('mastomini: sign-in failed', {
+    code,
+    status: error instanceof ApiError ? error.status : null,
+    secureContext: globalThis.isSecureContext === true,
+  });
+  const messages: Record<SignInStage, string> = {
+    registration: 'Could not prepare this browser’s sign-in. Reload the page and try again.',
+    security:
+      'The browser could not prepare secure sign-in. Try reloading or using another browser.',
+    storage: 'The browser could not save sign-in state. Allow site storage and try again.',
+    navigation:
+      'The browser could not open the sign-in form. Allow navigation to this site and try again.',
+  };
+  return new ApiError(
+    error instanceof ApiError ? error.status : 0,
+    `${error instanceof ApiError ? error.message : messages[stage]} (${code})`,
+  );
+}
+
 /** This page, without query or hash: `http://192.168.1.161/app/`. */
 export function redirectUri(): string {
   return `${location.origin}${location.pathname}`;
@@ -116,20 +186,31 @@ export class Auth {
 
   /** Go to the server's sign-in page. */
   async signIn(returnTo: string, admin = false): Promise<void> {
-    const scopes = admin ? ADMIN_SCOPES : SCOPES;
-    const app = await this.registration(scopes);
-    const pending: Pending = { state: randomToken(), verifier: randomToken(), returnTo, app };
-    save(sessionStorage, PENDING_KEY, pending);
-    const query = new URLSearchParams({
-      response_type: 'code',
-      client_id: app.client_id,
-      redirect_uri: app.redirect_uri,
-      scope: scopes,
-      state: pending.state,
-      code_challenge: await challengeFor(pending.verifier),
-      code_challenge_method: 'S256',
-    });
-    this.navigate(`/oauth/authorize?${query}`);
+    let stage: SignInStage = 'registration';
+    try {
+      const scopes = admin ? ADMIN_SCOPES : SCOPES;
+      const app = await this.registration(scopes);
+      stage = 'security';
+      const pending: Pending = { state: randomToken(), verifier: randomToken(), returnTo, app };
+      const challenge = await challengeFor(pending.verifier);
+      stage = 'storage';
+      // OAuth leaves this page: a swallowed storage error cannot be recovered
+      // from an in-memory copy on the callback. Fail here with a useful clue.
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+      const query = new URLSearchParams({
+        response_type: 'code',
+        client_id: app.client_id,
+        redirect_uri: app.redirect_uri,
+        scope: scopes,
+        state: pending.state,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+      });
+      stage = 'navigation';
+      this.navigate(`/oauth/authorize?${query}`);
+    } catch (error) {
+      throw signInFailure(error, stage);
+    }
   }
 
   /** Revoke this browser's token and forget it. */
@@ -193,11 +274,11 @@ export class Auth {
    * checked with a client_credentials grant before use.
    */
   private async registration(scopes: string): Promise<Registration> {
-    const stored = load<Registration>(localStorage, APP_KEY);
+    const stored = registrationFrom(load<unknown>(localStorage, APP_KEY));
     if (
       stored &&
       stored.redirect_uri === redirectUri() &&
-      scopes.split(' ').every((scope) => stored.scopes?.split(' ').includes(scope))
+      scopes.split(' ').every((scope) => stored.scopes.split(' ').includes(scope))
     ) {
       const ok = await this.api
         .form('/oauth/token', {
@@ -208,7 +289,10 @@ export class Auth {
         })
         .then(() => true)
         .catch(() => false);
-      if (ok) return stored;
+      if (ok) {
+        save(localStorage, APP_KEY, stored);
+        return stored;
+      }
     }
     const app = await this.api.post<{ client_id: string; client_secret: string }>('/api/v1/apps', {
       client_name: 'mastomini household app',

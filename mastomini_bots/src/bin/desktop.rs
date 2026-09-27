@@ -113,6 +113,18 @@ fn main() -> Result<(), BoxError> {
         let svc = Arc::clone(&svc);
         std::thread::spawn(move || mastobots::runner::run_forever(svc, Box::new(client), now_ms));
     }
+    {
+        let shared = Arc::clone(&svc);
+        let mut timer_client = DesktopClient::with_timeout(
+            household_ca.as_deref(),
+            &env("MASTOBOTS_RESOLVE", ""),
+            std::time::Duration::from_secs(5),
+        )?;
+        std::thread::spawn(move || loop {
+            mastobots::scheduler::tick(&shared, &mut timer_client, now_ms());
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        });
+    }
     if let Some(server) = https {
         println!("HTTPS on https://localhost:{https_port}");
         let (svc, ctx) = (Arc::clone(&svc), Arc::clone(&ctx));
@@ -151,6 +163,10 @@ fn serve(server: &Server, secure: bool, svc: &Shared, ctx: &Ctx) {
             .iter()
             .filter_map(|(k, v)| Header::from_bytes(k.as_bytes(), v.as_bytes()).ok())
             .collect();
+        if reply.status == 304 {
+            let _ = not_modified(request, headers);
+            continue;
+        }
         let len = reply.body.len();
         let response = Response::new(
             reply.status.into(),
@@ -161,4 +177,20 @@ fn serve(server: &Server, secure: bool, svc: &Shared, ctx: &Ctx) {
         );
         let _ = request.respond(response);
     }
+}
+
+// tiny_http 0.12 adds an incorrect zero length to empty 304 responses.
+fn not_modified(request: tiny_http::Request, headers: Vec<Header>) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut writer = request.into_writer();
+    writer.write_all(b"HTTP/1.1 304 Not Modified")?;
+    writer.write_all(&[13, 10])?;
+    for header in headers {
+        if !header.field.equiv("Content-Length") && !header.field.equiv("Transfer-Encoding") {
+            write!(writer, "{}: {}", header.field, header.value)?;
+            writer.write_all(&[13, 10])?;
+        }
+    }
+    writer.write_all(&[13, 10])?;
+    writer.flush()
 }

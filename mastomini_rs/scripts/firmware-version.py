@@ -29,6 +29,8 @@ VERSION_PATH = '/api/mastomini/v1/version'
 
 # Keep in step with FINGERPRINT_INPUTS in build.rs.
 INPUTS = [
+    'mastomini_bots/src/household_trust.rs',
+    'mastomini_bots/src/bin/esp32/household_tls.rs',
     'mastomini_rs/Cargo.toml',
     'mastomini_rs/Cargo.lock',
     'mastomini_rs/build.rs',

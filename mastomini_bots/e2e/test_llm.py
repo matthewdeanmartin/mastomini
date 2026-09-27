@@ -50,11 +50,11 @@ def run_once(bots, bot_id: str) -> dict:
     return bot["last_run"]
 
 
-def test_check_reaches_openrouter(mastomini, bots):
+def test_explicit_model_check_reaches_openrouter(mastomini, bots):
     alice = sign_in(mastomini.base, "alice", "alicepw")
     key = bot_account(mastomini, alice.access_token)
     setup(bots, mastomini, "llm_post", key, {"run": "manual"})
-    assert bots.call("POST", "/api/v1/bots/llm_post/check").status_code == 202
+    assert bots.call("POST", "/api/v1/bots/llm_post/check-model").status_code == 202
     check = bots.wait(lambda: bots.call("GET", "/api/v1/bots/llm_post").json()["last_check"], "check", 120)
     assert check["ok"], check
     assert check["summary"] == f"The API key works: @helper on {mastomini.base}; OpenRouter answers ({MODEL})"

@@ -1,0 +1,194 @@
+//! Optional WS2812 RGB diagnostics. Never owns the service or network lock.
+//! A missing LED cannot be detected (WS2812 has no acknowledgement).
+use esp_idf_svc::{
+    hal::{
+        cpu::Core,
+        gpio::{AnyOutputPin, Pins},
+        rmt::{
+            config::TxChannelConfig, encoder::CopyEncoder, PinState, RmtChannel, Symbol,
+            TxChannelDriver,
+        },
+        task::thread::ThreadSpawnConfiguration,
+        units::Hertz,
+    },
+    sys::EspError,
+};
+use mastobots::board_status::{self, Health, LedPin};
+use std::{
+    sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed},
+    time::Duration,
+};
+
+static READY: AtomicBool = AtomicBool::new(false);
+static READY_AT: AtomicU32 = AtomicU32::new(0);
+static WIFI: AtomicBool = AtomicBool::new(false);
+static BUSY: AtomicBool = AtomicBool::new(false);
+static SCHEDULER: AtomicU32 = AtomicU32::new(0);
+static SERVERS: [AtomicU32; 2] = [AtomicU32::new(0), AtomicU32::new(0)];
+static ERROR_AT: AtomicU32 = AtomicU32::new(0);
+
+pub fn server_beat(secure: bool) {
+    SERVERS[usize::from(secure)].store(super::uptime_ms() as u32, Relaxed);
+}
+pub fn scheduler_busy(busy: bool) {
+    if !busy {
+        SCHEDULER.store(super::uptime_ms() as u32, Relaxed);
+    }
+    BUSY.store(busy, Relaxed);
+}
+pub fn error() {
+    ERROR_AT.store(super::uptime_ms() as u32, Relaxed);
+}
+static MDNS: AtomicBool = AtomicBool::new(false);
+static FATAL: AtomicBool = AtomicBool::new(false);
+
+pub fn wifi(up: bool) {
+    WIFI.store(up, Relaxed);
+}
+pub fn ready(mdns: bool) {
+    MDNS.store(mdns, Relaxed);
+    READY_AT.store(super::uptime_ms() as u32, Relaxed);
+    READY.store(true, Relaxed);
+}
+pub fn fatal() {
+    FATAL.store(true, Relaxed);
+}
+
+pub fn start(pins: Pins) {
+    let pin: AnyOutputPin<'static> =
+        match board_status::led_pin(option_env!("MASTOMINI_BOTS_STATUS_LED_PIN")) {
+            Ok(None) => {
+                log::info!("Status LED disabled (MASTOMINI_BOTS_STATUS_LED_PIN=off)");
+                return;
+            }
+            Ok(Some(LedPin::Gpio38)) => pins.gpio38.into(),
+            Ok(Some(LedPin::Gpio48)) => pins.gpio48.into(),
+            Err(e) => {
+                log::warn!("Status LED configuration: {e}");
+                return;
+            }
+        };
+    // Keep optional diagnostics lower priority than both server workers.
+    if let Err(e) = (ThreadSpawnConfiguration {
+        name: Some(c"status-led"),
+        priority: 2,
+        pin_to_core: Some(Core::Core0),
+        ..Default::default()
+    })
+    .set()
+    {
+        log::warn!("Status LED disabled: thread configuration failed: {e}");
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .stack_size(6 * 1024)
+        .spawn(move || {
+            if let Err(e) = run(pin) {
+                log::warn!("Status LED disabled: {e}; server continues");
+            }
+        });
+    if let Err(e) = ThreadSpawnConfiguration::default().set() {
+        log::warn!("Status LED: could not restore thread defaults: {e}");
+    }
+    if let Err(e) = spawned {
+        log::warn!("Status LED disabled: could not start task: {e}");
+    }
+}
+
+fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
+    let config = TxChannelConfig {
+        resolution: Hertz(10_000_000),
+        transaction_queue_depth: 1,
+        ..Default::default()
+    };
+    let mut channel = TxChannelDriver::new(pin, &config)?;
+    let encoder = CopyEncoder::new()?;
+    let zero = Symbol::new_with(
+        config.resolution,
+        PinState::High,
+        Duration::from_nanos(300),
+        PinState::Low,
+        Duration::from_nanos(900),
+    )?;
+    let one = Symbol::new_with(
+        config.resolution,
+        PinState::High,
+        Duration::from_nanos(800),
+        PinState::Low,
+        Duration::from_nanos(400),
+    )?;
+    let latch = Symbol::new_half_split(
+        config.resolution,
+        PinState::Low,
+        PinState::Low,
+        Duration::from_micros(300),
+    )?;
+    let mut queue = channel.queue([encoder]);
+    let transmit = esp_idf_svc::hal::rmt::config::TransmitConfig {
+        queue_non_blocking: true,
+        ..Default::default()
+    };
+    let began = super::uptime_ms();
+    // SAFETY: read-only reset query, no arguments.
+    let reason = super::reset_reason();
+    let flashes = board_status::reset_flashes(reason);
+    log::info!(
+        "Status LED: WS2812 GRB, GPIO {}, dim output; reset {reason} ({flashes} white flashes)",
+        option_env!("MASTOMINI_BOTS_STATUS_LED_PIN").unwrap_or("off")
+    );
+    let mut previous = None;
+    loop {
+        let now = super::uptime_ms();
+        let stamp = now as u32;
+        let fresh = |at: u32, limit| at != 0 && stamp.wrapping_sub(at) < limit;
+        let busy = BUSY.load(Relaxed);
+        let started = SERVERS.iter().all(|v| v.load(Relaxed) != 0) && SCHEDULER.load(Relaxed) != 0;
+        let health = Health {
+            ready: READY.load(Relaxed)
+                && (started || stamp.wrapping_sub(READY_AT.load(Relaxed)) >= 15_000),
+            wifi: WIFI.load(Relaxed),
+            setup: false,
+            workers: SERVERS.iter().all(|v| fresh(v.load(Relaxed), 15_000))
+                && (busy || fresh(SCHEDULER.load(Relaxed), 5_000)),
+            mdns: MDNS.load(Relaxed),
+            fatal: FATAL.load(Relaxed),
+            recent_error: busy
+                || super::now_ms().is_none()
+                || fresh(ERROR_AT.load(Relaxed), 30_000),
+        };
+        let color = if health.fatal {
+            board_status::color(health.state(), now)
+        } else {
+            board_status::reset_color(now - began, flashes)
+                .unwrap_or_else(|| board_status::color(health.state(), now))
+        };
+        if previous != Some(color) {
+            let [r, g, b] = color;
+            let mut symbols = [latch; 25];
+            for (byte_index, byte) in [g, r, b].into_iter().enumerate() {
+                for bit in 0..8 {
+                    symbols[byte_index * 8 + bit] =
+                        if byte & (0x80 >> bit) == 0 { zero } else { one };
+                }
+            }
+            // The queue owns a copy of the frame until RMT finishes. No
+            // application thread waits on this task, even on driver failure.
+            let result = queue.push(&symbols, &transmit).and_then(|()| {
+                queue
+                    .channel()
+                    .wait_all_done(Some(Duration::from_millis(20)))
+            });
+            if let Err(e) = result {
+                // Cancel before dropping the queue's buffers. If cancellation
+                // fails, retain its small buffers until reboot rather than
+                // freeing memory still referenced by the peripheral.
+                if queue.channel().disable().is_err() {
+                    std::mem::forget(queue);
+                }
+                return Err(e);
+            }
+            previous = Some(color);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}

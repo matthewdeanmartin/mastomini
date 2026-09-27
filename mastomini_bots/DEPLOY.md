@@ -43,6 +43,9 @@ for a way around it.
   (Mastodon or OpenRouter) to prove a deployment. Never turn a bot on, and never
   press **Run now** or **Check API key**. The admin does all of that. Bots post
   publicly, and LLM bots spend money. The probe is read-only.
+- When the owner explicitly requests forgotten-admin recovery, use the
+  one-time procedure below. It clears only the admin verifier; never erase
+  the store partition for password recovery.
 - Never print or copy the contents of `.env` files, Wi-Fi passwords, API keys,
   the household CA's private key, or backup files.
 - If the serial port or the target board is ambiguous, stop and ask.
@@ -140,6 +143,14 @@ Each board is a `USB Serial Device (COMn)` whose `PNPDeviceID` starts with
 
 Close any serial monitor that holds the port.
 
+Other USB interfaces can appear: `USB-Enhanced-SERIAL CH343` with
+`VID_1A86&PID_55D3`, or Espressif USB CDC with `VID_303A&PID_4001`.
+Their Windows device IDs may contain adapter serial numbers rather than the
+chip MAC. Do not infer the board identity from those numbers or assume only
+`PID_1001` can be a candidate. If multiple candidates are present, identify
+the new board's connection with the user before opening a port. Step 3 must
+still verify its chip MAC and partition table before any write.
+
 ## Step 3: Decide the procedure (read-only)
 
 ```bash
@@ -160,6 +171,13 @@ prints them.
 | `Could not read the board MAC` or a serial error | | Check Step 2; retry once; then stop |
 
 Record the MAC and the printed partition table in your report.
+
+First-install identification leaves the chip in its bootloader, including
+after a dry run or refusal. This keeps the port stable when factory firmware
+uses a different USB CDC identity. The installer keeps it there through the
+backup and writes, then uses a watchdog reset after the final partition read.
+To abandon installation after a dry run, press RESET to restart the existing
+firmware. If a board was refused, do not continue installing on it.
 
 ## Step 4A: Upgrade (board already runs mastomini-bots)
 
@@ -285,8 +303,11 @@ live in RAM, so the admin signs in again after any restart.
 
 esptool's usual USB reset (`Hard resetting via RTS pin`) leaves these boards'
 ESP32-S3 latched in download mode, so the new firmware never starts even
-though flashing succeeded. The scripts therefore pass `--after watchdog_reset`
-to every esptool call, and `make boot-log` restarts the board the same way.
+though flashing succeeded. Upgrades use `--after watchdog_reset`, and
+`make boot-log` restarts the board the same way. First installation uses
+`--after no_reset` between operations so factory firmware cannot change the
+USB port halfway through; only the final partition-table read uses
+`--after watchdog_reset`.
 If you ever run esptool by hand (you normally should not), add
 `--after watchdog_reset`.
 
@@ -334,17 +355,299 @@ Report, without credentials, API keys or bot settings:
 - for B: that the admin was told to set the password;
 - anything not done, and why.
 
+## Forgotten admin password (owner-requested USB recovery)
+
+Identify the bots board by MAC and port, pass `make check`, then run:
+
+```bash
+bash scripts/recover-admin.sh COM15 --dry-run
+bash scripts/recover-admin.sh COM15
+make boot-log PORT=COM15
+make probe-board ADDRESS=192.168.1.162
+```
+
+Use the actual port/address. The wrapper generates a random, non-secret
+recovery identifier and uses the normal app-only upgrade with its board and
+partition protections. On first boot, before serving HTTP, the firmware
+deletes only the `admin` verifier and saves an `admin_reset` marker. Bot
+settings, Mastodon/OpenRouter keys and bot memory remain intact. If either
+operation fails, startup fails; setup is not exposed until recovery commits.
+
+The owner should promptly open `/app/`, refresh, and choose the new password.
+The minimum is four characters, with no character-type rules. Existing
+passwords still work after an ordinary upgrade. Login throttling and salted
+password hashing remain enabled.
+
+The same recovery image will not clear a replacement password on later
+reboots: its identifier already matches the durable marker. Normal builds
+have no recovery identifier. Do not put `MASTOMINI_BOTS_RESET_ADMIN_ONCE` in
+`.env`; it is intentionally accepted only from the build process environment.
+For another recovery, rerun the wrapper to generate a fresh identifier.
+There is no unauthenticated network reset endpoint or built-in password.
+
+## Optional RGB diagnostics
+
+`MASTOMINI_BOTS_STATUS_LED_PIN=48` enables a single WS2812 GRB LED on GPIO48;
+`38` selects GPIO38. Unset, `off`, or invalid settings leave it disabled.
+Use only a pin appropriate for the board; no autodetection or pin scanning
+is possible because a WS2812 gives no acknowledgement. A board with no LED
+on the selected pin still serves the app and runs its bots. An RMT/thread
+failure disables only the light. Generic builds default to off, and the
+bots setting is separate from mastomini's setting.
+
+- White for 1.5 seconds at boot, then a gap and flashes: reset class,
+  1 power-on, 2 software, 3 crash, 4 watchdog,
+  5 brownout, 6 other. The serial log names the reset cause too.
+- Pulsing blue: no Wi-Fi address yet (including reconnecting).
+- Dim green with a brief dark beat: both admin server tasks executed queued
+  probes within 15 seconds and the scheduler completed a pass within 5 seconds.
+  These are real task callbacks, not a timer claiming that everything is alive.
+- Amber: a bot job is in progress, the clock is unset, or an outbound/request
+  failure occurred in the last 30 seconds. A long-running or stuck bot job
+  stays amber; green never promises that credentials or a remote server work.
+- Red: startup failed, or a required task stopped reporting progress.
+  LED output can also freeze or go dark on severe crashes or power faults.
+
+The light has its own low-priority task, no service lock, and dim output
+(at most 12/255). Its hardware writes wait at most 20 ms before disabling
+the driver; they never block the scheduler or admin request handlers.
+
 ## Known boards
 
 | MAC | Installed | Previous contents | Backup | Last known address |
 |---|---|---|---|---|
-| none yet | | | | |
+| `ac:a7:04:2c:38:b8` | 2026-09-26, bots 0.1.0 | factory/vfs layout (details below) | `aca7042c38b8-20260926-170416-full16MB.bin` | `192.168.1.162` (COM15) |
 
 Add a row after every first install, and add the MAC to nothing else: only
 mastomini boards go in `MASTOMINI_BOARDS`. Update the address when it changes.
 
 ## Deployment comments
 
-None yet. After each deployment, add a dated entry here as in mastomini's
-runbook: what was deployed, from which revision, what the logs and probe
-showed, and anything surprising.
+After each deployment, add a dated entry here as in mastomini's runbook:
+what was deployed, from which revision, what the logs and probe showed, and
+anything surprising.
+
+### 2026-09-26: optional LED and outbound connection diagnostics deployed
+
+- Confirmed the reattached bots board on COM15, MAC `ac:a7:04:2c:38:b8`.
+  Added optional WS2812 diagnostics using a separate bots-only build setting;
+  see the color meanings above. `make check` passed: 43 Rust tests, 5 UI
+  tests, 7 end-to-end tests; 3 live-model tests skipped. ESP32 release build
+  passed. Procedure A verified the bots partition table and wrote only the
+  1,567,360-byte app at `0x10000`, hash verified.
+- Built with `MASTOMINI_BOTS_STATUS_LED_PIN=48` as a trial; physical output
+  was subsequently confirmed by the owner seeing blue/red/amber. Saved
+  `MASTOMINI_BOTS_STATUS_LED_PIN=48` in the bots crate's gitignored `.env`
+  so routine builds preserve it; generic builds still default to off.
+  Boot: reset power on, GPIO48 dim GRB driver initialized, 3 bots, admin
+  password set, ready at `192.168.1.162`. Strict IP/HTTPS probe passed with
+  unchanged certificate and CA. Build timestamp `2026-09-26T22:26:57.674Z`,
+  revision `7a2d172a522c` plus uncommitted changes. Bot settings and keys were
+  not written by the upgrade.
+  The hostname probe also passed all checks; name-based HTTPS connection
+  took 15,009 ms versus 926 ms by IP, consistent with slow Windows lookups.
+- The owner's brief red-at-boot observation exposed a health sequencing
+  issue: ready was set before the first queued server probes executed.
+  Follow-up code holds startup white until initial server/scheduler progress
+  arrives (15-second deadline, then red if still missing). It also adds a
+  1.5-second white startup marker before the reset-class flashes. These
+  follow-up changes still need deployment to the bots board.
+- The mastomini server was unplugged during the USB swap. After the owner
+  powered it again, it still did not answer HTTP at `.161`, direct or
+  multicast mDNS, or the OS hostname lookup. This is distinct from the
+  original outbound TLS failure, whose cause is still unconfirmed. Need
+  the server's LED/boot state and a fresh user-triggered key check. No bots
+  were enabled or run by the agent.
+
+### 2026-09-26: forgotten-admin recovery deployed
+
+- Owner forgot the bots device admin password and requested both a relaxed
+  policy and a recovery path. Chosen behavior: minimum four characters,
+  no character-type rules, and one-time USB recovery that reopens setup
+  while preserving bot settings, keys and memory. The owner chooses the
+  replacement password in the browser; no existing `.env` password is reused.
+- Added `scripts/recover-admin.sh` and a durable recovery marker. Tests cover
+  preserving unrelated records, keeping the new password on reboot, and
+  failing startup if the marker cannot be committed. Full gates passed:
+  45 Rust, 5 UI, 7 end-to-end; 3 live-model tests skipped. The API test also
+  confirmed setup and login with four characters. ESP32 recovery build and
+  deployment dry-run passed (1,568,448-byte app).
+- This recovery build also includes the longer white startup marker and
+  first-heartbeat grace fix described above. Deployed via the recovery
+  wrapper to confirmed COM15 / `ac:a7:04:2c:38:b8`: 1,568,448-byte app,
+  hash verified, build `2026-09-26T22:44:02.699Z`, dirty `7a2d172a522c`.
+  Boot showed 3 bots and password setup reopened. The owner was directed
+  to choose a replacement password; subsequent public probes reported
+  `admin password set=True`. Strict IP and hostname HTTPS probes passed
+  with the unchanged household certificate and CA.
+- Follow-up deployments must use ordinary `scripts/deploy.sh`, not the
+  recovery wrapper, to preserve the replacement password.
+
+### 2026-09-26: outbound TLS root cause and reply-poll clarity
+
+- Fresh key check reported `socket=0, tls=0x8015, mbedtls=9570, verify=0x0`.
+  Serial identified `mbedtls_x509_crt_parse of CA cert returned -0x2562`.
+  In this exact ESP-IDF 5.5.3 source, 0x8015 is CA parsing failure, and
+  -0x2562 is invalid extensions plus unexpected ASN.1 tag. The household
+  root has critical nameConstraints, unsupported by this mbedTLS parser.
+  This was not a CA mismatch, bad password, bad clock, or mDNS failure:
+  the same trace resolved mastomini to `.161` in the fresh attempt.
+- The client now parses the unchanged embedded root with the extension
+  callback, accepting only the exact supported household nameConstraints
+  encoding. It restricts use of that root to the permitted household hosts
+  and adds verification failures for any DNS/IP SAN outside those ranges.
+  Existing signature, hostname, validity and chain failures remain intact.
+  Unknown/changed critical constraints fail closed. Public sites continue
+  to use the standard public bundle. No certificates were reissued, no
+  CA was rotated, and verification was not disabled.
+- Reply-mode scheduling is now labeled as checking mentions. The UI says
+  no new mentions means no OpenRouter calls; first check starts from now,
+  and failed unanswered mentions may be retried. Tests cover quiet polls
+  and repeated old notifications making zero model calls; the client also
+  filters notification IDs at/below its saved cursor and removes duplicates.
+- Full checks passed: 48 Rust tests, 5 UI tests, 7 end-to-end tests;
+  3 live-model tests skipped. ESP32 build passed. Normal procedure A
+  (no recovery identifier) on COM15 wrote 1,569,856 bytes at `0x10000`,
+  hash verified. Build `2026-09-26T22:53:32.109Z`, dirty `7a2d172a522c`.
+  Boot: GPIO48 enabled, 3 bots, replacement admin password still set,
+  ready at `.162` by 4.983 seconds. Strict IP/HTTPS probe passed with
+  unchanged server certificate and CA. Awaiting the owner's fresh API-key
+  check to verify the outbound path on hardware.
+- Final constraint-tag hardening built `2026-09-26T22:58:18.661Z`, same
+  1,569,856-byte app size, passed full gates and normal procedure A again.
+  Strict IP/HTTPS probe passed; the preceding build's hostname probe passed
+  at 14,714 ms. The owner confirmed API-key success as `@replyguy`, and the
+  serial log showed household HTTPS `verify_credentials -> 200`, public
+  OpenRouter HTTPS `chat/completions -> 200`, and mastomini `statuses -> 200`.
+  The owner confirmed the good-morning post appeared in the feed. This
+  validates outbound household/public trust and end-to-end posting.
+- Correction discovered during this verification: the existing LLM bot
+  **Check API key** action also made a model completion. The agent had
+  incorrectly described it as not calling a model; the owner triggered
+  the check and its success message and serial log exposed that behavior.
+  Follow-up separates `check` (Mastodon only) from explicit `check-model`
+  (**Test OpenRouter (1 model request)**). A regression asserts the former
+  makes one GET and zero model calls, and the latter makes exactly one
+  model call. No agent-triggered live-model test was run.
+- An idle reused connection subsequently failed with `ESP_ERR_HTTP_WRITE_DATA`,
+  socket errno 104. The client now drops it and retries once for GET only.
+  It never automatically repeats POST/model requests after transport errors.
+- The separated model-test action passed `make check` (49 Rust, 5 UI,
+  7 end-to-end; 3 live-model tests skipped). The final ESP32 build includes
+  the GET reconnect guard. Normal procedure A on COM15 wrote 1,571,328
+  bytes, hash verified; build `2026-09-26T23:04:02.734Z`, dirty
+  `7a2d172a522c`. Boot reports GPIO48, 3 bots, password set, ready at
+  `.162` by 5.044 seconds. Strict IP/HTTPS probe passed with unchanged
+  certificate and CA. The reconnect-after-idle path has not yet been
+  exercised again on hardware; the observed error and read-only retry
+  restriction motivated that change. A final test-only cleanup replaced
+  the household CA dependency with its public nameConstraints DER fixture;
+  the focused trust-policy tests passed again. No firmware behavior changed
+  in that cleanup.
+
+### 2026-09-26: initial outbound connection investigation
+
+- Owner reported `connect: ESP_ERR_HTTP_CONNECT` when checking the saved
+  Mastodon key against `https://mastomini.local`. This generic error alone
+  does not establish a certificate problem. Both boards' CA files are
+  identical; strict live probes verified each board against that CA and
+  matched its installed certificate. The bots board at `192.168.1.162`
+  has a synchronized clock. No certificate or CA was replaced.
+- The client already selects the household CA for `.local` destinations.
+  Added socket errno, ESP-TLS error, mbedTLS code and verification flags to
+  connection failures, captured before the failed client is destroyed.
+  The diagnostic contains no headers, credentials or request body.
+- `make check` passed (40 Rust, 5 UI, 7 end-to-end; 3 live-model tests
+  skipped). ESP32 release build passed, 1,542,416 bytes. This change has
+  not been flashed: only the mastomini server (COM11) was attached to USB.
+  Need the bots board on USB and a user-triggered key check to capture the
+  underlying failure. Do not run an LLM bot merely to test connectivity.
+
+### 2026-09-26: first install, MAC ac:a7:04:2c:38:b8
+
+- Started from clean revision `7a2d172`. `make check` passed: 40 Rust tests,
+  5 UI tests, and 5 end-to-end tests; 3 live-model tests skipped.
+- `make certs` passed against the existing household CA.
+- ESP32-S3 release build passed; application size 1,542,080 / 4,194,304
+  bytes. No board was accessed during preparation.
+- Windows showed COM7 (Espressif USB CDC, PID 4001) and COM14 (CH343), on
+  separate USB paths. Neither exposed a chip MAC in its Windows device ID;
+  asked the user to identify the new board before opening either port.
+- The user identified the Espressif connection (COM7). The install dry run
+  failed at `read_mac`; one direct read-only retry reported
+  `Failed to connect to ESP32-S3: No serial data received.` No MAC or
+  partition table was read, and no backup or flash write occurred. COM14
+  was not opened. Requested manual bootloader entry before continuing:
+  hold BOOT, press and release EN/RESET, then release BOOT, as described in
+  [Espressif's boot-mode guide](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/advanced-topics/boot-mode-selection.html#manual-bootloader).
+  Re-enumerate Windows ports afterwards; the bootloader may use a different
+  COM port. Repeat Step 3 and verify the MAC and layout before installing.
+- Manual bootloader entry exposed COM15 (`VID_303A&PID_1001`), with USB
+  serial/MAC `ac:a7:04:2c:38:b8`. The original installer read its MAC, but
+  its watchdog reset then removed COM15 before it could read the table.
+  Fixed first installation to stay in the bootloader between operations,
+  including dry runs, and restart only after final verification. Added
+  regression coverage for a disappearing factory USB port and backup-before-
+  write ordering. `make check` passed: 40 Rust tests, 5 UI tests, 7 end-to-end
+  tests, 3 live-model tests skipped. Another manual bootloader entry is
+  needed after the original reset; no flash writes have occurred yet.
+- The build reads Wi-Fi credentials from `../mastomini_rs/.env`. The shell
+  wrapper's preliminary message checks fewer files and incorrectly mentions
+  a setup network when it finds no credentials there. Use the `build.rs`
+  credential-source messages and Step 5 boot result as evidence; the bots
+  firmware has no setup network. Credential values must remain private.
+- With the corrected installer, the dry run succeeded on COM15. esptool
+  confirmed ESP32-S3 revision v0.2, embedded 8 MB PSRAM, and 16 MB flash
+  (`flash_id`, using `--after no_reset` to preserve bootloader mode).
+  The original table was:
+
+  | Name | Type | Subtype | Offset | Size |
+  |---|---|---|---|---|
+  | nvs | 1 | 0x02 | 0x009000 | 0x006000 |
+  | phy_init | 1 | 0x01 | 0x00f000 | 0x001000 |
+  | factory | 0 | 0x00 | 0x010000 | 0x1f0000 |
+  | vfs | 1 | 0x81 | 0x200000 | 0x600000 |
+
+  This matched neither protected layout, and the MAC differed from the
+  mastomini server's. Procedure B was authorized by the user's request to
+  install mastomini-bots on this new board. The install build is revision
+  `7a2d172a522c`, dirty due to the installer fix, tests, and runbook updates.
+- Full 16 MiB backup:
+  `../.local/board-backups/aca7042c38b8-20260926-170416-full16MB.bin`.
+  SHA-256: `d73b6dd5a15e469a30629798664fb6e9e5c0ee30ef2679d75858d97a72b6fb15`.
+  The installer verified all written image hashes and the final bots
+  partition table, then reported:
+  `Installed. The board restarts with no admin password: the first visit to /app/ sets it.`
+- `make boot-log PORT=COM15` passed: 8 MB PSRAM memory test OK, 3 bots,
+  `admin password not set yet (first visit sets it)`, no Wi-Fi join failures,
+  `SUMMARY: ready, address 192.168.1.162`. COM15 remains the installed
+  firmware's port. The admin was told immediately to set the password at
+  `https://mastomini-bots.local/app/`.
+- IP probe passed, including strict HTTPS verification and exact server/CA
+  certificate matches. Firmware identified itself as mastomini-bots 0.1.0,
+  commit `7a2d172a522c` (dirty), built `2026-09-26T21:03:55.119Z`.
+  Clock was synchronized. Admin password was still unset at the probe.
+  No credentials were configured, and no bots were enabled or run.
+- Hostname probe also ended with `Board probe passed`. The reported HTTPS
+  connect/handshake time was 14,839 ms by name versus 1,132 ms by IP, consistent
+  with the slow Windows `.local` lookups noted above. All required deployment
+  checks passed; live-model tests were intentionally skipped.
+
+### 2026-09-26: UI polling audit (awaiting board deployment)
+
+Bots and Activity pages previously started a three-second interval after
+awaiting the initial load. Navigating away during that load could destroy the
+page before a timer existed, then leak a new interval when the response arrived.
+Neither interval guarded against overlapping slow requests or hidden tabs.
+
+Both now check destruction before creating the timer, refuse concurrent loads,
+skip hidden tabs, and poll at ten seconds. Page destruction clears the timer
+and prevents any later request from starting. An already-started fetch may
+finish after navigation; it cannot restart polling. This affects admin UI
+reads only, not bot schedules or OpenRouter requests.
+
+Nine UI tests and the production Angular build passed. New regressions exercise
+both pages, navigation during initial fetch, slow requests, and hidden tabs.
+The connected USB board was NanaCoin (COM9), so the bots change is built/tested
+but NOT flashed. Use ordinary deployment when the bots board is attached; do
+not use password recovery. Refresh existing browser tabs after deployment.

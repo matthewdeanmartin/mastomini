@@ -34,9 +34,19 @@ mod net;
 mod nvs_store;
 #[path = "esp32/server.rs"]
 mod server;
+#[path = "esp32/scheduler_client.rs"]
+mod scheduler_client;
+// Both boards must enforce the same constrained household CA, including the
+// mbedTLS extension handling already used by the bots HTTP client.
+#[path = "../../../mastomini_bots/src/household_trust.rs"]
+mod household_trust;
+#[path = "../../../mastomini_bots/src/bin/esp32/household_tls.rs"]
+mod household_tls;
 
 #[path = "esp32/incidents.rs"]
 mod incidents;
+#[path = "esp32/status_led.rs"]
+mod status_led;
 use net::Net;
 use nvs_store::NvsStore;
 
@@ -72,6 +82,7 @@ fn uptime_ms() -> u64 {
     (unsafe { esp_idf_svc::sys::esp_timer_get_time() } / 1000) as u64
 }
 
+#[allow(non_upper_case_globals)] // ESP-IDF's generated constant names.
 fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
     use esp_idf_svc::sys::*;
     match reason {
@@ -115,19 +126,48 @@ fn platform() -> Platform {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    let result = run();
+    if let Err(error) = &result {
+        status_led::fatal();
+        log::error!("Startup failed: {error}");
+        // Best effort: let the optional LED task show red before exiting.
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    result
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let peripherals = Peripherals::take()?;
+    status_led::start(peripherals.pins);
     incidents::start()?;
     log::info!("mastomini {} starting", env!("CARGO_PKG_VERSION"));
+    log::info!(
+        "Reset reason: {}",
+        // SAFETY: read-only query with no pointer arguments.
+        reset_reason(unsafe { esp_idf_svc::sys::esp_reset_reason() })
+    );
 
-    let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
     let _wifi_events = event_loop.subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
         if let esp_idf_svc::wifi::WifiEvent::StaDisconnected(info) = event {
+            status_led::wifi(false);
             incidents::record(
                 mastomini::incidents::Kind::WifiDown,
                 i32::from(info.reason()),
             );
         }
+        if matches!(event, esp_idf_svc::wifi::WifiEvent::StaStopped) {
+            status_led::wifi(false);
+        }
     })?;
+    let _ip_events = event_loop.subscribe::<esp_idf_svc::netif::IpEvent, _>(|event| match event {
+        esp_idf_svc::netif::IpEvent::DhcpIpAssigned(_) => status_led::wifi(true),
+        esp_idf_svc::netif::IpEvent::DhcpIpDeassigned(_) => status_led::wifi(false),
+        _ => {}
+    });
+    if let Err(e) = &_ip_events {
+        log::warn!("Status LED IP tracking unavailable: {e}; server continues (no green status)");
+    }
     // Never auto-erase NVS on a version/full error: it may contain data.
     let system_nvs = EspDefaultNvsPartition::take_with(false)?;
     // The custom-partition convenience constructor can erase on some init
@@ -231,24 +271,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     log::info!("TLS handshakes core 0; HTTP/API core 1; 8 TLS + 4 HTTP clients");
 
-    let mut mdns = EspMdns::take()?;
-    mdns.set_hostname(HOSTNAME)?;
-    mdns.set_instance_name("mastomini household Mastodon server")?;
-    mdns.add_service(
-        Some("mastomini"),
-        "_https",
-        "_tcp",
-        443,
-        &[("path", "/api/v1/instance")],
-    )?;
-    // Plain HTTP: where a new device finds /trust.
-    mdns.add_service(
-        Some("mastomini setup"),
-        "_http",
-        "_tcp",
-        80,
-        &[("path", "/trust")],
-    )?;
+    let mdns = (|| -> Result<EspMdns, esp_idf_svc::sys::EspError> {
+        let mut mdns = EspMdns::take()?;
+        mdns.set_hostname(HOSTNAME)?;
+        mdns.set_instance_name("mastomini household Mastodon server")?;
+        mdns.add_service(
+            Some("mastomini"),
+            "_https",
+            "_tcp",
+            443,
+            &[("path", "/api/v1/instance")],
+        )?;
+        // Plain HTTP: where a new device finds /trust.
+        mdns.add_service(
+            Some("mastomini setup"),
+            "_http",
+            "_tcp",
+            80,
+            &[("path", "/trust")],
+        )?;
+        Ok(mdns)
+    })();
+    match &mdns {
+        Ok(_) => log::info!(
+            "mDNS registered: {HOSTNAME}.local, HTTPS :443 and HTTP :80 (LAN multicast UDP 5353)"
+        ),
+        Err(e) => log::warn!("mDNS registration failed: {e}; HTTP(S) remains available by IP"),
+    }
+    // Registration success does not prove a client's multicast path works.
+    status_led::ready(mdns.is_ok());
     match ip {
         Some(ip) => log::info!("Ready at {base_url} (https://{ip}/ and http://{ip}/)"),
         None => log::info!(
@@ -271,6 +322,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 net.keep_connected();
             }
         }
+        mastomini::scheduler_bridge::transfer(&shared, scheduler_client::send);
         if ticks % 12 != 0 {
             continue;
         }

@@ -350,7 +350,11 @@ impl<'a> Mastodon<'a> {
                     .collect()
             })
             .unwrap_or_default();
+        // Some compatible servers may repeat boundary records. Never spend
+        // a model call on a notification already covered by the saved cursor.
+        out.retain(|m| after.is_none_or(|cursor| id_order(&m.id, cursor).is_gt()));
         out.sort_by(|a, b| id_order(&a.id, &b.id));
+        out.dedup_by(|a, b| a.id == b.id);
         Ok(out)
     }
 

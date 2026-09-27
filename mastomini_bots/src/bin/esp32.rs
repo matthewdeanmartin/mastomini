@@ -31,12 +31,17 @@ use std::{
 
 #[path = "esp32/client.rs"]
 mod client;
+#[path = "esp32/household_tls.rs"]
+mod household_tls;
+use mastobots::household_trust;
 #[path = "esp32/net.rs"]
 mod net;
 #[path = "esp32/nvs_kv.rs"]
 mod nvs_kv;
 #[path = "esp32/server.rs"]
 mod server;
+#[path = "esp32/status_led.rs"]
+mod status_led;
 
 const HOSTNAME: &str = match option_env!("MASTOMINI_BOTS_HOSTNAME") {
     Some(name) => name,
@@ -112,10 +117,42 @@ fn platform() -> Platform {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
-    log::info!("mastomini-bots {} starting", env!("CARGO_PKG_VERSION"));
+    if let Err(e) = run() {
+        log::error!("Startup failed: {e}");
+        status_led::fatal();
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+    Ok(())
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    log::info!(
+        "mastomini-bots {} starting; reset {}",
+        env!("CARGO_PKG_VERSION"),
+        reset_reason()
+    );
 
     let peripherals = Peripherals::take()?;
+    status_led::start(peripherals.pins);
     let event_loop = EspSystemEventLoop::take()?;
+    let _wifi_events = event_loop
+        .subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
+            if matches!(event, esp_idf_svc::wifi::WifiEvent::StaDisconnected(_)) {
+                status_led::wifi(false);
+            }
+        })
+        .map_err(|e| log::warn!("Status LED Wi-Fi events: {e}"))
+        .ok();
+    let _ip_events = event_loop
+        .subscribe::<esp_idf_svc::netif::IpEvent, _>(|event| match event {
+            esp_idf_svc::netif::IpEvent::DhcpIpAssigned(_) => status_led::wifi(true),
+            esp_idf_svc::netif::IpEvent::DhcpIpDeassigned(_) => status_led::wifi(false),
+            _ => {}
+        })
+        .map_err(|e| log::warn!("Status LED IP events: {e}"))
+        .ok();
     // Never auto-erase NVS: the store partition holds the bots' settings.
     let system_nvs = EspDefaultNvsPartition::take_with(false)?;
     // SAFETY: static NUL-terminated partition name.
@@ -123,7 +160,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         esp_idf_svc::sys::nvs_flash_init_partition(nvs_kv::PARTITION.as_ptr())
     })?;
     let partition = EspNvsPartition::<NvsCustom>::take("store")?;
-    let store = nvs_kv::NvsKv::open(partition)?;
+    let mut store = nvs_kv::NvsKv::open(partition)?;
+    if mastobots::recovery::reset_admin_once(
+        &mut store,
+        option_env!("MASTOMINI_BOTS_RESET_ADMIN_ONCE"),
+    )? {
+        log::warn!("One-time admin recovery applied; choose a new password at /app/");
+    }
     let svc = Service::open(store, mastobots::bots::all())?;
     log::info!(
         "{} bots; admin password {}",
@@ -157,6 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let ip = net.join(ssid, password);
     let _ = IP.set(ip);
+    status_led::wifi(true);
     log::info!("Wi-Fi up: {ip}");
     // Answer promptly: modem sleep delays an idle board by 100-300 ms. The
     // board is mains powered.
@@ -228,22 +272,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || {
-                mastobots::runner::run_forever(
-                    shared,
-                    Box::new(client::EspClient::new(CA_PEM)),
-                    now_ms,
-                )
+                let mut client = client::EspClient::new();
+                loop {
+                    status_led::scheduler_busy(true);
+                    mastobots::runner::tick(&shared, &mut client, now_ms);
+                    status_led::scheduler_busy(false);
+                    std::thread::sleep(Duration::from_secs(1));
+                }
             })?;
     }
+    // Independent timer worker: an LLM request must not hold up scheduled posts.
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::Builder::new().stack_size(16 * 1024).spawn(move || {
+            let mut client = client::EspClient::scheduler();
+            loop {
+                mastobots::scheduler::tick(&shared, &mut client, now_ms());
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        })?;
+    }
     ThreadSpawnConfiguration::default().set()?;
+    status_led::ready(true);
     log::info!("Ready at https://{HOSTNAME}.local/app/ (https://{ip}/app/)");
 
     let mut ticks: u32 = 0;
     loop {
-        std::thread::sleep(Duration::from_secs(30));
+        std::thread::sleep(Duration::from_secs(1));
         ticks = ticks.wrapping_add(1);
-        net.keep_connected();
-        if ticks % 10 == 0 {
+        server::probe_progress();
+        if ticks % 30 == 0 {
+            net.keep_connected();
+        }
+        if ticks % 300 == 0 {
             let p = platform();
             log::info!(
                 "heap internal free={:?} min={:?} psram free={:?} clock={}",

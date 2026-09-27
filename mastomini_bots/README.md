@@ -29,12 +29,16 @@ with different defaults. Either can be switched to the other mode.
 make run-web          # builds the admin app, serves http://127.0.0.1:8090/app/
 ```
 
-1. Open the app. The first visit sets the admin password.
+1. Open the app. The first visit sets the admin password (at least 4 characters; no character-type rules).
+   If it is forgotten, use the [USB password recovery procedure](DEPLOY.md#forgotten-admin-password-owner-requested-usb-recovery)
+   to reopen setup once while preserving bot settings and API keys.
 2. On mastomini, make an API key for the bot's account (household app → **My
    account → API keys**). A bot with its own name needs its own member.
 3. In **Bots → Settings**, enter the server (`https://mastomini.local`, or
    `http://127.0.0.1:8080` for `make run` in `../mastomini_rs`) and the key, and turn it on.
-4. **Check API key** signs in only; **Run now** posts straight away. **Activity**
+4. **Check Mastodon key** verifies the server key without calling a model.
+   **Check mentions now** polls for new mentions; no new eligible mentions
+   means no model calls. Posting bots use **Run now** to post. **Activity**
    shows each step.
 
 `MASTOBOTS_RESOLVE=mastomini.local=192.168.1.161` skips name lookups
@@ -49,8 +53,9 @@ device. The default model is `google/gemma-4-31b-it`: cheap, and what
 mawkingbird uses. Make the key at openrouter.ai with a credit limit.
 
 The key goes in and never comes back out. A bot can use another model in its
-own **Model** setting. **Check API key** on an LLM bot also makes one tiny
-completion, to show OpenRouter answers.
+own **Model** setting. **Test OpenRouter (1 model request)** explicitly makes
+one tiny completion to show OpenRouter answers. The ordinary Mastodon key
+check never calls OpenRouter.
 
 The LLM bot's settings:
 
@@ -196,8 +201,6 @@ settings live in the `store` NVS partition.
 
 **Not done in this proof of concept:**
 - A Wi-Fi setup network for boards without built-in credentials.
-- A deployment to a real board: DEPLOY.md and its scripts are written and
-  checked, but have not been run against hardware yet.
 - Streaming replies (the reply bot polls on its schedule).
 - Model price display and choice from a list (mawkingbird has both).
 - Activity history that survives a restart (it is RAM only; each bot's last
@@ -214,3 +217,22 @@ make e2e-llm OPENROUTER_ENV_FILE=path/to/.env   # the LLM bots with a real model
 `make e2e-llm` reads `OPENROUTER_API_KEY` from that file without printing it.
 It makes a few small calls to Gemma (fractions of a cent). `make e2e` skips
 these tests when no key is set.
+
+## Scheduled household posts
+
+The built-in timer service accepts mastomini handoffs using an existing configured
+Mastodon API key. It registers on the first handoff and runs separately from LLM
+jobs. See [setup and behaviour](../docs/usage/scheduled-posts.md).
+
+### HTTP caching
+
+The app shell and unversioned assets revalidate with content ETags. Only
+fingerprinted JS/CSS cache for one year with `immutable`; a UI rebuild changes
+those URLs. Public `/api/v1/version` uses a SHA-256 ETag and a 60-second lifetime
+with mandatory revalidation after expiry (a new firmware build changes its tag).
+`/ca` and `/ca.pem` use content ETags with `max-age=0, must-revalidate`, so a
+certificate replacement is picked up on the next request. All session state,
+bot configuration, activity, diagnostics, scheduler queues, credentials,
+mutations and JSON errors remain `no-store`. No private browser cache needs
+clearing after sign-out or configuration changes. These conditional responses
+save transfer bytes without retaining another response cache in board RAM.

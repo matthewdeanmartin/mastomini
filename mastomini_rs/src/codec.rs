@@ -40,6 +40,8 @@ pub enum Kind {
     AccountNote = 26,
     Announcement = 27,
     LocalToken = 28,
+    Scheduler = 29,
+    Scheduled = 30,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

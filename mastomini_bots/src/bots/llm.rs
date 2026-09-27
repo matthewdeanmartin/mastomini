@@ -458,6 +458,28 @@ mod tests {
     }
 
     #[test]
+    fn quiet_polls_and_repeated_old_mentions_never_call_openrouter() {
+        for notifications in [
+            json!([]),
+            json!([{"id": "50", "type": "mention", "status": status("s1", "alice", "old", "public", None)}]),
+        ] {
+            let mut http = Scripted::default();
+            http.answer(200, me());
+            http.answer(200, instance());
+            http.answer(200, notifications);
+            let (result, state, _) = run(&REPLY, &[], &[("cursor", "50")], &mut http);
+            assert_eq!(result.unwrap(), "No new mentions");
+            assert_eq!(state["cursor"], "50");
+            let requests = http.sent.lock().unwrap();
+            assert_eq!(requests.len(), 3);
+            assert!(requests
+                .iter()
+                .all(|r| r.method == "GET" && !r.url.contains("openrouter")));
+            assert!(requests[2].url.contains("min_id=50"));
+        }
+    }
+
+    #[test]
     fn answers_a_mention_with_the_thread_as_lines() {
         let mut http = Scripted::default();
         http.answer(200, me());

@@ -41,6 +41,21 @@ trying it out, and for development.
 
 ## Install on an ESP32-S3 board
 
+### Where to put it
+
+During normal use the board joins your home Wi-Fi as a client. Traffic goes
+from your phone or laptop through the router's Wi-Fi access point to the
+board, then back the same way. Put servers where they have a reliable link
+to an access point and reliable power, with the antenna end clear of metal.
+They do not extend Wi-Fi coverage to other floors. A shelf near the router
+is a reasonable starting point; a window or halfway point to a bedroom has
+no special advantage. A mesh network can carry traffic between its nodes.
+
+On the tested board, changing which USB connector supplied power resolved
+a dark, unresponsive boot. Verify the startup/status light and network
+response after an ordinary power-on; the red power light alone does not
+prove the firmware started.
+
 ### What you need
 
 - An **ESP32-S3 N16R8** board (16 MiB flash, 8 MiB PSRAM).
@@ -81,6 +96,46 @@ Get-CimInstance Win32_PnPEntity |
 The board is the `USB Serial Device (COMn)` whose ID starts with
 `USB\VID_303A&PID_1001`. The number at the end of the composite ID is the
 board's MAC address. Close any serial monitor that has the port open.
+
+### Optional RGB status light
+
+LED output is **off by default**. Boards do not all wire their LEDs alike;
+confirm the pin in your board documentation before enabling it. This driver
+supports one WS2812-compatible **GRB** pixel on GPIO48 or GPIO38. It does not
+support an ordinary two-pin LED or RGBW strip.
+
+Set `MASTOMINI_STATUS_LED_PIN=48` (or `38`) in the gitignored
+`mastomini_rs/.env`, then build and upgrade normally. Alternatively, prefix
+**each** firmware/install/deploy command with that environment variable.
+Use `MASTOMINI_STATUS_LED_PIN=off` to override a saved build setting. An
+absent or unrecognized setting leaves all LED pins untouched. Boot logs
+report whether the driver was enabled; the source fingerprint alone does
+not identify environment-based hardware settings.
+
+A WS2812 cannot acknowledge a command, so an absent LED is not detectable.
+The server keeps working with no LED fitted; initialization or transmission
+errors disable LED diagnostics and log a warning. Never select a pin wired
+to other hardware just to discover whether it has an LED. The LED task uses
+no application/network mutex and its failure does not stop the server.
+
+| Light | Meaning |
+|---|---|
+| White for 1.5 seconds, then a gap and brief white flashes | Firmware reached the LED task; flashes encode previous reset: 1 power-on; 2 software/button/USB; 3 panic; 4 watchdog; 5 brownout; 6 other |
+| White after the reset pattern | Wi-Fi has an address; server startup is still underway |
+| Slowly pulsing dim blue | No station IP address: starting Wi-Fi or disconnected |
+| Cyan on/off | Wi-Fi setup network is active and there is no station IP |
+| Dim green, short dark blink every two seconds | Wi-Fi has an IP, mDNS registered, and both HTTP/TLS workers completed a turn within two seconds |
+| Amber | mDNS registration failed, or an allocation/TLS-initialization error occurred in the last ten seconds |
+| Steady red | A worker's progress is stale, a storage failure is latched, or startup reported a fatal error |
+
+Green does not prove that another device can resolve `.local`, that internet
+access works, or that every API is healthy. A stalled worker can recover
+and restore green. No new automatic reboot policy is introduced. If the
+whole processor stops, the RGB LED can retain its last color: a **moving
+heartbeat**, not merely a green light, is the sign of recent progress.
+Panics and power faults can reset too quickly to show red. Reset reasons
+also appear in the serial log and existing admin diagnostics; LED updates
+do not write to flash.
 
 ### First install
 
@@ -188,9 +243,43 @@ number of accounts and posts as before.
 | No `VID_303A` serial port | Try another cable (it must carry data) or USB port |
 | `SUMMARY: the chip is in download mode` | Run `make boot-log PORT=…` once more; it clears this. If it repeats, unplug and replug the board |
 | Board was on Wi-Fi, now opens `mastomini-setup` after an upgrade | It can no longer join its network (router changed, out of range). Join `mastomini-setup` and pick the network again |
-| `mastomini.local` doesn't resolve | mDNS is blocked on that device. Use the IP address |
+| `mastomini.local` doesn't resolve | First try the current IP from the boot log, then run the mDNS diagnosis below |
 | Want the board back exactly as it was before the first install | Restore the backup; see "Restoring a backup" in the runbook |
 
 The step-by-step runbook with every check and stop condition, written so that
 an automated agent can follow it too, is
 [`mastomini_rs/DEPLOY.md`](https://github.com/matthewdeanmartin/mastomini/blob/main/mastomini_rs/DEPLOY.md).
+
+### Understanding `.local` failures
+
+For `mastomini.local`, a client asks devices on its local network who owns
+that name. Mastomini replies with its address. This is **multicast DNS**,
+using UDP port 5353, rather than a record that must be registered with an
+internet DNS provider. Devices on isolated guest Wi-Fi, separate networks,
+or VPN routes may not exchange those packets.
+See [the mDNS standard](https://www.rfc-editor.org/rfc/rfc6762.html).
+
+Before restarting a failing board, test its last-known address:
+
+```bash
+make probe-mdns ADDRESS=192.168.1.161
+```
+
+The read-only tool checks HTTP by IP, a direct mDNS query, a multicast mDNS
+query, then the computer's normal name resolver. It prints the selected
+local interface and elapsed times. To select another interface, run
+`python scripts/probe-mdns.py --address BOARD_IP --interface LOCAL_PC_IP`.
+
+| Result | What it tells you |
+|---|---|
+| IP HTTP also fails | Check power, boot log, Wi-Fi, current DHCP address, and server progress first; this is not isolated to DNS |
+| Direct mDNS works, multicast query does not | Investigate the local interface, VPN, firewall, router/AP multicast filtering or guest isolation |
+| Both mDNS queries work, OS lookup fails or is slow | The board responds; investigate the client resolver/cache and its multicast receive path |
+| IP works but neither mDNS query answers | The responder, advertised name, or UDP network path still needs investigation; HTTP alone cannot identify which |
+
+The tool sends legacy queries from an ephemeral port and receives **unicast**
+replies. A successful multicast query therefore does not prove that normal
+multicast replies to port 5353 reach Windows. It tests IPv4 A records; it
+does not diagnose the IPv6 path. No firewall, DNS, router or hosts-file
+configuration is changed. Keep the IP as a diagnostic fallback; it can change
+with DHCP, and HTTPS by IP needs that address in the certificate.
