@@ -162,7 +162,7 @@ idempotency support.
 | `POST /admin/members/:id/role` | owner | **done.** `{role: "admin" \| "member"}` |
 | `DELETE /admin/members/:id` | admin | **done.** `{confirm: "<username>"}`; tombstone + purge (02). Unlike the Mastodon admin API, no prior suspension is needed: the typed confirmation is the safeguard |
 | `DELETE /admin/statuses/:id` | admin | **done.** Cannot target DMs the admin isn't party to (they get `404`) |
-| `GET/PUT /admin/server` | admin | **done.** `title`, `description`, `rules[]` (≤ 8 × 140 B), `terms` (≤ 3,000 B plain text; `""` restores the generated terms). Changing the terms resets their effective date |
+| `GET/PUT /admin/server` | admin | **done.** `title`, `description`, `rules[]` (≤ 8 × 140 B), `terms` (≤ 3,000 B plain text; `""` restores the generated terms). Changing the terms resets their effective date. `led_phrase` sets the healthy Morse message (1–80 ASCII Morse characters; default `Robots have feelings too!`), persisted separately from the existing server record |
 | `POST /admin/transport` | owner, HTTPS only | Easy/Secure (nanacoin semantics) |
 | `POST /tls`, `DELETE /tls` | owner, HTTPS only | upload/remove real-domain certificate |
 | `POST /clock` | admin | **done.** `{ms}`; `409` once synced, `422` if not later than the newest record (05 "Time") |

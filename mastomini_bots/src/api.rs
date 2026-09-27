@@ -121,7 +121,9 @@ pub fn handle<S: KvStore>(
     if req.body.len() > BODY_LIMIT {
         return Response::error(413, "Request body is too large");
     }
-    if req.path == "/api/v1/scheduler/jobs" { return crate::scheduler::receive(svc, req); }
+    if req.path == "/api/v1/scheduler/jobs" {
+        return crate::scheduler::receive(svc, req);
+    }
     let seg = req.segments();
     let method = req.method.as_str();
     match (method, seg.as_slice()) {
@@ -143,7 +145,8 @@ pub fn handle<S: KvStore>(
                         "attachment; filename=\"household-ca.pem\"",
                     ),
                 None => Response::error(404, "This build serves plain HTTP only"),
-            }.public_cache(req, 0)
+            }
+            .public_cache(req, 0)
         }
         (_, ["api", "v1", ..]) => {}
         _ => return Response::error(404, "Not found"),
@@ -204,14 +207,25 @@ pub fn handle<S: KvStore>(
         return Response::error(401, "Sign in first").with_header("WWW-Authenticate", "Bearer");
     }
     if method == "GET" && rest == ["scheduler"] {
-        return Response::ok(json!({"instance": svc.scheduler.instance, "key_set": !svc.scheduler.token.is_empty(),
-            "jobs": svc.scheduler.jobs, "retry_at": svc.scheduler.retry_at}));
+        return Response::ok(
+            json!({"instance": svc.scheduler.instance, "key_set": !svc.scheduler.token.is_empty(),
+            "jobs": svc.scheduler.jobs, "retry_at": svc.scheduler.retry_at}),
+        );
     }
     let body = match req.json() {
         Ok(b) => b,
         Err(r) => return r,
     };
     let result: Result<Response, Response> = (|| match (method, rest) {
+        ("GET", ["device", "light"]) => Ok(Response::ok(json!({"phrase": svc.led_phrase}))),
+        ("PUT", ["device", "light"]) => {
+            let phrase = body["phrase"]
+                .as_str()
+                .ok_or_else(|| Response::error(422, "phrase must be text"))?;
+            svc.set_led_phrase(phrase)
+                .map_err(|e| Response::error(422, &e))?;
+            Ok(Response::ok(json!({"phrase": svc.led_phrase})))
+        }
         ("POST", ["logout"]) => {
             if let Some(t) = req.bearer() {
                 svc.sessions.end(t);
@@ -327,33 +341,106 @@ mod tests {
     }
 
     #[test]
+    fn light_setting_requires_session_validates_and_persists() {
+        let mut s = server();
+        let path = "/api/v1/device/light";
+        for method in ["GET", "PUT"] {
+            assert_eq!(call(&mut s, Request::new(method, path)).status, 401);
+        }
+        let token = s.0.sessions.start(1000);
+        let r = call(&mut s, authed("GET", path, &token));
+        assert_eq!(r.json_body()["phrase"], crate::board_status::DEFAULT_PHRASE);
+        assert_eq!(r.header("Cache-Control"), Some("no-store"));
+        for body in [
+            json!({}),
+            json!({"phrase": 123}),
+            json!({"phrase": ""}),
+            json!({"phrase": "#"}),
+            json!({"phrase": "A".repeat(81)}),
+        ] {
+            assert_eq!(
+                call(&mut s, authed("PUT", path, &token).with_json(&body)).status,
+                422
+            );
+        }
+        let r = call(
+            &mut s,
+            authed("PUT", path, &token).with_json(&json!({"phrase": "  Hello bots!  "})),
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(r.json_body()["phrase"], "Hello bots!");
+        let restarted = Service::open(s.0.store.clone(), crate::bots::all()).unwrap();
+        assert_eq!(restarted.led_phrase, "Hello bots!");
+        s.0.sessions.end(&token);
+        assert_eq!(
+            call(
+                &mut s,
+                authed("GET", path, &token).with_header("If-None-Match", "*")
+            )
+            .status,
+            401
+        );
+    }
+
+    #[test]
     fn cache_policy_and_certificate_rotation() {
         let mut s = server();
         let version = call(&mut s, Request::new("GET", "/api/v1/version"));
-        assert_eq!(version.header("Cache-Control"), Some("public, max-age=60, must-revalidate"));
-        let cached = call(&mut s, Request::new("GET", "/api/v1/version")
-            .with_header("If-None-Match", &format!("W/{}", version.header("ETag").unwrap())));
+        assert_eq!(
+            version.header("Cache-Control"),
+            Some("public, max-age=60, must-revalidate")
+        );
+        let cached = call(
+            &mut s,
+            Request::new("GET", "/api/v1/version").with_header(
+                "If-None-Match",
+                &format!("W/{}", version.header("ETag").unwrap()),
+            ),
+        );
         assert_eq!(cached.status, 304);
         assert!(cached.body.is_empty());
-        s.1.tls = Some(Tls { ca_der: b"old".to_vec(), ca_pem: "old pem".into(), info: json!({}) });
+        s.1.tls = Some(Tls {
+            ca_der: b"old".to_vec(),
+            ca_pem: "old pem".into(),
+            info: json!({}),
+        });
         for path in ["/ca", "/ca.pem"] {
             let first = call(&mut s, Request::new("GET", path));
-            assert_eq!(first.header("Cache-Control"), Some("public, max-age=0, must-revalidate"));
-            let req = Request::new("GET", path).with_header("If-None-Match", first.header("ETag").unwrap());
+            assert_eq!(
+                first.header("Cache-Control"),
+                Some("public, max-age=0, must-revalidate")
+            );
+            let req = Request::new("GET", path)
+                .with_header("If-None-Match", first.header("ETag").unwrap());
             assert_eq!(call(&mut s, req.clone()).status, 304);
             let tls = s.1.tls.as_mut().unwrap();
-            if path == "/ca" { tls.ca_der = b"new".to_vec(); } else { tls.ca_pem = "new pem".into(); }
+            if path == "/ca" {
+                tls.ca_der = b"new".to_vec();
+            } else {
+                tls.ca_pem = "new pem".into();
+            }
             assert_eq!(call(&mut s, req).status, 200);
         }
-        for path in ["/api/v1/status", "/api/v1/bots", "/api/v1/scheduler", "/api/v1/activity"] {
-            let r = call(&mut s, Request::new("GET", path).with_header("If-None-Match", "*"));
+        for path in [
+            "/api/v1/status",
+            "/api/v1/bots",
+            "/api/v1/scheduler",
+            "/api/v1/activity",
+        ] {
+            let r = call(
+                &mut s,
+                Request::new("GET", path).with_header("If-None-Match", "*"),
+            );
             assert_ne!(r.status, 304);
             assert_eq!(r.header("Cache-Control"), Some("no-store"));
             assert!(r.header("ETag").is_none());
         }
         let token = s.0.sessions.start(1000);
         for path in ["/api/v1/bots", "/api/v1/scheduler"] {
-            let r = call(&mut s, authed("GET", path, &token).with_header("If-None-Match", "*"));
+            let r = call(
+                &mut s,
+                authed("GET", path, &token).with_header("If-None-Match", "*"),
+            );
             assert_eq!(r.status, 200);
             assert_eq!(r.header("Cache-Control"), Some("no-store"));
         }

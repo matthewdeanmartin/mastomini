@@ -42,6 +42,7 @@ pub enum Kind {
     LocalToken = 28,
     Scheduler = 29,
     Scheduled = 30,
+    LedPhrase = 31,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

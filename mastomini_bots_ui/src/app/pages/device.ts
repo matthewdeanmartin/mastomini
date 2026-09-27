@@ -57,6 +57,16 @@ import { bytes, duration, when } from './format';
         can <a href="/ca">download the household CA</a>.
       </p>
     }
+    <h2>Healthy light message</h2>
+    @if (lightLoaded()) {
+      <form class="panel" (ngSubmit)="saveLight()">
+        <label for="led-phrase">Morse phrase</label>
+        <input id="led-phrase" name="ledPhrase" maxlength="80" [(ngModel)]="ledPhrase" required />
+        <p class="muted small">Up to 80 letters, numbers, spaces or Morse punctuation. Blinks slowly in cyan, followed by three green healthy blinks. Startup and fault indicators take priority.</p>
+        <button class="btn" type="submit" [disabled]="busy()">Save light message</button>
+        @if (lightSaved()) { <p class="ok">Light message saved.</p> }
+      </form>
+    }
     <h2>Scheduled posts</h2>
     @if (scheduler(); as s) {
       <section class="panel">
@@ -148,6 +158,20 @@ import { bytes, duration, when } from './format';
 export class DevicePage implements OnInit {
   protected readonly session = inject(Session);
   private readonly router = inject(Router);
+  protected ledPhrase = "Robots have feelings too!";
+  protected readonly lightLoaded = signal(false);
+  protected readonly lightSaved = signal(false);
+  protected async saveLight(): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.lightSaved.set(false);
+    try {
+      this.ledPhrase = (await this.session.setLight(this.ledPhrase.trim())).phrase;
+      this.lightSaved.set(true);
+    } catch (e) { this.error.set(describe(e)); }
+    finally { this.busy.set(false); }
+  }
   protected readonly diag = signal<Diag | null>(null);
   protected readonly scheduler = signal<Awaited<ReturnType<Session['scheduler']>> | null>(null);
   protected readonly scheduledTime = (ms: number) => new Date(ms).toLocaleString();
@@ -172,6 +196,8 @@ export class DevicePage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
+      this.ledPhrase = (await this.session.light()).phrase;
+      this.lightLoaded.set(true);
       this.diag.set(await this.session.diag());
       const o = await this.session.openRouter();
       this.openRouter.set(o);

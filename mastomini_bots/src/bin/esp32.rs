@@ -168,6 +168,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("One-time admin recovery applied; choose a new password at /app/");
     }
     let svc = Service::open(store, mastobots::bots::all())?;
+    status_led::phrase(&svc.led_phrase);
     log::info!(
         "{} bots; admin password {}",
         svc.infos.len(),
@@ -284,13 +285,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Independent timer worker: an LLM request must not hold up scheduled posts.
     {
         let shared = Arc::clone(&shared);
-        std::thread::Builder::new().stack_size(16 * 1024).spawn(move || {
-            let mut client = client::EspClient::scheduler();
-            loop {
-                mastobots::scheduler::tick(&shared, &mut client, now_ms());
-                std::thread::sleep(Duration::from_secs(1));
-            }
-        })?;
+        std::thread::Builder::new()
+            .stack_size(16 * 1024)
+            .spawn(move || {
+                let mut client = client::EspClient::scheduler();
+                loop {
+                    mastobots::scheduler::tick(&shared, &mut client, now_ms());
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            })?;
     }
     ThreadSpawnConfiguration::default().set()?;
     status_led::ready(true);
@@ -301,6 +304,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::sleep(Duration::from_secs(1));
         ticks = ticks.wrapping_add(1);
         server::probe_progress();
+        if let Ok(svc) = shared.try_lock() {
+            status_led::phrase(&svc.led_phrase);
+        }
         if ticks % 30 == 0 {
             net.keep_connected();
         }

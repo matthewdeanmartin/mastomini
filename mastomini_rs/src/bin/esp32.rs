@@ -32,16 +32,16 @@ use std::{
 mod net;
 #[path = "esp32/nvs_store.rs"]
 mod nvs_store;
-#[path = "esp32/server.rs"]
-mod server;
 #[path = "esp32/scheduler_client.rs"]
 mod scheduler_client;
+#[path = "esp32/server.rs"]
+mod server;
 // Both boards must enforce the same constrained household CA, including the
 // mbedTLS extension handling already used by the bots HTTP client.
-#[path = "../../../mastomini_bots/src/household_trust.rs"]
-mod household_trust;
 #[path = "../../../mastomini_bots/src/bin/esp32/household_tls.rs"]
 mod household_tls;
+#[path = "../../../mastomini_bots/src/household_trust.rs"]
+mod household_trust;
 
 #[path = "esp32/incidents.rs"]
 mod incidents;
@@ -205,6 +205,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         service.state.statuses.len(),
         service.state.repairs
     );
+    status_led::phrase(&service.led_phrase);
     let shared = Arc::new(Mutex::new(service));
 
     let wifi_nvs = EspNvs::new(system_nvs.clone(), net::NAMESPACE, true)?;
@@ -314,7 +315,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         std::thread::sleep(Duration::from_secs(5));
         ticks = ticks.wrapping_add(1);
-        let provisioned = shared.lock().unwrap().state.provisioned;
+        let provisioned = {
+            let service = shared.lock().unwrap();
+            status_led::phrase(&service.led_phrase);
+            service.state.provisioned
+        };
         {
             let mut net = net.lock().unwrap();
             net.maybe_close_setup(provisioned);

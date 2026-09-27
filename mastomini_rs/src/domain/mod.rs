@@ -476,6 +476,9 @@ pub(crate) mod keys {
     pub fn server() -> Key {
         Key::new("server").expect("static key")
     }
+    pub fn led_phrase() -> Key {
+        Key::new("led_phrase").expect("static key")
+    }
     pub fn terms() -> Key {
         Key::new("terms").expect("static key")
     }
@@ -557,6 +560,7 @@ pub(crate) mod keys {
 }
 
 pub struct Service<S: Store> {
+    pub led_phrase: String,
     pub scheduling: scheduled::Scheduling,
     store: S,
     pub state: State,
@@ -1102,7 +1106,15 @@ impl<S: Store> Service<S> {
             }
         }
 
+        let led_phrase = match store.get(Ns::Cfg, &keys::led_phrase())? {
+            Some(bytes) => codec::decode::<String>(Kind::LedPhrase, &bytes)?,
+            None => crate::board_status::DEFAULT_PHRASE.to_string(),
+        };
+        if !crate::board_status::valid_phrase(&led_phrase) {
+            return Err(StoreError::Corrupt("invalid LED phrase".into()));
+        }
         let mut service = Service {
+            led_phrase,
             scheduling: Default::default(),
             store,
             state,

@@ -80,3 +80,38 @@ fn admins_edit_rules_and_terms() {
     let r = s.send_json("PUT", url, Some(&alice), &json!({ "rules": too_many }));
     assert_eq!(r.status, 422);
 }
+
+#[test]
+fn admin_led_phrase_is_validated_and_survives_restart() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read write follow");
+    let bob = s.add_member(&alice, "bob");
+    let url = "/api/mastomini/v1/admin/server";
+    assert_eq!(
+        s.get(url, Some(&alice)).json_body()["led_phrase"],
+        crate::board_status::DEFAULT_PHRASE
+    );
+    let edit = json!({"led_phrase": "  SOS!  "});
+    assert_eq!(s.send_json("PUT", url, Some(&bob), &edit).status, 403);
+    assert_eq!(s.send_json("PUT", url, None, &edit).status, 401);
+    assert_eq!(
+        s.send_json("PUT", url, Some(&alice), &edit).json_body()["led_phrase"],
+        "SOS!"
+    );
+    for bad in ["".to_string(), "🌍".into(), "A".repeat(81)] {
+        assert_eq!(
+            s.send_json("PUT", url, Some(&alice), &json!({"led_phrase": bad}))
+                .status,
+            422
+        );
+    }
+    s.send_json(
+        "PUT",
+        url,
+        Some(&alice),
+        &json!({"description": "same phrase"}),
+    );
+    assert_eq!(s.svc.led_phrase, "SOS!");
+    let s = s.restart();
+    assert_eq!(s.svc.led_phrase, "SOS!");
+}

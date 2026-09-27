@@ -68,6 +68,7 @@ export interface ApiKey {
 
 /** `GET/PUT /api/mastomini/v1/admin/server`. */
 export interface ServerSettings {
+  led_phrase: string;
   title: string;
   description: string;
   rules: string[];

@@ -236,3 +236,18 @@ bot configuration, activity, diagnostics, scheduler queues, credentials,
 mutations and JSON errors remain `no-store`. No private browser cache needs
 clearing after sign-out or configuration changes. These conditional responses
 save transfer bytes without retaining another response cache in board RAM.
+
+### Healthy Morse light
+
+In **Device → Healthy light message**, the admin can save a phrase of 1–80
+ASCII letters, numbers, spaces or Morse punctuation. The default is
+`Robots have feelings too!`. It persists across restarts and updates on the
+next free maintenance pass (normally one second).
+
+Healthy playback spells the phrase in dim cyan with 200 ms dots, 600 ms dashes,
+and standard symbol/letter/word spacing, then three green healthy blinks.
+Startup, bot activity, missing clock, disconnection and faults take priority;
+returning to health starts the phrase again. Playback uses the existing LED
+task without acquiring the service lock. GPIO selection remains a build setting.
+The session-protected `GET/PUT /api/v1/device/light` API uses `{ "phrase": "..." }`
+and `Cache-Control: no-store`; no API keys or bot settings are changed.

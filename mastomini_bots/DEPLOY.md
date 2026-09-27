@@ -399,7 +399,7 @@ bots setting is separate from mastomini's setting.
   1 power-on, 2 software, 3 crash, 4 watchdog,
   5 brownout, 6 other. The serial log names the reset cause too.
 - Pulsing blue: no Wi-Fi address yet (including reconnecting).
-- Dim green with a brief dark beat: both admin server tasks executed queued
+- Cyan Morse phrase, then three green blinks: both admin server tasks executed queued
   probes within 15 seconds and the scheduler completed a pass within 5 seconds.
   These are real task callbacks, not a timer claiming that everything is alive.
 - Amber: a bot job is in progress, the clock is unset, or an outbound/request
@@ -651,3 +651,37 @@ both pages, navigation during initial fetch, slow requests, and hidden tabs.
 The connected USB board was NanaCoin (COM9), so the bots change is built/tested
 but NOT flashed. Use ordinary deployment when the bots board is attached; do
 not use password recovery. Refresh existing browser tabs after deployment.
+
+### Configurable healthy Morse message
+
+The admin can set **Device → Healthy light message** (default
+`Robots have feelings too!`). The phrase persists under its own `led_phrase`
+store key, leaving bot settings, API keys and memory unchanged. Playback uses
+200 ms dots, 600 ms dashes and standard Morse gaps in cyan, then three green
+blinks. Existing startup, activity and fault indicators interrupt playback.
+A change applies on the next free maintenance pass, normally within one second.
+The API is session-protected `GET/PUT /api/v1/device/light`; both responses are
+`no-store`. Do not change live settings just to verify deployment. Verify the
+new firmware using the build timestamp, boot log and strict read-only probe.
+
+### 2026-09-27: configurable healthy Morse message deployed
+
+- Upgraded the bots board on COM15, MAC `ac:a7:04:2c:38:b8`, using
+  procedure A. The working tree was dirty at `afb2e2a`; `make check` passed:
+  58 Rust tests, 9 UI tests and 7 end-to-end tests passed, with 3 live-model
+  tests skipped. Formatting, clippy and board-script checks passed as well.
+  Existing household certificate and CA checks passed without rotation.
+- The install dry run read the existing bots layout (`factory` 4 MiB at
+  `0x10000`, `store` 1 MiB, `coredump` 64 KiB, plus `nvs` and `phy_init`)
+  and refused first install as expected. Procedure A wrote the 1,593,360-byte
+  application only at `0x10000`; esptool verified the hash. The script ended
+  `Application updated. The board restarts; bot settings and keys were not
+  touched.`
+- Boot log: GPIO48 initialized, 3 bots, admin password still set, Wi-Fi and
+  HTTPS/HTTP ready at `192.168.1.162`. Strict IP probe passed, including
+  sign-in enforcement and HTTPS/certificate/CA checks. It reports commit
+  `afb2e2a49e3b` (dirty), built `2026-09-27T16:12:38.651Z`; this timestamp
+  was independently matched against the generated firmware image. The
+  `mastomini-bots.local` probe also passed; its HTTPS handshake took 14,875 ms
+  on this Windows host. No admin settings, credentials or bot jobs were changed
+  or exercised.

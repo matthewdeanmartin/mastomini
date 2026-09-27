@@ -1,8 +1,8 @@
 //! Load the unchanged household root using mbedTLS's extension callback.
 //! Only the precisely supported nameConstraints value is handled here;
 //! all normal signature, chain, date and hostname checks remain required.
-use esp_idf_svc::sys::*;
 use super::household_trust;
+use esp_idf_svc::sys::*;
 use std::{
     ffi::{c_int, c_void},
     sync::OnceLock,

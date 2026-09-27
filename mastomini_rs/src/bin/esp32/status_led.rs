@@ -22,6 +22,15 @@ use std::{
     time::Duration,
 };
 
+static PHRASE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn phrase(value: &str) {
+    let mut current = PHRASE.lock().unwrap();
+    if current.as_str() != value {
+        *current = value.to_string();
+    }
+}
+
 static READY: AtomicBool = AtomicBool::new(false);
 static WIFI: AtomicBool = AtomicBool::new(false);
 static SETUP: AtomicBool = AtomicBool::new(false);
@@ -124,6 +133,9 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         "Status LED: WS2812 GRB, GPIO {}, dim output; reset {reason} ({flashes} white flashes)",
         option_env!("MASTOMINI_STATUS_LED_PIN").unwrap_or("off")
     );
+    let mut text = board_status::DEFAULT_PHRASE.to_string();
+    let mut pattern = board_status::MorsePattern::new(&text);
+    let mut healthy_since = None;
     let mut previous = None;
     let mut last_errors = 0;
     let mut error_until = 0;
@@ -145,11 +157,29 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
             fatal: FATAL.load(Relaxed) || LOG.count(Kind::StorageFailed) > 0,
             recent_error: now < error_until,
         };
+        if let Ok(pending) = PHRASE.try_lock() {
+            if !pending.is_empty() && *pending != text {
+                text.clone_from(&pending);
+                pattern = board_status::MorsePattern::new(&text);
+                healthy_since = None;
+            }
+        }
+        let state = health.state();
+        let startup = board_status::reset_color(now - began, flashes);
+        if state != board_status::State::Healthy || startup.is_some() {
+            healthy_since = None;
+        }
         let color = if health.fatal {
             board_status::color(health.state(), now)
         } else {
-            board_status::reset_color(now - began, flashes)
-                .unwrap_or_else(|| board_status::color(health.state(), now))
+            startup.unwrap_or_else(|| {
+                if state == board_status::State::Healthy {
+                    let began = *healthy_since.get_or_insert(now);
+                    pattern.color(now - began)
+                } else {
+                    board_status::color(state, now)
+                }
+            })
         };
         if previous != Some(color) {
             let [r, g, b] = color;

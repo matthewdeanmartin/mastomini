@@ -440,9 +440,9 @@
       "method": "DELETE",
       "path": "/api/v1/scheduled_statuses/{id}",
       "tier": 3,
-      "status": "excluded",
-      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "implemented",
+      "note": "Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs.",
+      "source": "mastomini_rs/src/api/scheduled.rs"
     },
     {
       "method": "DELETE",
@@ -1184,17 +1184,17 @@
       "method": "GET",
       "path": "/api/v1/scheduled_statuses",
       "tier": 3,
-      "status": "excluded",
-      "note": "Deliberate neutral response: empty list/object or null.",
-      "source": "mastomini_rs/src/api/misc.rs"
+      "status": "implemented",
+      "note": "Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs.",
+      "source": "mastomini_rs/src/api/scheduled.rs"
     },
     {
       "method": "GET",
       "path": "/api/v1/scheduled_statuses/{id}",
       "tier": 3,
-      "status": "excluded",
-      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "implemented",
+      "note": "Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs.",
+      "source": "mastomini_rs/src/api/scheduled.rs"
     },
     {
       "method": "GET",
@@ -1209,7 +1209,7 @@
       "path": "/api/v1/statuses",
       "tier": 1,
       "status": "implemented",
-      "note": "Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls.",
+      "note": "Bulk GET / create POST supported, including scheduled_at via configured bots board; media and direct-message polls rejected.",
       "source": "mastomini_rs/src/api/statuses.rs"
     },
     {
@@ -2225,7 +2225,7 @@
       "path": "/api/v1/statuses",
       "tier": 1,
       "status": "implemented",
-      "note": "Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls.",
+      "note": "Bulk GET / create POST supported, including scheduled_at via configured bots board; media and direct-message polls rejected.",
       "source": "mastomini_rs/src/api/statuses.rs"
     },
     {
@@ -2512,9 +2512,9 @@
       "method": "PUT",
       "path": "/api/v1/scheduled_statuses/{id}",
       "tier": 3,
-      "status": "excluded",
-      "note": "Deliberate v1 omission (spec/04 Tier 3); no handler (404).",
-      "source": "mastomini_rs/src/api/mod.rs"
+      "status": "implemented",
+      "note": "Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs.",
+      "source": "mastomini_rs/src/api/scheduled.rs"
     },
     {
       "method": "PUT",
@@ -2565,23 +2565,23 @@
     "mastomini_rs/src/api/diag.rs": "9d706ef72ef3547f4b9d9e5809283fc8dc223fefd5930f1d4b432d0acfc1f09c",
     "mastomini_rs/src/api/entities.rs": "5dd7b0f60f5fad6a9e1e7b868bd6ed304ced3bc2652610f69f90c0b8d3bba443",
     "mastomini_rs/src/api/filters.rs": "75c89fa1c8cc80d0f9f788f1ac4c9a5c4cb594ecdda411b308274d03c2f6de69",
-    "mastomini_rs/src/api/household.rs": "4e3991f8b8af1c818175770f5661237c690f43a7f61d4db4c40a6e388baa9ed7",
+    "mastomini_rs/src/api/household.rs": "74550dae3c5cf0af1922348e54813053cfe093caecae4a07c8da944a5e8e01ac",
     "mastomini_rs/src/api/html.rs": "fe0c5bb50d02e4c74257dd1c992e79d40a712ff46333d630ad624ae63f1f5a4d",
-    "mastomini_rs/src/api/instance.rs": "616cc133058d424ed6677441ba3dc4b7aa938d8f661aa8d66c1faf2ed4f71493",
+    "mastomini_rs/src/api/instance.rs": "04872aa3d07fca4f8ea86d5f31337558de596e1eaf5c913b5bc0cba223b98276",
     "mastomini_rs/src/api/lists.rs": "d5055a97fb26d5501e5f33fd7b4153389508e7542ff5868cc5494d202635b9ac",
-    "mastomini_rs/src/api/misc.rs": "f49abe0ae4457d63d969bd5da6b8cee6cedf69badd20cfcfa1647885ab9fbc8c",
-    "mastomini_rs/src/api/mod.rs": "917290c4f8adf9a7cbe27add4dfc9b3cca8762f974eca31baf7407deaf37d2bd",
+    "mastomini_rs/src/api/misc.rs": "a6c331d90a8a75938b20ef44a4bfa9ac3b71d6fd414f241b5e677e332a094554",
+    "mastomini_rs/src/api/mod.rs": "17941d26ceb8043669e8cb34e7a4da273104c6479820c87c64f75e3e1e4b2767",
     "mastomini_rs/src/api/moderation.rs": "8925a1ac77290a1b4ef31c1d55cac1a4da585ad60525ae67d2acaa24d80c72ba",
     "mastomini_rs/src/api/notification_groups.rs": "6336cc8331e385cc10ca3464850f77e3846e267af7c10224aabaa280c30f6693",
     "mastomini_rs/src/api/oauth.rs": "9007f446e13be59b7396e3fd07c5b8c66931e3518c9e6977ad98dfc6cc8e4372",
     "mastomini_rs/src/api/setup.rs": "9b62dec8e3e5e015f4ee3d1a8a7427ae1ffc9d8900a4a35fde3a02128765cdfc",
     "mastomini_rs/src/api/social.rs": "2fcf88e36509bb95daad8dd4f5346ccebce0c4a90ce3f9a1ade56b28b518946c",
-    "mastomini_rs/src/api/statuses.rs": "591f6652605dba96851647bb235a489ca0e66715a47c33d36be90c38eafb78f8",
+    "mastomini_rs/src/api/statuses.rs": "bcf6e3ab5fcce6948a2242bbcee1a5004910e45b934d2feae22a357938c6d7c0",
     "mastomini_rs/src/api/time.rs": "0ff507b79b766d5ce1c1ef3a0b76d1b8c6374974968e413f587be080d2a4f4f8",
     "mastomini_rs/src/api/timelines.rs": "465ae1050df9aff24670127e66cbd40ac698ad304ea718f6a82a849164605236",
     "mastomini_rs/src/api/trust.rs": "e8b6bdbecfff8abb94c111a972e5b08af5c03bd3bf6b10d9ec1a6c70c12f111b",
     "mastomini_rs/src/auth.rs": "96802f952161104fa0e85dbd1ad07174a06576e5a2871a8489aa74855de562f2",
-    "mastomini_rs/src/codec.rs": "55d1eb6ed59e8fd9e5733b91f2754679032e4f326091b68d23a9b82047e265c8",
+    "mastomini_rs/src/codec.rs": "15eeae576390627c1937b53d1373a1270870fcc7e7ea28d5f5966cc782356236",
     "mastomini_rs/src/crypto.rs": "f7f577b86c5299efc644733180226d6ab7c524e2421c4566261018c8563d63d3",
     "mastomini_rs/src/domain/accounts.rs": "8fa64f1991516eb3925a35bda34001499bdd92e88843df8c990d80d7bb917d02",
     "mastomini_rs/src/domain/codes.rs": "6384ee69f3312adcf8089ee7f9335ff4f5e3aa235eb0563a2ef9fa25e79ed0ca",
@@ -2592,19 +2592,21 @@
     "mastomini_rs/src/domain/filters.rs": "f734584017abf18fb723f5c661899ddd27a3ea32e0e4fca5003e202cffada5bb",
     "mastomini_rs/src/domain/follow_requests.rs": "2dd9639c61bbda73f13f9c600eb5ddd360ddd966a14f5fada1c296e46b684f14",
     "mastomini_rs/src/domain/lists.rs": "ade8ceb87af94017f283807ab1559a13215525d17878a454d4ba298f74020c78",
-    "mastomini_rs/src/domain/mod.rs": "9e775b9864af6258c0c9409732141cc52b79a211f9c0a32e440bf11805e618a9",
-    "mastomini_rs/src/domain/moderation.rs": "bbb896412f8976df5326c2283aed12d7fbb56d9a159521d67b81256a4a0b0660",
+    "mastomini_rs/src/domain/mod.rs": "e723306918532dafb7eb74f409aef471c327c2c79a336661842dfc2e52ed55a5",
+    "mastomini_rs/src/domain/moderation.rs": "c7ccc6fddbd03512fa3d966f1c32e738c0a0eaee7a5ff3f4c5d6be60d65583fa",
     "mastomini_rs/src/domain/oauth.rs": "9f9bd0f79f7e4b8453bf3c16c0900d3322ea2b8d55c07d108ff4ad9a8e5ed7e0",
-    "mastomini_rs/src/domain/polls.rs": "3d4ed72fa217dc70511c2de769887cd425794ac33beadefe02b2536940ea711a",
+    "mastomini_rs/src/domain/polls.rs": "ca1da2858401304b50e6f4f11c8c35c07bf3da6ead282b4b47d52c783a62848e",
     "mastomini_rs/src/domain/query.rs": "66a716b3f2de2063769d85361723b39f3468091da6fc734accd9dfdf8d8a87fc",
     "mastomini_rs/src/domain/records.rs": "9a2ffd5de849fb9e26daac45d1afba98f72e9df5d50aaa9010ff2703eb7ee7bc",
-    "mastomini_rs/src/domain/server.rs": "2529408be7688529d47fd2be2252fd81c2377661fa6f78088f769759681ad5d6",
+    "mastomini_rs/src/domain/server.rs": "97b107cdff3a0492e0859274818eb9eb3fb409876144c3dc2cf17707c7b1e853",
     "mastomini_rs/src/domain/social.rs": "64a7705d71e24b9d2d5298f24605d4c07936b9bc7e4f7e2bf65f194400581105",
-    "mastomini_rs/src/domain/statuses.rs": "661f9c6c2c4255a34af6106e82d21a0cc53c228ff5a2b2b1ecccf6f59f58d67e",
-    "mastomini_rs/src/http.rs": "1e271240a61cec933fea12a48ae91d1d69ef48cd88d15facc0e975ca1b6b40a4",
+    "mastomini_rs/src/domain/statuses.rs": "65b599f66f6f509227e011b8e14df08293002d3a8e22d993ecaeec5dca79d9de",
+    "mastomini_rs/src/http.rs": "257b37a4aad3dab358b1f14c0948dc16a0394b6e1a3bfd9e494ad99a8c68b0ab",
     "mastomini_rs/src/store/mod.rs": "656faa66a56be2b9bc9c3e7b3eb1fb56ee595d91feee5b59eaaa7d4026e4c4c3",
     "mastomini_rs/src/text.rs": "ed408dd1f7d36c30cd06dfd959e38f1df7a7669b86307c08443000b8c553a140",
     "mastomini_rs/src/api/pages.rs": "d907f485a090573d931a6fc794a5ffe71bbeb61246a0dbf3d212c3b89aee757c",
-    "mastomini_rs/src/domain/local_tokens.rs": "26966dcff71c95be7d2a5b617a9f5940bb71e62acf2c7afd731f750c7758beae"
+    "mastomini_rs/src/domain/local_tokens.rs": "26966dcff71c95be7d2a5b617a9f5940bb71e62acf2c7afd731f750c7758beae",
+    "mastomini_rs/src/api/scheduled.rs": "7b4f705ec7350722ec1bcbf164eaab6a69d0501bd5b35fc15a910f5fb4716d78",
+    "mastomini_rs/src/domain/scheduled.rs": "0543e6503e8bf8838b44d468ac22552a2e576bf3c06453fb19033617a89d1e15"
   }
 }

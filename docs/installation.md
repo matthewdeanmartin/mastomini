@@ -124,13 +124,13 @@ no application/network mutex and its failure does not stop the server.
 | White after the reset pattern | Wi-Fi has an address; server startup is still underway |
 | Slowly pulsing dim blue | No station IP address: starting Wi-Fi or disconnected |
 | Cyan on/off | Wi-Fi setup network is active and there is no station IP |
-| Dim green, short dark blink every two seconds | Wi-Fi has an IP, mDNS registered, and both HTTP/TLS workers completed a turn within two seconds |
+| Cyan Morse message, then three green flashes | Wi-Fi has an IP, mDNS registered, and both HTTP/TLS workers completed a turn within two seconds |
 | Amber | mDNS registration failed, or an allocation/TLS-initialization error occurred in the last ten seconds |
 | Steady red | A worker's progress is stale, a storage failure is latched, or startup reported a fatal error |
 
 Green does not prove that another device can resolve `.local`, that internet
 access works, or that every API is healthy. A stalled worker can recover
-and restore green. No new automatic reboot policy is introduced. If the
+and restart the healthy message. No new automatic reboot policy is introduced. If the
 whole processor stops, the RGB LED can retain its last color: a **moving
 heartbeat**, not merely a green light, is the sign of recent progress.
 Panics and power faults can reset too quickly to show red. Reset reasons
@@ -283,3 +283,23 @@ multicast replies to port 5353 reach Windows. It tests IPv4 A records; it
 does not diagnose the IPv6 path. No firewall, DNS, router or hosts-file
 configuration is changed. Keep the IP as a diagnostic fallback; it can change
 with DHCP, and HTTPS by IP needs that address in the certificate.
+
+### Healthy Morse message
+
+Admins can change **Server → Healthy light message** (default:
+`Robots have feelings too!`). The setting survives restart and takes effect
+on the next maintenance pass (normally about five seconds). Use 1–80 ASCII letters, digits, spaces or supported Morse
+punctuation (`. , ? ! - / ' " ( ) : ; = + @ _`). Letters ignore case.
+
+While healthy, the RGB LED spells the message in cyan with a 200 ms dot,
+600 ms dash, and standard one/three/seven-unit symbol/letter/word gaps.
+After a seven-unit pause it flashes green three times (600 ms on, 600 ms off),
+then pauses seven units and repeats. Startup and fault indicators take priority;
+recovery restarts the message. The existing low-priority LED task runs playback
+without acquiring the server lock. The optional LED still requires the correct
+build-time pin selection (`MASTOMINI_STATUS_LED_PIN=48` on the recorded board).
+
+A dark RGB LED does not establish a power failure. This board has previously
+booted through one USB connector while staying dark through the other. Use the
+known-working power connector; USB enumeration alone does not prove application
+startup. The firmware cannot show startup colors before its application runs.

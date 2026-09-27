@@ -7,7 +7,7 @@ Scope: pinned mastodon_mock OpenAPI + its REST checklist + mastomini's additiona
 This includes versions newer than advertised 4.3. It is not a claim of complete Mastodon parity.
 Path parameter names are normalized to `{id}` (including names, tags and group keys).
 
-**285 method/path pairs:** 94 excluded, 172 implemented, 0 missing, 5 partial, 14 stub.
+**285 method/path pairs:** 90 excluded, 176 implemented, 0 missing, 5 partial, 14 stub.
 
 `implemented` means a substantive local handler, not certification of every parameter;
 `partial` has explicit behavioral limits; `stub` is a neutral/no-op handler;
@@ -45,8 +45,8 @@ Path parameter names are normalized to `{id}` (including names, tags and group k
 | GET | `/api/v1/markers` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v1/markers` | **implemented** | [timelines.rs](../mastomini_rs/src/api/timelines.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | GET | `/api/v1/preferences` | **implemented** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
-| GET | `/api/v1/statuses` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls. |
-| POST | `/api/v1/statuses` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Bulk GET / create POST supported; create rejects media, scheduled posts and direct-message polls. |
+| GET | `/api/v1/statuses` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Bulk GET / create POST supported, including scheduled_at via configured bots board; media and direct-message polls rejected. |
+| POST | `/api/v1/statuses` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Bulk GET / create POST supported, including scheduled_at via configured bots board; media and direct-message polls rejected. |
 | DELETE | `/api/v1/statuses/{id}` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | GET | `/api/v1/statuses/{id}` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
 | POST | `/api/v1/statuses/{id}/bookmark` | **implemented** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Local household behavior; see spec/04 and conformance/deviations.py for limits. |
@@ -283,10 +283,10 @@ Path parameter names are normalized to `{id}` (including names, tags and group k
 | GET | `/api/v1/push/subscription` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
 | POST | `/api/v1/push/subscription` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
 | PUT | `/api/v1/push/subscription` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
-| GET | `/api/v1/scheduled_statuses` | **excluded** | [misc.rs](../mastomini_rs/src/api/misc.rs) | Deliberate neutral response: empty list/object or null. |
-| DELETE | `/api/v1/scheduled_statuses/{id}` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
-| GET | `/api/v1/scheduled_statuses/{id}` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
-| PUT | `/api/v1/scheduled_statuses/{id}` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |
+| GET | `/api/v1/scheduled_statuses` | **implemented** | [scheduled.rs](../mastomini_rs/src/api/scheduled.rs) | Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs. |
+| DELETE | `/api/v1/scheduled_statuses/{id}` | **implemented** | [scheduled.rs](../mastomini_rs/src/api/scheduled.rs) | Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs. |
+| GET | `/api/v1/scheduled_statuses/{id}` | **implemented** | [scheduled.rs](../mastomini_rs/src/api/scheduled.rs) | Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs. |
+| PUT | `/api/v1/scheduled_statuses/{id}` | **implemented** | [scheduled.rs](../mastomini_rs/src/api/scheduled.rs) | Own persisted drafts: list/read, reschedule and cancel. Trusted bots board publishes when due; 16 outstanding, no scheduled DMs. |
 | GET | `/api/v1/search` | **implemented** | [social.rs](../mastomini_rs/src/api/social.rs) | Legacy v1 alias of scoped local v2 search; hashtags serialized as names. |
 | GET | `/api/v1/statuses/{id}/card` | **excluded** | [statuses.rs](../mastomini_rs/src/api/statuses.rs) | Deliberate neutral response: empty list/object or null. |
 | PUT | `/api/v1/statuses/{id}/interaction_policy` | **excluded** | [mod.rs](../mastomini_rs/src/api/mod.rs) | Deliberate v1 omission (spec/04 Tier 3); no handler (404). |

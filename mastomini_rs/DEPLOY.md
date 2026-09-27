@@ -536,3 +536,23 @@ timer or immediate request feedback loop was found in Mastomini's own pages.
 Its incident-history timeout only releases a downloaded object URL. No
 Mastomini code change or reflash was needed. Third-party Mastodon clients have
 their own refresh behavior and were not part of this source audit.
+
+### 2026-09-27 — healthy-light phrase setting and Morse status deployed
+
+Upgraded the mastomini board on COM11 (MAC `ac:a7:04:2c:29:9c`) with
+procedure A. The working tree was dirty at revision `afb2e2a`; the root
+`make check` passed (196 Rust, 52 UI, 27 client, and 138 conformance tests;
+58 skipped and 14 xfailed, plus lint, formatting, API coverage, docs and
+smoke checks). The install dry run identified the existing layout: `nvs`,
+`phy_init`, 4 MiB `factory`, 8 MiB `store`, 3 MiB `media`, and `coredump`, so
+first install was refused as expected. The 2,388,320-byte app image was
+written only at `0x10000`; esptool verified its hash and the deploy script
+reported `Application updated. The board restarts; household data was not
+touched.`
+
+Boot log: GPIO48 initialized, `provisioned=true accounts=6 statuses=10
+repairs=0`, Wi-Fi and mDNS started, ready at `192.168.1.161`. The strict
+IP probe passed, including HTTPS, the existing household CA and this build's
+certificate. `make board-version` matched fingerprint `e1b1f2432f01`,
+built `2026-09-27T15:49:42.739Z`. The strict probe also passed by
+`mastomini.local`; Windows name resolution took about three minutes.

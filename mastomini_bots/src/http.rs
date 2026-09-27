@@ -162,7 +162,6 @@ impl Response {
         self
     }
 
-
     pub fn json_body(&self) -> Value {
         serde_json::from_slice(&self.body).unwrap_or(Value::Null)
     }

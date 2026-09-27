@@ -169,6 +169,7 @@ pub struct OpenRouterUpdate {
 }
 
 pub struct Service<S: KvStore> {
+    pub led_phrase: String,
     pub(crate) store: S,
     pub scheduler: crate::scheduler::Scheduler,
     pub bots: Arc<Vec<Box<dyn Bot>>>,
@@ -220,8 +221,15 @@ impl<S: KvStore> Service<S> {
             "info",
             format!("Started with {} bots", bots.len()),
         );
+        let led_phrase = store
+            .get("led_phrase")?
+            .unwrap_or_else(|| crate::board_status::DEFAULT_PHRASE.into());
+        if !crate::board_status::valid_phrase(&led_phrase) {
+            return Err("Invalid stored LED phrase".into());
+        }
         let scheduler = crate::scheduler::load(&store)?;
         Ok(Service {
+            led_phrase,
             scheduler,
             store,
             runtime: vec![Runtime::default(); bots.len()],
@@ -234,6 +242,20 @@ impl<S: KvStore> Service<S> {
             openrouter,
             waiting_for_clock: false,
         })
+    }
+
+    pub fn set_led_phrase(&mut self, phrase: &str) -> Result<(), String> {
+        let phrase = phrase.trim();
+        if !crate::board_status::valid_phrase(phrase) {
+            return Err(
+                "LED phrase must be 1-80 ASCII letters, digits, spaces or Morse punctuation".into(),
+            );
+        }
+        if phrase != self.led_phrase {
+            self.store.put("led_phrase", phrase)?;
+            self.led_phrase = phrase.to_string();
+        }
+        Ok(())
     }
 
     pub fn index(&self, id: &str) -> Option<usize> {

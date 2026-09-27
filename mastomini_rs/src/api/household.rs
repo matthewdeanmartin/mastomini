@@ -170,6 +170,7 @@ fn server_json<S: Store>(c: &Call<'_, S>) -> Value {
     let (terms, effective_ms) = c.svc.terms_of_service();
     json!({
         "title": server.title,
+        "led_phrase": c.svc.led_phrase,
         "description": server.description,
         "rules": server.rules,
         "terms": terms,
@@ -191,6 +192,7 @@ fn put_server<S: Store>(c: &mut Call<'_, S>) -> Reply {
     let p = &c.params;
     let has_rules = p.names().any(|n| n == "rules" || n.starts_with("rules["));
     let update = ServerUpdate {
+        led_phrase: p.get("led_phrase").map(str::to_string),
         title: p.get("title").map(str::to_string),
         description: p.get("description").map(str::to_string),
         rules: has_rules.then(|| p.all("rules").iter().map(|r| r.to_string()).collect()),

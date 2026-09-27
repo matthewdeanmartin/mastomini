@@ -109,7 +109,7 @@ export class Household {
     return this.api.get(`${V1}/admin/server`);
   }
 
-  updateServer(update: Partial<Pick<ServerSettings, 'title' | 'description' | 'rules' | 'terms'>>): Promise<ServerSettings> {
+  updateServer(update: Partial<Pick<ServerSettings, 'title' | 'description' | 'rules' | 'terms' | 'led_phrase'>>): Promise<ServerSettings> {
     return this.api.put(`${V1}/admin/server`, update);
   }
 }

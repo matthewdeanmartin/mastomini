@@ -286,7 +286,7 @@ mod tests {
         let shared = Arc::new(Mutex::new(svc));
         assert_eq!(tick(&shared, &mut Offline, None), 0);
         assert_eq!(tick(&shared, &mut Offline, Some(999)), 0);
-        let late = 7 * 86400_000;
+        let late = 7 * 86_400_000;
         assert_eq!(tick(&shared, &mut Offline, Some(late)), 1);
         assert_eq!(tick(&shared, &mut Offline, Some(late + 1)), 0);
         assert_eq!(tick(&shared, &mut Offline, Some(late + 30_000)), 1);

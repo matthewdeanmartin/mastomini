@@ -13,6 +13,7 @@ pub const MAX_TERMS: usize = 3000;
 /// generated terms.
 #[derive(Debug, Clone, Default)]
 pub struct ServerUpdate {
+    pub led_phrase: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
     pub rules: Option<Vec<String>>,
@@ -22,6 +23,16 @@ pub struct ServerUpdate {
 impl<S: Store> Service<S> {
     pub fn update_server(&mut self, actor: u8, update: ServerUpdate, now_ms: u64) -> Result<()> {
         self.require_admin(actor)?;
+        let phrase = update.led_phrase.map(|p| p.trim().to_string());
+        if phrase
+            .as_ref()
+            .is_some_and(|p| !crate::board_status::valid_phrase(p))
+        {
+            return invalid(
+                "LED phrase must be 1-80 ASCII letters, digits, spaces or Morse punctuation",
+            );
+        }
+        let phrase_changed = phrase.as_ref().is_some_and(|p| p != &self.led_phrase);
         let mut server = self.state.server.clone();
         if let Some(title) = update.title {
             let title = title.trim().to_string();
@@ -67,10 +78,15 @@ impl<S: Store> Service<S> {
             }
             None => None,
         };
-        if server == self.state.server && terms.is_none() {
+        if server == self.state.server && terms.is_none() && !phrase_changed {
             return Ok(());
         }
         self.govern(Some(actor), now_ms)?;
+        if phrase_changed {
+            let phrase = phrase.unwrap();
+            self.put(Ns::Cfg, &keys::led_phrase(), Kind::LedPhrase, &phrase)?;
+            self.led_phrase = phrase;
+        }
         if server != self.state.server {
             self.put(Ns::Cfg, &keys::server(), Kind::Server, &server)?;
             self.state.server = server;

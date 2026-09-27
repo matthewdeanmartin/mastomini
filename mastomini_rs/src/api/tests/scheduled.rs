@@ -100,7 +100,7 @@ fn publish_requires_configured_live_key_and_never_runs_early() {
             .status,
         503
     );
-    s.now = at + 7 * 86400_000; // No lateness expiry, even after a week offline.
+    s.now = at + 7 * 86_400_000; // No lateness expiry, even after a week offline.
     let first = s.send_json("POST", &path, Some(&key), &json!({"revision": 1}));
     assert_eq!(first.status, 200);
     assert_eq!(s.svc.state.statuses.len(), 1);
@@ -248,9 +248,9 @@ fn polls_start_when_published_and_replay_after_deletion_is_harmless() {
     assert_eq!(r.status, 200);
     assert!(s.svc.state.polls.is_empty());
     let id = r.json_body()["id"].as_str().unwrap().parse().unwrap();
-    let late = at + 86400_000;
+    let late = at + 86_400_000;
     let published = s.svc.publish_scheduled(id, 1, late).unwrap().unwrap();
-    assert_eq!(s.svc.state.polls[&published].expires_ms, late + 3600_000);
+    assert_eq!(s.svc.state.polls[&published].expires_ms, late + 3_600_000);
     s.svc.delete_status(0, published, late + 100).unwrap();
     assert_eq!(
         s.svc.publish_scheduled(id, 1, late + 200).unwrap(),

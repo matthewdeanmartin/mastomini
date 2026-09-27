@@ -70,6 +70,14 @@ export class Session {
     return this.api.get(`${V1}/activity?since=${since}&limit=${limit}`);
   }
 
+  light(): Promise<{ phrase: string }> {
+    return this.api.get(`${V1}/device/light`);
+  }
+
+  setLight(phrase: string): Promise<{ phrase: string }> {
+    return this.api.put(`${V1}/device/light`, { phrase });
+  }
+
   openRouter(): Promise<OpenRouterStatus> {
     return this.api.get(`${V1}/integrations/openrouter`);
   }

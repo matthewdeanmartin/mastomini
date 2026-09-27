@@ -22,6 +22,9 @@ import { Household } from '../api/household';
     }
     @if (loaded()) {
       <form class="panel" (ngSubmit)="save()">
+        <label for="led-phrase">Healthy light message</label>
+        <input id="led-phrase" name="ledPhrase" maxlength="80" [(ngModel)]="ledPhrase" required />
+        <p class="muted small">Up to 80 letters, numbers, spaces or Morse punctuation. Blinks slowly in cyan, followed by three green healthy blinks. Fault indicators take priority.</p>
         <label for="title">Household name</label>
         <input id="title" name="title" type="text" maxlength="40" [(ngModel)]="title" required />
         <label for="description">Description</label>
@@ -135,6 +138,7 @@ export class ServerPage implements OnInit {
   protected readonly error = signal('');
   protected readonly customized = signal(false);
   protected readonly effective = signal('');
+  protected ledPhrase = 'Robots have feelings too!';
   protected title = '';
   protected description = '';
   protected rules = '';
@@ -152,6 +156,7 @@ export class ServerPage implements OnInit {
   }
 
   private apply(s: Awaited<ReturnType<Household['server']>>): void {
+    this.ledPhrase = s.led_phrase;
     this.title = s.title;
     this.description = s.description;
     this.rules = s.rules.join('\n');
@@ -174,6 +179,7 @@ export class ServerPage implements OnInit {
       const terms = this.terms === this.originalTerms ? undefined : this.terms.trim();
       this.apply(
         await this.household.updateServer({
+          led_phrase: this.ledPhrase.trim(),
           title: this.title.trim(),
           description: this.description.trim(),
           rules,
