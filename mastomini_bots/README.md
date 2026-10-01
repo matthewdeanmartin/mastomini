@@ -19,9 +19,16 @@ Bots in this build:
 | `good_morning` | The time bot: "Good morning, it is Saturday, September 26, 2026" every day at 07:30 US Eastern. The time, zone, message template (`{{date}}`, `{{weekday}}`, `{{time}}`, `{{zone}}`) and visibility are all settings. |
 | `llm_reply` | Answers people who mention it, with a language model through OpenRouter. By default it checks every 5 minutes. |
 | `llm_post` | Writes a new post with a language model. By default once a day at 12:00. |
+| `nana_news` | NanaCoin news: twice a day (08:00, 20:00) posts what happened in the economy — lottos, listings, loan requests… One checkbox per category; crowded categories roll up into one line. Needs a NanaCoin read key. |
+| `trader_1` … `trader_6` | NanaCoin traders: each a bot member with its own money, key and strategy (forex band, lotto, borrower, bot bank, steady buyer, rebalancer, mean reversion). Dry run until turned off; posts its trades when it has a Mastodon key. |
 
 `llm_reply` and `llm_post` are one bot type (`src/bots/llm.rs`) listed twice
 with different defaults. Either can be switched to the other mode.
+
+The NanaCoin bots (`src/bots/nana_news.rs`, `src/bots/trader/`) are written
+against the API in [sprint 2's contract](../sprint/nanabots-2-nanacoin.md);
+the activity feed, bot members and read keys they need are not in NanaCoin
+yet. See [the plan](../spec/nanacoin-bots.md).
 
 ## Try it on the desktop
 
@@ -107,20 +114,30 @@ The reply bot's other rules:
    to `src/bots/<name>.rs`. Fill in:
    - **`info()`**: a short id (`a-z0-9_`, at most 13; never rename one in use),
      name, description, how late a run may still happen
-     (`grace_minutes`), and `uses_llm`.
+     (`grace_minutes`), `uses_llm`, and `needs_mastodon` (`false` for a bot
+     that can run without a Mastodon key and posts only when it has one).
    - **`settings()`**: what the admin can set, as a list of `Setting`s. The
      admin app draws the form from it; a bot writes no UI code. Kinds:
      `Text`, `LongText` (with the `{{placeholders}}` it may use), `Number`,
-     `Choice`, `Time`, `Zone`, `Toggle`, `Secret`. Start from
-     `schedule_settings(...)` for the four settings every scheduled bot shares.
+     `Choice`, `Time`, `Times` (up to four, `08:00, 20:00`), `Zone`,
+     `Toggle`, `Secret`. Start from `schedule_settings(...)` for the four
+     settings every scheduled bot shares (its time of day takes up to four
+     times). `.group("Heading")` draws consecutive settings under one
+     heading; `.shown_when("strategy", &["band"])` shows a setting only for
+     some values of another. Both are display only.
+   - **`ready()`** (optional): refuse turning the bot on until its own
+     settings are complete (a NanaCoin key). **`check()`** (optional): what
+     **Check connections** verifies; the default checks the Mastodon key.
    - **`schedule()`**: `schedule_from(settings)` for those.
    - **`run()`**: what it does.
      - Read settings from `run.settings` (`get`, `number`, `yes`, `time`,
        `tz`).
      - Post with `run.post(...)`, which is safe to retry. Use `run.post_keyed(...)`
        for several posts in a run.
-     - Use `run.mastodon()` for anything else in the API, and `run.llm()` for
-       the device's OpenRouter.
+     - Use `run.mastodon()` for anything else in the API, `run.llm()` for
+       the device's OpenRouter, and `run.nanacoin()` for NanaCoin (with
+       `nanacoin_settings()` among the bot's settings). Money requests get
+       a replay-safe Idempotency-Key per slot.
      - Keep memory between runs in `run.state`: it is saved even when the run
        fails.
      - Use `run.slot_ms`, not the clock, for what a post says: a retry of the

@@ -7,7 +7,7 @@
 //! parse them. [`schedule_settings`] and [`schedule_from`] give every bot the
 //! same way to say when it runs.
 
-use crate::schedule::Schedule;
+use crate::schedule::{Schedule, MAX_TIMES};
 use crate::tz::{Tz, ZONES};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -35,6 +35,8 @@ pub enum Kind {
     },
     /// `HH:MM`, 24-hour.
     Time,
+    /// One to [`MAX_TIMES`] `HH:MM` times, stored as `08:00, 20:00`.
+    Times,
     /// One of the time zones in [`ZONES`], by id.
     Zone,
     /// `yes` or `no`.
@@ -53,6 +55,21 @@ pub struct Setting {
     pub default: &'static str,
     /// May be left empty.
     pub optional: bool,
+    /// A heading the admin app draws once above consecutive settings that
+    /// share it (a column of checkboxes). Display only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<&'static str>,
+    /// Shown only while another setting has one of these values (a
+    /// strategy's own parameters). Display only: values are still checked
+    /// and kept either way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shown_when: Option<ShownWhen>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ShownWhen {
+    pub key: &'static str,
+    pub values: Vec<&'static str>,
 }
 
 impl Setting {
@@ -69,6 +86,8 @@ impl Setting {
             kind,
             default,
             optional: false,
+            group: None,
+            shown_when: None,
         }
     }
 
@@ -79,6 +98,19 @@ impl Setting {
 
     pub fn optional(mut self) -> Setting {
         self.optional = true;
+        self
+    }
+
+    pub fn group(mut self, heading: &'static str) -> Setting {
+        self.group = Some(heading);
+        self
+    }
+
+    pub fn shown_when(mut self, key: &'static str, values: &[&'static str]) -> Setting {
+        self.shown_when = Some(ShownWhen {
+            key,
+            values: values.to_vec(),
+        });
         self
     }
 
@@ -134,6 +166,9 @@ impl Setting {
             Kind::Time => parse_time(&value)
                 .map(|(h, m)| format!("{h:02}:{m:02}"))
                 .ok_or_else(|| format!("{}: a time like 07:30", self.label)),
+            Kind::Times => parse_times(&value)
+                .map(|times| format_times(&times))
+                .ok_or_else(|| format!("{}: 1 to {MAX_TIMES} times like 08:00, 20:00", self.label)),
             Kind::Zone if ZONES.iter().any(|z| z.id == value) => Ok(value),
             Kind::Zone => bad("not a known time zone"),
             Kind::Toggle if matches!(value.as_str(), "yes" | "no") => Ok(value),
@@ -147,6 +182,26 @@ fn parse_time(text: &str) -> Option<(u32, u32)> {
     let (h, m) = text.split_once(':')?;
     let (h, m): (u32, u32) = (h.trim().parse().ok()?, m.trim().parse().ok()?);
     (h < 24 && m < 60).then_some((h, m))
+}
+
+/// `08:00, 20:00` (commas or spaces): sorted, without repeats.
+fn parse_times(text: &str) -> Option<Vec<(u32, u32)>> {
+    let mut times = text
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(parse_time)
+        .collect::<Option<Vec<_>>>()?;
+    times.sort_unstable();
+    times.dedup();
+    (1..=MAX_TIMES).contains(&times.len()).then_some(times)
+}
+
+fn format_times(times: &[(u32, u32)]) -> String {
+    times
+        .iter()
+        .map(|(h, m)| format!("{h:02}:{m:02}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// A bot's settings with their current values.
@@ -189,9 +244,15 @@ impl Settings {
         self.get(key) == "yes"
     }
 
-    /// `(hour, minute)` of a [`Kind::Time`] setting.
+    /// `(hour, minute)` of a [`Kind::Time`] setting (the first of a
+    /// [`Kind::Times`] one).
     pub fn time(&self, key: &str) -> (u32, u32) {
-        parse_time(self.get(key)).unwrap_or((0, 0))
+        self.times(key).first().copied().unwrap_or((0, 0))
+    }
+
+    /// Every `(hour, minute)` of a [`Kind::Times`] (or `Time`) setting.
+    pub fn times(&self, key: &str) -> Vec<(u32, u32)> {
+        parse_times(self.get(key)).unwrap_or_else(|| vec![(0, 0)])
     }
 
     /// The POSIX rule and label of a [`Kind::Zone`] setting.
@@ -272,8 +333,9 @@ pub fn schedule_settings(
             },
             default_kind,
         ),
-        Setting::new("time", "Time of day", Kind::Time, time)
-            .help("For “every day”: 24-hour clock, in the time zone below."),
+        Setting::new("time", "Times of day", Kind::Times, time).help(
+            "For “every day”: 24-hour clock, in the time zone below. Up to four, e.g. 08:00, 20:00.",
+        ),
         Setting::new("zone", "Time zone", Kind::Zone, zone)
             .help("Daylight saving is followed automatically."),
         Setting::new(
@@ -290,11 +352,9 @@ pub fn schedule_settings(
 pub fn schedule_from(s: &Settings) -> Schedule {
     match s.get("run") {
         "daily" => {
-            let (hour, minute) = s.time("time");
             let (tz, label) = s.zone("zone");
             Schedule::Daily {
-                hour,
-                minute,
+                times: s.times("time"),
                 tz: tz.to_string(),
                 label: label.to_string(),
             }
@@ -369,6 +429,39 @@ mod tests {
         ] {
             assert!(s.merged(&change(&[(k, v)])).is_err(), "{k}={v}");
         }
+    }
+
+    #[test]
+    fn several_times_of_day() {
+        let s = Settings::new(specs(), BTreeMap::new());
+        let merged = s.merged(&change(&[("time", "20:00 8:00,20:00")])).unwrap();
+        assert_eq!(merged["time"], "08:00, 20:00");
+        let s = Settings::new(specs(), merged);
+        assert_eq!(s.times("time"), vec![(8, 0), (20, 0)]);
+        assert_eq!(
+            schedule_from(&s).describe(),
+            "Every day at 08:00 and 20:00 US Eastern"
+        );
+        for bad in ["", "8", "1:00 2:00 3:00 4:00 5:00", "08:00, 25:00"] {
+            assert!(s.merged(&change(&[("time", bad)])).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn groups_and_conditions_reach_the_admin_app() {
+        let specs = vec![
+            Setting::new("strategy", "Strategy", Kind::Toggle, "no"),
+            Setting::new("a", "A", Kind::Toggle, "yes").group("Post about"),
+            Setting::new("b", "B", Kind::Number { min: 0, max: 9 }, "1")
+                .shown_when("strategy", &["yes"]),
+        ];
+        let public = Settings::new(specs, BTreeMap::new()).public();
+        assert!(public[0].get("group").is_none());
+        assert_eq!(public[1]["group"], "Post about");
+        assert_eq!(
+            public[2]["shown_when"],
+            serde_json::json!({"key": "strategy", "values": ["yes"]})
+        );
     }
 
     #[test]

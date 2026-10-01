@@ -1,0 +1,9 @@
+/target/
+/.embuild/
+/data/
+/web/
+/sdkconfig
+/sdkconfig.old
+/components_esp32c6.lock
+
+/.env

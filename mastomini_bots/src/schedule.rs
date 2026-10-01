@@ -6,14 +6,16 @@ use crate::tz::Tz;
 
 const MINUTE_MS: u64 = 60_000;
 const DAY_MS: u64 = 24 * 60 * MINUTE_MS;
+/// The most times of day one daily schedule may have.
+pub const MAX_TIMES: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Schedule {
-    /// Every day at `hour:minute` local time in the POSIX zone `tz`
-    /// (`label` is how the admin page names it, e.g. "US Eastern").
+    /// Every day at each `(hour, minute)` in `times`, local time in the
+    /// POSIX zone `tz` (`label` is how the admin page names it, e.g.
+    /// "US Eastern"). At most [`MAX_TIMES`] times, in any order.
     Daily {
-        hour: u32,
-        minute: u32,
+        times: Vec<(u32, u32)>,
         tz: String,
         label: String,
     },
@@ -26,11 +28,12 @@ pub enum Schedule {
 impl Schedule {
     pub fn check(&self) -> Result<(), String> {
         match self {
-            Schedule::Daily {
-                hour, minute, tz, ..
-            } => {
+            Schedule::Daily { times, tz, .. } => {
                 Tz::parse(tz)?;
-                if *hour > 23 || *minute > 59 {
+                if times.is_empty() || times.len() > MAX_TIMES {
+                    return Err(format!("1 to {MAX_TIMES} times of day"));
+                }
+                if let Some((hour, minute)) = times.iter().find(|(h, m)| *h > 23 || *m > 59) {
                     return Err(format!("{hour}:{minute:02} is not a time of day"));
                 }
                 Ok(())
@@ -44,20 +47,22 @@ impl Schedule {
     pub fn next_after(&self, after_ms: u64) -> Option<u64> {
         match *self {
             Schedule::Daily {
-                hour,
-                minute,
-                ref tz,
-                ..
+                ref times, ref tz, ..
             } => {
                 let tz = Tz::parse(tz).ok()?;
                 let today = tz.local(after_ms);
-                // Today's slot, else tomorrow's (a local calendar day, so
-                // daylight saving days of 23 or 25 hours come out right).
+                // Today's earliest slot still to come, else tomorrow's (a
+                // local calendar day, so daylight saving days of 23 or 25
+                // hours come out right).
                 (0..3).find_map(|ahead| {
                     let days =
                         crate::tz::days_from_civil(today.year, today.month, today.day) + ahead;
                     let (y, m, d) = crate::tz::civil_from_days(days);
-                    Some(tz.utc_ms(y, m, d, hour, minute)).filter(|&slot| slot > after_ms)
+                    times
+                        .iter()
+                        .map(|&(hour, minute)| tz.utc_ms(y, m, d, hour, minute))
+                        .filter(|&slot| slot > after_ms)
+                        .min()
                 })
             }
             Schedule::Every { minutes } => {
@@ -80,18 +85,27 @@ impl Schedule {
         Some(slot)
     }
 
-    /// "Every day at 07:30 US Eastern"
+    /// "Every day at 07:30 US Eastern", "Every day at 08:00 and 20:00 US Eastern"
     pub fn describe(&self) -> String {
         match self {
-            Schedule::Daily {
-                hour,
-                minute,
-                label,
-                ..
-            } => {
-                format!("Every day at {hour:02}:{minute:02} {label}")
+            Schedule::Daily { times, label, .. } => {
+                let mut sorted = times.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                let clocks: Vec<String> = sorted
+                    .iter()
+                    .map(|(h, m)| format!("{h:02}:{m:02}"))
+                    .collect();
+                let list = match clocks.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => {
+                        format!("{} and {last}", rest.join(", "))
+                    }
+                    _ => clocks.join(""),
+                };
+                format!("Every day at {list} {label}")
             }
             Schedule::Every { minutes: 1 } => "Every minute".into(),
+            Schedule::Every { minutes: 60 } => "Every hour".into(),
             Schedule::Every { minutes } if minutes % 60 == 0 => {
                 format!("Every {} hours", minutes / 60)
             }
@@ -108,8 +122,15 @@ mod tests {
 
     fn morning() -> Schedule {
         Schedule::Daily {
-            hour: 7,
-            minute: 30,
+            times: vec![(7, 30)],
+            tz: "EST5EDT,M3.2.0,M11.1.0".into(),
+            label: "US Eastern".into(),
+        }
+    }
+
+    fn twice() -> Schedule {
+        Schedule::Daily {
+            times: vec![(20, 0), (8, 0)],
             tz: "EST5EDT,M3.2.0,M11.1.0".into(),
             label: "US Eastern".into(),
         }
@@ -158,6 +179,41 @@ mod tests {
     }
 
     #[test]
+    fn several_times_a_day_in_local_time() {
+        // 08:00 and 20:00 EDT are 12:00 and 00:00 UTC.
+        assert_eq!(
+            twice().next_after(utc(2026, 9, 26, 11, 0)),
+            Some(utc(2026, 9, 26, 12, 0))
+        );
+        assert_eq!(
+            twice().next_after(utc(2026, 9, 26, 12, 0)),
+            Some(utc(2026, 9, 27, 0, 0))
+        );
+        assert_eq!(
+            twice().latest_at(utc(2026, 9, 27, 1, 0)),
+            Some(utc(2026, 9, 27, 0, 0))
+        );
+        // After the November change, 08:00 EST is 13:00 UTC.
+        assert_eq!(
+            twice().next_after(utc(2026, 11, 2, 2, 0)),
+            Some(utc(2026, 11, 2, 13, 0))
+        );
+        assert_eq!(
+            twice().describe(),
+            "Every day at 08:00 and 20:00 US Eastern"
+        );
+        let bad = |times: Vec<(u32, u32)>| Schedule::Daily {
+            times,
+            tz: "UTC0".into(),
+            label: "UTC".into(),
+        };
+        assert!(bad(vec![]).check().is_err());
+        assert!(bad(vec![(1, 0); 5]).check().is_err());
+        assert!(bad(vec![(8, 0), (24, 0)]).check().is_err());
+        assert!(twice().check().is_ok());
+    }
+
+    #[test]
     fn periodic_and_manual() {
         let every = Schedule::Every { minutes: 15 };
         assert_eq!(
@@ -169,6 +225,7 @@ mod tests {
             Some(utc(2026, 9, 26, 10, 15))
         );
         assert_eq!(Schedule::Every { minutes: 120 }.describe(), "Every 2 hours");
+        assert_eq!(Schedule::Every { minutes: 60 }.describe(), "Every hour");
         assert_eq!(Schedule::Manual.next_after(0), None);
         assert_eq!(Schedule::Manual.latest_at(u64::MAX / 2), None);
         assert!(Schedule::Every { minutes: 0 }.check().is_err());

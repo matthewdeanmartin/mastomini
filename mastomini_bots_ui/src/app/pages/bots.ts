@@ -47,6 +47,9 @@ interface Draft {
           @if (bot.uses_llm) {
             <span class="tag">language model</span>
           }
+          @if (usesNanaCoin(bot)) {
+            <span class="tag">NanaCoin</span>
+          }
         </h2>
         <p class="muted small">{{ bot.description }}</p>
         @if (bot.uses_llm && openRouter() && !openRouter()!.key_set) {
@@ -68,7 +71,12 @@ interface Draft {
           <dt>{{ isReply(bot) ? 'Next mention check' : 'Next run' }}</dt>
           <dd>{{ bot.enabled ? when(bot.next_run_at) : 'Off' }}</dd>
           <dt>Server</dt>
-          <dd>{{ bot.instance || '—' }} · {{ bot.key_set ? 'API key saved' : 'no API key' }}</dd>
+          <dd>
+            {{ bot.instance || '—' }} · {{ bot.key_set ? 'API key saved' : 'no API key' }}
+            @if (!bot.needs_mastodon && !bot.key_set) {
+              <span class="muted small">(optional: it posts only with a key)</span>
+            }
+          </dd>
           <dt>{{ isReply(bot) ? 'Last mention check' : 'Last run' }}</dt>
           <dd>
             @if (bot.last_run; as run) {
@@ -89,9 +97,11 @@ interface Draft {
           <dd>{{ bot.runs }} ({{ bot.failures }} failed)</dd>
         </dl>
         <button class="btn" type="button" (click)="act(bot, 'run')"
-                [disabled]="!bot.key_set || bot.running || bot.queued">{{ isReply(bot) ? 'Check mentions now' : 'Run now' }}</button>
+                [disabled]="!bot.ready || bot.running || bot.queued">{{ isReply(bot) ? 'Check mentions now' : 'Run now' }}</button>
         <button class="btn btn--quiet" type="button" (click)="act(bot, 'check')"
-                [disabled]="!bot.key_set || bot.running || bot.queued">Check Mastodon key</button>
+                [disabled]="!bot.ready || bot.running || bot.queued">
+          {{ usesNanaCoin(bot) ? 'Check connections' : 'Check Mastodon key' }}
+        </button>
         @if (bot.uses_llm) {
           <button class="btn btn--quiet" type="button" (click)="act(bot, 'check-model')"
                   [disabled]="!bot.key_set || !openRouter()?.key_set || bot.running || bot.queued">
@@ -103,10 +113,10 @@ interface Draft {
         </button>
         @if (editing() === bot.id) {
           <form (ngSubmit)="save(bot)">
-            <label [for]="bot.id + '-instance'">Mastodon server</label>
+            <label [for]="bot.id + '-instance'">Mastodon server{{ bot.needs_mastodon ? '' : ' (optional)' }}</label>
             <input [id]="bot.id + '-instance'" name="instance" type="text" [(ngModel)]="draft.instance"
                    placeholder="https://mastomini.local" autocapitalize="none" />
-            <label [for]="bot.id + '-token'">API key</label>
+            <label [for]="bot.id + '-token'">Mastodon API key{{ bot.needs_mastodon ? '' : ' (optional)' }}</label>
             <input [id]="bot.id + '-token'" name="token" type="password" [(ngModel)]="draft.token"
                    autocomplete="off"
                    [placeholder]="bot.key_set ? 'Saved — type a new one to replace it' : 'Paste the key'" />
@@ -173,6 +183,11 @@ export class BotsPage implements OnInit, OnDestroy {
     } finally {
       this.loading = false;
     }
+  }
+
+  /** Has NanaCoin settings: the news and trader bots. */
+  protected usesNanaCoin(bot: Bot): boolean {
+    return bot.settings.some((field) => field.key === 'nc_key');
   }
 
   protected isReply(bot: Bot): boolean {

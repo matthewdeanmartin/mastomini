@@ -14,6 +14,8 @@ use crate::bot::Bot;
 
 pub mod good_morning;
 pub mod llm;
+pub mod nana_news;
+pub mod trader;
 
 pub fn all() -> Vec<Box<dyn Bot>> {
     vec![
@@ -28,6 +30,32 @@ pub fn all() -> Vec<Box<dyn Bot>> {
             id: "llm_post",
             name: "LLM posts",
             mode: "post",
+        }),
+        Box::new(nana_news::NanaNews),
+        // Six traders: each its own NanaCoin bot member, key and strategy.
+        Box::new(trader::Trader {
+            id: "trader_1",
+            name: "Trader 1",
+        }),
+        Box::new(trader::Trader {
+            id: "trader_2",
+            name: "Trader 2",
+        }),
+        Box::new(trader::Trader {
+            id: "trader_3",
+            name: "Trader 3",
+        }),
+        Box::new(trader::Trader {
+            id: "trader_4",
+            name: "Trader 4",
+        }),
+        Box::new(trader::Trader {
+            id: "trader_5",
+            name: "Trader 5",
+        }),
+        Box::new(trader::Trader {
+            id: "trader_6",
+            name: "Trader 6",
         }),
     ]
 }

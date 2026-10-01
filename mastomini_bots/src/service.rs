@@ -301,9 +301,11 @@ impl<S: KvStore> Service<S> {
         Ok(())
     }
 
+    /// Has what it needs to run: a Mastodon server and key, unless the bot
+    /// can do without (it then posts only when it has them).
     pub fn configured(&self, i: usize) -> bool {
         let c = &self.records[i].config;
-        !c.instance.is_empty() && !c.token.is_empty()
+        !self.infos[i].needs_mastodon || (!c.instance.is_empty() && !c.token.is_empty())
     }
 
     /// Set the admin password: first visit only, or replacing the old one.
@@ -338,7 +340,11 @@ impl<S: KvStore> Service<S> {
         if let Some(enabled) = update.enabled {
             config.enabled = enabled;
         }
-        if config.enabled && (config.instance.is_empty() || config.token.is_empty()) {
+        let needs_mastodon = self.infos[i].needs_mastodon;
+        if config.enabled
+            && (config.instance.is_empty() || config.token.is_empty())
+            && (needs_mastodon || !config.token.is_empty())
+        {
             return Err("Choose a server and an API key before turning the bot on".into());
         }
         let id = self.infos[i].id;
@@ -349,6 +355,9 @@ impl<S: KvStore> Service<S> {
             record.settings = self.settings(i).merged(changes)?;
         }
         let after = Settings::new(self.bots[i].settings(), record.settings.clone());
+        if record.config.enabled {
+            self.bots[i].ready(&after)?;
+        }
         let schedule = self.bots[i].schedule(&after);
         schedule.check()?;
         if turned_on || (record.config.enabled && schedule != before) {
@@ -595,7 +604,7 @@ pub fn execute(
     http: &mut dyn HttpClient,
     now_ms: u64,
 ) -> Outcome {
-    if matches!(job.kind, JobKind::Check | JobKind::ModelCheck) {
+    if job.kind == JobKind::ModelCheck {
         return Outcome {
             result: check(job, http),
             log: Vec::new(),
@@ -612,8 +621,17 @@ pub fn execute(
         &job.token,
         job.openrouter.as_ref(),
     );
-    run.manual = job.kind == JobKind::Manual;
+    run.manual = job.kind != JobKind::Scheduled;
     run.state = job.state.clone();
+    if job.kind == JobKind::Check {
+        // A check reads; it never moves the bot's memory.
+        let result = bots[job.index].check(&mut run);
+        return Outcome {
+            result,
+            log: run.log,
+            state: None,
+        };
+    }
     let result = bots[job.index].run(&mut run);
     Outcome {
         result,
@@ -622,8 +640,8 @@ pub fn execute(
     }
 }
 
-/// A key check never calls a model. Only the explicit model-test action
-/// makes one tiny completion.
+/// The explicit model test: the Mastodon key plus one tiny completion.
+/// (A plain key check is [`Bot::check`] and never calls a model.)
 fn check(job: &Job, http: &mut dyn HttpClient) -> Result<String, RunError> {
     let acct = Mastodon::new(http, &job.instance, &job.token).verify_credentials()?;
     let mastodon = format!("The API key works: {acct} on {}", job.instance);
@@ -876,6 +894,45 @@ mod tests {
         };
         s.configure(0, off, None).unwrap();
         assert!(s.due(Some(slot())).is_empty());
+    }
+
+    #[test]
+    fn a_bot_without_mastodon_turns_on_once_its_own_needs_are_met() {
+        let mut s = service();
+        let i = s.index("trader_1").unwrap();
+        let on = |settings: &[(&str, &str)]| ConfigUpdate {
+            enabled: Some(true),
+            settings: Some(
+                settings
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        let e = s.configure(i, on(&[]), Some(slot())).unwrap_err();
+        assert!(e.contains("NanaCoin API key"), "{e}");
+        let e = s
+            .configure(
+                i,
+                on(&[("nc_key", "nc_B"), ("band_buy", "20")]),
+                Some(slot()),
+            )
+            .unwrap_err();
+        assert!(e.contains("buy rate must be below"), "{e}");
+        s.configure(i, on(&[("nc_key", "nc_B")]), Some(slot()))
+            .unwrap();
+        assert!(
+            s.records[i].config.token.is_empty(),
+            "no Mastodon key needed"
+        );
+        assert!(s.configured(i));
+        // Mastodon-only bots still need theirs.
+        let news = s.index("nana_news").unwrap();
+        let e = s
+            .configure(news, on(&[("nc_key", "nc_R")]), Some(slot()))
+            .unwrap_err();
+        assert!(e.contains("server and an API key"), "{e}");
     }
 
     #[test]

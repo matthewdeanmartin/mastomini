@@ -253,3 +253,16 @@ textarea.template {
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
 }
+
+/* A heading over a run of a bot's settings, e.g. the news bot's column of
+   category checkboxes. */
+.setting-group {
+  margin: 1.25rem 0 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.setting-group ~ label:has(> input[type='checkbox']) {
+  margin: 0.35rem 0;
+}

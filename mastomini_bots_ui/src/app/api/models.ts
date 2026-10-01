@@ -34,7 +34,7 @@ export interface SettingField {
   key: string;
   label: string;
   help: string;
-  kind: 'text' | 'long_text' | 'number' | 'choice' | 'time' | 'zone' | 'toggle' | 'secret';
+  kind: 'text' | 'long_text' | 'number' | 'choice' | 'time' | 'times' | 'zone' | 'toggle' | 'secret';
   default: string;
   optional: boolean;
   /** long_text: the {{variables}} it may use. */
@@ -48,6 +48,10 @@ export interface SettingField {
   value?: string;
   /** secret: whether one is saved. */
   set?: boolean;
+  /** A heading drawn once above consecutive settings that share it. */
+  group?: string;
+  /** Shown only while setting `key` has one of `values`. */
+  shown_when?: { key: string; values: string[] };
 }
 
 export interface Bot {
@@ -70,6 +74,10 @@ export interface Bot {
   failures: number;
   /** Needs the device's OpenRouter key. */
   uses_llm: boolean;
+  /** False: Mastodon is optional (the bot posts only when it has a key). */
+  needs_mastodon: boolean;
+  /** Has what it needs to run (a Mastodon key, unless optional). */
+  ready: boolean;
   settings: SettingField[];
 }
 

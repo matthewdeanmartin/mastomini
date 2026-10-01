@@ -1,0 +1,65 @@
+[package]
+name = "minicloud_rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+default-run = "minicloud"
+license = "MIT"
+description = "Bounded household cloud prototype for desktop and ESP32-C6"
+
+[lib]
+name = "minicloud"
+
+[[bin]]
+name = "minicloud"
+path = "src/bin/desktop.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "minicloud-c6"
+path = "src/bin/c6.rs"
+required-features = ["esp32"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:fs2"]
+esp32 = ["dep:esp-idf-svc", "dep:embuild"]
+sqlite = ["dep:rusqlite"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+bytes = "1"
+mqttbytes = "=0.6.0"
+httparse = "1"
+percent-encoding = "2"
+fs2 = { version = "0.4", optional = true }
+rusqlite = { version = "0.37", optional = true, features = ["bundled", "limits", "hooks", "extra_check"] }
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-svc = { version = "=0.52.1", optional = true }
+
+[build-dependencies]
+embuild = { version = "0.33", optional = true, features = ["espidf"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.3"
+esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
+
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["components/display"]
+bindings_header = "components/display/include/minicloud_display.h"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8.2" }
+bindings_header = "src/mdns_bindings.h"

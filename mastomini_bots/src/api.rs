@@ -73,6 +73,8 @@ fn bot_json<S: KvStore>(svc: &Service<S>, i: usize, now: Option<u64>) -> Value {
         "description": info.description,
         "schedule": svc.schedule(i).describe(),
         "uses_llm": info.uses_llm,
+        "needs_mastodon": info.needs_mastodon,
+        "ready": svc.configured(i),
         "settings": svc.settings(i).public(),
         "grace_minutes": info.grace_minutes,
         "enabled": rec.config.enabled,
@@ -529,7 +531,7 @@ mod tests {
             .find(|s| s["key"] == "time")
             .unwrap();
         assert_eq!(time["value"], "06:45");
-        assert_eq!(time["kind"], "time");
+        assert_eq!(time["kind"], "times");
         let r = call(
             &mut s,
             authed("PUT", "/api/v1/bots/good_morning", &token)

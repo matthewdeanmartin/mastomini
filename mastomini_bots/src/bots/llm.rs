@@ -86,6 +86,7 @@ impl Bot for LlmBot {
             grace_minutes: 30,
             default_instance: "https://mastomini.local",
             uses_llm: true,
+            needs_mastodon: true,
         }
     }
 

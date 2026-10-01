@@ -11,7 +11,11 @@ import { SettingField } from '../api/models';
   selector: 'app-setting-fields',
   imports: [FormsModule],
   template: `
-    @for (f of fields(); track f.key) {
+    @for (f of fields(); track f.key; let i = $index) {
+      @if (startsGroup(fields(), i)) {
+        <h4 class="setting-group">{{ f.group }}</h4>
+      }
+      @if (isShown(f, values())) {
       @let id = prefix() + '-' + f.key;
       @switch (f.kind) {
         @case ('toggle') {
@@ -72,6 +76,7 @@ import { SettingField } from '../api/models';
       @if (f.help) {
         <p class="muted small">{{ f.help }}</p>
       }
+      }
     }
   `,
 })
@@ -80,9 +85,24 @@ export class SettingFields {
   readonly prefix = input('setting');
   readonly values = model.required<Record<string, string>>();
 
+  protected readonly startsGroup = startsGroup;
+  protected readonly isShown = isShown;
+
   protected set(key: string, value: string): void {
     this.values.set({ ...this.values(), [key]: value });
   }
+}
+
+/** Whether field `i` opens a group: it has one, and the field before it doesn't share it. */
+export function startsGroup(fields: SettingField[], i: number): boolean {
+  const group = fields[i]?.group;
+  return !!group && fields[i - 1]?.group !== group;
+}
+
+/** A field whose `shown_when` setting has another value is hidden (its value is kept). */
+export function isShown(field: SettingField, values: Record<string, string>): boolean {
+  const when = field.shown_when;
+  return !when || when.values.includes(values[when.key] ?? '');
 }
 
 /** The form's starting values: what is saved (secrets start empty). */

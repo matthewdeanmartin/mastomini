@@ -36,6 +36,7 @@ impl Bot for GoodMorning {
             grace_minutes: 120,
             default_instance: "https://mastomini.local",
             uses_llm: false,
+            needs_mastodon: true,
         }
     }
 

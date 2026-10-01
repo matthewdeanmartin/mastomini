@@ -12,7 +12,8 @@
 //! not JSON. Ask models for plain text, not structured output. JSON is only
 //! what the Mastodon and OpenRouter APIs speak.
 
-use crate::mastodon::{HttpClient, Mastodon, MastodonError, NewStatus, Posted};
+use crate::mastodon::{normalize_instance, HttpClient, Mastodon, MastodonError, NewStatus, Posted};
+use crate::nanacoin::NanaCoin;
 use crate::openrouter::{self, OpenRouter};
 use crate::schedule::Schedule;
 use crate::settings::{Setting, Settings};
@@ -35,6 +36,10 @@ pub struct BotInfo {
     pub default_instance: &'static str,
     /// Needs the device's OpenRouter key (Device page).
     pub uses_llm: bool,
+    /// Can't run without a Mastodon server and key. A bot that only
+    /// posts when it has one (a trader) says `false`, and checks
+    /// [`Run::has_mastodon`] before posting.
+    pub needs_mastodon: bool,
 }
 
 /// Why a run failed, and whether trying again later might help.
@@ -78,6 +83,18 @@ pub trait Bot: Send + Sync {
 
     /// Do one run. `Ok` carries a one-line summary for the activity log.
     fn run(&self, run: &mut Run<'_>) -> Result<String, RunError>;
+
+    /// Why the bot can't be turned on yet with these settings (a missing
+    /// key of its own), if anything.
+    fn ready(&self, _settings: &Settings) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// What **Check connections** verifies, without posting or trading.
+    fn check(&self, run: &mut Run<'_>) -> Result<String, RunError> {
+        let acct = run.mastodon().verify_credentials()?;
+        Ok(format!("The API key works: {acct} on {}", run.instance))
+    }
 }
 
 /// Everything a run may use.
@@ -133,6 +150,27 @@ impl<'a> Run<'a> {
         if self.log.len() < 20 {
             self.log.push(line.into());
         }
+    }
+
+    /// A Mastodon server and key are set: the bot may post.
+    pub fn has_mastodon(&self) -> bool {
+        !self.instance.is_empty() && !self.token.is_empty()
+    }
+
+    /// The NanaCoin server and key from the bot's own settings
+    /// ([`crate::nanacoin::nanacoin_settings`]).
+    pub fn nanacoin(&mut self) -> Result<NanaCoin<'_>, RunError> {
+        let settings: &'a Settings = self.settings;
+        let key = settings.get("nc_key");
+        if key.is_empty() {
+            return Err(RunError::permanent(
+                "Add a NanaCoin API key in the bot's settings",
+            ));
+        }
+        let server = normalize_instance(settings.get("nc_server")).map_err(RunError::permanent)?;
+        let kind = if self.manual { "manual" } else { "slot" };
+        let prefix = format!("mmb:{}:{kind}:{}", self.bot_id, self.slot_ms);
+        Ok(NanaCoin::new(&mut *self.http, &server, key, prefix))
     }
 
     pub fn mastodon(&mut self) -> Mastodon<'_> {
