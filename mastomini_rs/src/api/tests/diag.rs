@@ -136,3 +136,37 @@ fn version_is_public_and_identifies_the_build() {
         assert!(v.get(key).is_none(), "{key}");
     }
 }
+
+#[test]
+fn metrics_are_public_machine_health_as_influx() {
+    let mut s = Server::provisioned();
+    let r = s.get("/metrics", None);
+    assert_eq!(r.status, 200);
+    assert!(r
+        .headers
+        .iter()
+        .any(|(k, v)| k == "Content-Type" && v.starts_with("text/plain")));
+    let text = String::from_utf8(r.body.clone()).unwrap();
+    assert!(text.ends_with('\n'));
+    assert_eq!(text.lines().count(), 1);
+    // measurement,tags fields [timestamp]
+    let mut parts = text.trim_end().split(' ');
+    let series = parts.next().unwrap();
+    assert!(
+        series.starts_with("board,app=mastomini,target=desktop,host="),
+        "{series}"
+    );
+    let fields = parts.next().unwrap();
+    assert!(fields.starts_with("uptime_s="), "{fields}");
+    for field in fields.split(',') {
+        let (name, value) = field.split_once('=').unwrap();
+        assert!(value.parse::<f64>().is_ok(), "{name}={value}");
+    }
+    if let Some(timestamp) = parts.next() {
+        assert!(timestamp.parse::<u64>().unwrap() > 1_700_000_000_000_000_000);
+    }
+    // Machine facts only: nothing about the household.
+    for word in ["account", "status", "post", "member", "token"] {
+        assert!(!text.contains(word), "{word}");
+    }
+}

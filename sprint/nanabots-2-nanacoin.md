@@ -1,6 +1,35 @@
 # NanaBots sprint 2: NanaCoin changes (nanacoin_rs)
 
-Status: **not started. Do not start until the owner says go.**
+Status: **done** September 30, 2026 (owner said go). In `nanacoin_rs` and
+`nanacoin_ui`; not committed. `make check` passes in nanacoin_rs (fmt, clippy
+S3 + S2, tests S3 + S2, HTTP smoke); nanacoin_ui builds and its 327 tests
+pass. The bots' client was smoke-tested against a real desktop server: feed,
+read-key refusal, lotto/band/bot-bank trades, no repeats on a re-run.
+
+### What shipped, and where it differs from the contract below
+
+- **Board data survives the upgrade** (spec/FORWARD_COMPATIBLE_DATA_CHANGES.md,
+  newer than the AGENTS.md "disposable data" note). So bot members and read
+  keys are new commands at the end of `Command` (`CreateBot`, `SetReadKey`),
+  not new fields; kind, read keys and members 17–32 are kept in a new
+  checkpoint extension. A fixture written by the release firmware (`64f1c7f`)
+  is in `tests/fixtures/pre-bots/` and opens: balances, lotto tickets, a loan,
+  a quote and an API key all survive, then gain bots and read keys.
+- `GET /me/api-key` keeps `active`/`created_at` (the full key) and adds
+  `full` and `read`. `POST` answers with `scope` too.
+- `GET /users/user-N/api-key` also works (Nana: whether the bot has a key).
+- `member_joined` needs a name and role on the identity row, so a key made in
+  the same second as the member isn't a second "join".
+- No `editions` on `art_minted` (minting has no edition count).
+- Events about objects since recycled (an old sold listing, a replaced
+  lotto) are left out.
+- The bots' idempotency keys gained `m<money epoch>`: NanaCoin refuses money
+  requests whose key names an old currency epoch. Found while checking the
+  client against the server; fixed in `mastomini_bots/src/nanacoin.rs`.
+- **Certificates (item 8) are not done**: still the owner's choice.
+- UI: Nana's Members tab adds bots (no password to type), a bot badge, and
+  Make/Revoke a bot's key (shown once). Settings → API Keys shows a full and
+  a read-only key. The demo backend does the same.
 Plan: [spec/nanacoin-bots.md](../spec/nanacoin-bots.md).
 Sprint 1 ([nanabots-1-framework.md](nanabots-1-framework.md)) writes the bots
 against the contract below. Change the contract here first if the server

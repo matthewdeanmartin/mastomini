@@ -16,3 +16,6 @@ __pycache__/
 
 # mkdocs output
 /site/
+
+mastomini_bots/target-metrics/
+mastomini_rs/target-metrics/

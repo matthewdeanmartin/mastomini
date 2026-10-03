@@ -3,12 +3,25 @@
 Status: after sprints 1 and 2.
 Plan: [spec/nanacoin-bots.md](../spec/nanacoin-bots.md).
 
+## Before flashing
+
+- Sprint 2 keeps existing board data: a household saved by the release
+  firmware opens under the new firmware (fixture test). Still, a `make
+  deploy` is a one-way door (old firmware can't read a journal holding the
+  new commands), so check `/api/v1/status` after the first board.
+- Sessions don't survive a restart; keys do.
+- Decide the certificate question (sprint 2, item 8) before testing HTTPS
+  from the bots board.
+- A test household needs: provision, a bot member (`POST /users` with
+  `kind: bot`), its key (`POST /users/user-N/api-key`), a member's read key,
+  a lotto, a listing, a quote and a loan request. Script it as part of the
+  e2e work, behind a Make target.
+
 ## Goals
 
-1. **Contract check.** Run the sprint 1 client against a real desktop
-   `nanacoin_rs` (`make run`, port 8080). Fix every difference between
-   [sprint 2's contract](nanabots-2-nanacoin.md) and what shipped, on whichever
-   side is wrong.
+1. **Contract check.** Done once by hand on September 30 (feed, read key,
+   lotto, band and bot-bank trades against a desktop server; one fix: the
+   money epoch in keys). Keep it as an automated test, below.
 2. **e2e tests** in `mastomini_bots/e2e/` (pytest, like `test_good_morning.py`):
    - Start nanacoin desktop + mastomini desktop + mastomini-bots desktop.
    - Provision NanaCoin; Nana creates two bot members and a read key.

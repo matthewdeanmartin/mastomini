@@ -24,8 +24,20 @@ fi
 mkdir -p .embuild
 python - <<'PY'
 from pathlib import Path
+import hashlib
 root=Path.cwd()
 text=(root/'sdkconfig.defaults').read_text().replace('"partitions.csv"','"'+(root/'partitions.csv').as_posix()+'"')
+# esp-idf-sys watches sdkconfig defaults and binding headers, but does not
+# watch extra-component C sources. Include their content digest in this
+# watched input so Cargo reruns IDF/Ninja whenever the LCD driver changes.
+digest=hashlib.sha256()
+for path in sorted((root/'components/display').rglob('*')):
+    if path.is_file():
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b'\0')
+        digest.update(path.read_bytes())
+        digest.update(b'\0')
+text+='\n# Minicloud display component SHA-256: '+digest.hexdigest()+'\n'
 defaults=root/'.embuild/c6.defaults'
 if not defaults.exists() or defaults.read_text() != text:
     defaults.write_text(text)

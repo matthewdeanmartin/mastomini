@@ -44,6 +44,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // SAFETY: display exclusively owns documented GPIO/SPI peripherals. The
     // board application never assigns these pins to another Rust peripheral.
     sys::esp!(unsafe { sys::display_init() })?;
+    // SAFETY: immutable driver metadata; the C string has static lifetime.
+    unsafe {
+        eprintln!(
+            "Minicloud LCD driver: {} {}x{}",
+            std::ffi::CStr::from_ptr(sys::minicloud_display_driver()).to_string_lossy(),
+            sys::minicloud_display_width(),
+            sys::minicloud_display_height()
+        );
+    }
     eprintln!("Minicloud startup: SPIFFS");
     // SAFETY: static C strings, one application writer, mounted for process
     // lifetime. No SD use or automatic formatting. Use the C API because the

@@ -342,6 +342,7 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         (_, ["oauth", ..]) | (_, ["api", "v1", "apps", ..]) => return oauth::route(c, method, seg),
         (_, ["app", ..]) => Ok(crate::web::serve(c.req)),
         (_, ["ca" | "ca.pem" | "trust"]) => return trust::route(c, method, seg),
+        ("GET", ["metrics"]) => diag::metrics(c),
         (_, [] | ["setup", ..]) => return setup::route(c, method, seg),
         (_, ["about" | "terms-of-service" | "terms" | "privacy-policy"]) => {
             return about::route(c, method, seg)

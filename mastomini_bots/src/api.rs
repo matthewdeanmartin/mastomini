@@ -110,6 +110,44 @@ fn str_field<'v>(body: &'v Value, name: &str) -> &'v str {
     body[name].as_str().unwrap_or("")
 }
 
+/// `GET /metrics` (public): machine health as one InfluxDB line, for
+/// housemetrics to scrape. Field names match miniframework boards. Machine
+/// facts only; nothing about bots, accounts or posts.
+fn metrics(ctx: &Ctx, req: &Request, now: Option<u64>) -> Response {
+    let p = (ctx.platform)();
+    let mut fields = vec![format!("uptime_s={}", p.uptime_ms / 1000)];
+    for (name, value) in [
+        ("heap_internal_free", p.heap_internal_free.map(|v| v as i64)),
+        (
+            "heap_internal_min",
+            p.heap_internal_min_free.map(|v| v as i64),
+        ),
+        ("heap_psram_free", p.psram_free.map(|v| v as i64)),
+        ("rssi", p.wifi_rssi.map(i64::from)),
+    ] {
+        if let Some(v) = value {
+            fields.push(format!("{name}={v}"));
+        }
+    }
+    let host: String = req
+        .header("Host")
+        .unwrap_or("unknown")
+        .chars()
+        .filter(|c| !matches!(c, ',' | '=' | ' ' | '\\'))
+        .collect();
+    let mut line = format!(
+        "board,app=mastomini-bots,target={},host={host} {}",
+        p.target,
+        fields.join(",")
+    );
+    if let Some(ms) = now {
+        // Nanoseconds, InfluxDB's default precision.
+        line.push_str(&format!(" {ms}000000"));
+    }
+    line.push('\n');
+    Response::new(200, "text/plain; charset=utf-8", line).with_header("Cache-Control", "no-store")
+}
+
 /// Handle one request. `now` is wall-clock ms once SNTP has set it;
 /// `mono_ms` is time since boot (sessions and lockouts use it, so signing
 /// in works before the clock is set).
@@ -150,6 +188,7 @@ pub fn handle<S: KvStore>(
             }
             .public_cache(req, 0)
         }
+        ("GET", ["metrics"]) => return metrics(ctx, req, now),
         (_, ["api", "v1", ..]) => {}
         _ => return Response::error(404, "Not found"),
     }
@@ -382,6 +421,26 @@ mod tests {
             .status,
             401
         );
+    }
+
+    #[test]
+    fn metrics_are_public_influx() {
+        let mut s = server();
+        let r = call(
+            &mut s,
+            Request::new("GET", "/metrics").with_header("Host", "bots.local"),
+        );
+        assert_eq!(r.status, 200);
+        assert!(r.header("Content-Type").unwrap().starts_with("text/plain"));
+        let text = String::from_utf8(r.body.clone()).unwrap();
+        let mut parts = text.trim_end().split(' ');
+        assert!(parts
+            .next()
+            .unwrap()
+            .starts_with("board,app=mastomini-bots,target="));
+        assert!(parts.next().unwrap().starts_with("uptime_s="));
+        assert!(text.contains("host=bots.local"));
+        assert!(!text.contains("bot "), "machine facts only");
     }
 
     #[test]

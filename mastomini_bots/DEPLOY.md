@@ -427,6 +427,25 @@ After each deployment, add a dated entry here as in mastomini's runbook:
 what was deployed, from which revision, what the logs and probe showed, and
 anything surprising.
 
+### 2026-10-01: NanaCoin bots deployed (news bot and six traders)
+
+- Bots board on COM15, MAC `ac:a7:04:2c:38:b8` (the only board attached).
+  Revision `990ec92` plus uncommitted changes (`src/nanacoin.rs`: the money
+  epoch in NanaCoin idempotency keys; trader test update). `make check`
+  passed: 7 end-to-end tests, 3 live-model tests skipped. `make certs`
+  unchanged (mastomini CA `C2:8F:…:54:FD`).
+- Step 3 refused install (board already runs mastomini-bots), so
+  Procedure A: wrote only the 1,721,248-byte app at `0x10000`, hash
+  verified. Bot settings, keys and the admin password were not written.
+- Boot: 10 bots (good_morning, llm_reply, llm_post, nana_news,
+  trader_1–6), admin password set, ready at `192.168.1.162`. Probe passed by
+  IP: strict HTTPS against the household CA, this build's certificate,
+  `/ca` byte-exact, clock set.
+- The same morning nanacoin.local was re-signed with mastomini's CA
+  (nanacoin_rs `make adopt-ca`), so the bots board's household trust covers
+  it. No bot was configured, checked, turned on or run by the operator; the
+  new bots start off.
+
 ### 2026-09-26: optional LED and outbound connection diagnostics deployed
 
 - Confirmed the reattached bots board on COM15, MAC `ac:a7:04:2c:38:b8`.

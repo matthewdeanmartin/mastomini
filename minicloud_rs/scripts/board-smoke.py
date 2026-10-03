@@ -1,7 +1,7 @@
 """Run a small live C6 acceptance test, using only this run's own resources.
 
 Requires paho-mqtt 2.1.0. Run against the selected board after USB deployment.
-Uploads/removes one RGB565 fixture and leaves a 24-hour 'Minicloud is ready' note.
+Uploads/removes one RGB565 fixture and removes every notification it creates.
 Does not erase storage or dismiss messages belonging to other producers.
 """
 import argparse
@@ -92,6 +92,11 @@ def main():
     try:
         status, _, initial = http('/api/status')
         assert status == 200 and initial['service'] == 'minicloud', initial
+        # These dimensions come from the linked C driver, not the Rust preview.
+        # A cached portrait object previously passed every HTTP-only check.
+        assert initial['display'] == dict(width=320, height=172, driver='st7789-landscape-v1'), initial
+        status, _, screen = http('/api/screen')
+        assert status == 200 and (screen['width'], screen['height']) == (320, 172), screen
         assert initial['memory']['free'] > 0 and initial['memory']['largest_block'] > 0
         assert http('/api/blobs')[0] == 401
         for page in ['/', '/admin']:

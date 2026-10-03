@@ -82,6 +82,9 @@ pub struct Status {
     pub decimals: u8,
     #[serde(default)]
     pub journal_generation: u64,
+    /// Bumped by each currency reform; money requests must name it.
+    #[serde(default)]
+    pub money_epoch: u64,
     #[serde(default)]
     pub currency: String,
 }
@@ -376,11 +379,16 @@ impl<'a> NanaCoin<'a> {
         Ok(status)
     }
 
-    /// `g<generation>:mmb:<bot>:<slot>:<what>`: the same for every attempt
-    /// at this slot's `what`, different for every slot and generation.
+    /// `g<generation>:m<money epoch>:mmb:<bot>:<slot>:<what>`: the same for
+    /// every attempt at this slot's `what`, different for every slot and
+    /// generation. NanaCoin refuses a money request whose key names an
+    /// older currency epoch (its amounts would be in the old unit); the bot
+    /// reads the economy's decimals afresh every run, so it names the
+    /// current one.
     pub fn key(&mut self, what: &str) -> Result<String, NanaError> {
-        let generation = self.status()?.journal_generation;
-        let mut key = format!("g{generation}:{}:{what}", self.key_prefix);
+        let status = self.status()?;
+        let (generation, epoch) = (status.journal_generation, status.money_epoch);
+        let mut key = format!("g{generation}:m{epoch}:{}:{what}", self.key_prefix);
         key.truncate(80);
         Ok(key)
     }
@@ -522,7 +530,10 @@ mod tests {
     #[test]
     fn money_requests_carry_a_stable_generation_key() {
         let mut http = Scripted::default();
-        http.answer(200, json!({"decimals": 4, "journal_generation": 7}));
+        http.answer(
+            200,
+            json!({"decimals": 4, "journal_generation": 7, "money_epoch": 1}),
+        );
         http.answer(201, json!({"quote": {}}));
         http.answer(201, json!({}));
         let sent = http.sent.clone();
@@ -543,8 +554,8 @@ mod tests {
                 .map(|(_, v)| v.clone())
                 .unwrap()
         };
-        assert_eq!(key(1), "g7:mmb:trader_1:slot:1000:take-quote-3");
-        assert_eq!(key(2), "g7:mmb:trader_1:slot:1000:lotto-41");
+        assert_eq!(key(1), "g7:m1:mmb:trader_1:slot:1000:take-quote-3");
+        assert_eq!(key(2), "g7:m1:mmb:trader_1:slot:1000:lotto-41");
         assert_eq!(
             serde_json::from_slice::<Value>(&sent[2].body).unwrap(),
             json!({"count": 2})

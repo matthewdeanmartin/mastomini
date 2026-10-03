@@ -697,7 +697,7 @@ mod tests {
         );
         assert!(take.headers.contains(&(
             "Idempotency-Key".into(),
-            "g2:mmb:trader_1:slot:1790000000000:take-quote-1".into()
+            "g2:m0:mmb:trader_1:slot:1790000000000:take-quote-1".into()
         )));
         let post: Value = serde_json::from_slice(&sent[6].body).unwrap();
         assert_eq!(post["status"], "🤖 Bought 5 NC at 9¢ from Robin.");

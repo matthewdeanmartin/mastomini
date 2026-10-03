@@ -122,6 +122,66 @@ fn version<S: Store>(c: &Call<'_, S>) -> Reply {
     Ok(Response::ok(body).with_header("Cache-Control", "no-store"))
 }
 
+/// `GET /metrics` (public): machine health as one InfluxDB line, for
+/// housemetrics to scrape. Field names match miniframework boards
+/// (`board,app=...,host=... heap_internal_free=...`) so every board in the
+/// house graphs side by side. Only machine facts: no accounts, posts or
+/// activity, which stay behind the admin-only `/diag`.
+pub(crate) fn metrics<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let p = (c.ctx.platform)();
+    let stats = c.svc.store().stats().ok();
+    let mut fields = vec![format!("uptime_s={}", (c.ctx.uptime_ms)() / 1000)];
+    let mut field = |name: &str, value: Option<String>| {
+        if let Some(v) = value {
+            fields.push(format!("{name}={v}"));
+        }
+    };
+    field(
+        "heap_internal_free",
+        p.heap_internal_free.map(|v| v.to_string()),
+    );
+    field(
+        "heap_internal_min",
+        p.heap_internal_min_free.map(|v| v.to_string()),
+    );
+    field(
+        "heap_internal_largest",
+        p.heap_internal_largest_block.map(|v| v.to_string()),
+    );
+    field("heap_psram_free", p.psram_free.map(|v| v.to_string()));
+    field("heap_psram_min", p.psram_min_free.map(|v| v.to_string()));
+    field("rssi", p.wifi_rssi.map(|v| v.to_string()));
+    field(
+        "store_entries_used",
+        stats.map(|s| s.used_entries.to_string()),
+    );
+    field(
+        "store_entries_total",
+        stats.map(|s| s.total_entries.to_string()),
+    );
+    let host: String = c
+        .ctx
+        .host()
+        .chars()
+        .flat_map(|ch| {
+            let escape = matches!(ch, ',' | '=' | ' ').then_some('\\');
+            escape.into_iter().chain(std::iter::once(ch))
+        })
+        .collect();
+    let mut line = format!(
+        "board,app=mastomini,target={},host={host} {}",
+        p.target,
+        fields.join(",")
+    );
+    if c.clock == Clock::Synced {
+        // Nanoseconds, InfluxDB's default precision.
+        line.push_str(&format!(" {}000000", c.now));
+    }
+    line.push('\n');
+    Ok(Response::new(200, "text/plain; charset=utf-8", line)
+        .with_header("Cache-Control", "no-store"))
+}
+
 fn require_owner<S: Store>(c: &Call<'_, S>, slot: u8) -> Result<(), Response> {
     match c.svc.state.account(slot).map(|a| a.rec.role) {
         Some(Role::Owner) => Ok(()),

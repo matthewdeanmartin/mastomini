@@ -132,6 +132,13 @@ locked UI dependencies, builds Angular, gzip-bundles the UI into read-only app
 flash, builds the C6 binary with `+esp`, and runs esptool's `elf2image`.
 It does **not** flash or format anything.
 
+The build script hashes every file in `components/display` into a comment in
+the generated, watched `.embuild/c6.defaults`. This is necessary because
+esp-idf-sys does not directly watch extra-component C sources. Without this
+dependency, Cargo can rebuild Rust while silently linking an old LCD object.
+The LCD object must rebuild after C-source changes; do not infer that from
+the Rust application's compilation line alone.
+
 If only Rust changed and the current bundled UI is already built, this faster
 command uses the same private settings and target:
 
@@ -207,6 +214,10 @@ Require startup through LCD, SPIFFS, Wi-Fi/network stack, HTTP/MQTT/SNTP/mDNS,
 then `Minicloud network ready: http://<DHCP-IP>/ http://minicloud.local/`.
 There must be no panic/reboot loop, startup failure, stopped HTTP server, or
 LCD driver error. A single boot-ROM reset during the requested reset is normal.
+Require `Minicloud LCD driver: st7789-landscape-v1 320x172` and the matching
+`display` metadata in `/api/status`. These values come from the linked C
+driver. `/api/screen` dimensions alone describe Rust's layout and cannot detect
+a cached portrait driver.
 Do not treat the bootloader's old compile timestamp as the app identity; use
 the app's ELF hash and the manifest's image hashes.
 
@@ -245,8 +256,8 @@ The default URL is `http://minicloud.local`. For IP-based diagnosis only, append
 `--url http://<actual-IP>`. This script targets a **live board**: it creates
 uniquely named deployment notifications and a 110,080-byte synthetic RGB565
 strip image, then clears only those test notifications and removes that image.
-It leaves one large **Minicloud is ready!** welcome note with a 24-hour lifetime.
-It never erases storage or dismisses other producers' notices.
+It removes every notification it creates. It never erases storage or dismisses
+other producers' notices, and does not add a startup welcome card.
 
 The script resolves the selected name once, records the resulting IP and uses
 that address for subsequent probes; this avoids repeated Windows mDNS lookup
@@ -267,9 +278,17 @@ only if visual confirmation is needed; API success cannot establish LCD colors,
 legibility, backlight or actual visible pixels. BOOT should advance, not dismiss;
 do not repeatedly press the household device's button as a load test.
 
-For restart recovery, after acceptance has left the welcome note:
+Verify normal rotation by polling GET `/api/screen` without issuing advance
+commands. Repeated POST `/api/screen/next` requests deliberately flip the real
+LCD rapidly and cannot verify automatic timing. Observe several page/message
+transitions; complete intervals should be about eight seconds. Do not include
+the initial partial interval or an explicit dismissal in that comparison.
+
+For restart recovery, using an existing household notice:
 
 1. Read `/api/screen` and save the note ID and `expires_at` without modifying it.
+   If no household notice exists, create a uniquely named test notice and remove
+   it after verifying restart recovery.
 2. Run another bounded `monitor-c6.py --reset` capture and allow Wi-Fi to rejoin.
 3. Read `/api/screen` again. Require the same ID and original deadline, not a
    newly generated note or a renewed 24-hour lifetime.
@@ -373,8 +392,8 @@ Do not reuse the first-install erase procedure. Run the updated board smoke and
 observe a sentence such as "Take me to the playground for 35 NC" in all sizes,
 a long message's final page, the two economy cards, image orientation, and BOOT
 advance. The smoke now removes every notice it creates and leaves existing
-household messages alone. Earlier sections describing a retained welcome note
-record the previous acceptance run; they are not the new desired idle content.
+household messages alone. The initial deployment result's retained welcome note
+records the previous acceptance run; it is not the new desired idle content.
 
 The wider strip adds 7,104 DMA bytes compared with portrait. Measure free and
 largest internal heap blocks while serving blobs and MQTT after the update;
@@ -387,3 +406,98 @@ Prepared C6 artifact: 1,405,024 / 2,097,152 bytes, SHA-256
 The existing 8 MiB partition layout is unchanged. Rebuild after PC acceptance
 and verify the generated manifest before an app-only flash; this preparation
 record does not describe the board's currently running image.
+
+## Initial landscape deployment attempt — October 1, 2026
+
+**Superseded by the display correction below.** The initial update flashed the
+new Rust layout but linked a cached portrait LCD driver. Its C object dated
+September 30 at 19:36, before the landscape source edit at 22:15. The owner
+reported the still-vertical display and broken words. API-only acceptance
+missed the mismatch between Rust's 39/19/13 columns and C's portrait widths.
+The rapid bursts during the rotation probe were consistent with this agent's
+repeated manual advance requests; the subsequent correction uses GET-only
+timing observation.
+
+Deployed the Rust update from the root agent, without delegation.
+
+- COM17, C6FH8 revision 0.2, MAC `ac:eb:e6:1e:13:40`, and 8 MiB flash verified.
+  The live partition table was read before writing and matched the generated
+  table, including the unchanged NVS and SPIFFS offsets.
+- Fresh `make firmware` succeeded. App: **1,405,024 / 2,097,152 bytes**;
+  SHA-256 `d2dfe5d4d4d1ca4f19efbdc44a94d00abda5d8b1cdb6a6384a2e33ca46af5d12`.
+- `deploy-c6.py --update` hash-verified bootloader, partition table and app.
+  NVS and SPIFFS were retained; no erase or storage image was written.
+- All 24 original notices survived the update with identical content and
+  deadlines. Replaying the two most recent economy cards with their original
+  deadlines exercised the new coalescing behavior: eight stale economy cards
+  became two, and the old startup welcome was removed. All 15 household notices
+  retained their content and deadlines. Subsequent NanaCoin economy refreshes
+  were observed arriving normally.
+- `minicloud.local` resolved to **192.168.1.163**. LCD, SPIFFS, Wi-Fi, HTTP, MQTT,
+  SNTP and mDNS started successfully. `/api/screen` reports **320 × 172**.
+- Live board acceptance passed public posting/dismissal, three text sizes,
+  24-hour deadlines, real short expiry, MQTT QoS1, bundled Angular pages,
+  authenticated blob upload and public streamed RGB565 bytes/MIME/ETag.
+  All test notices and the 110,080-byte image fixture were removed.
+- A separate live layout probe verified the large sentence "Take me to the
+  playground for 35 NC" across both eight-second pages, with intact words and
+  the final `NC` visible in the API's rendered page text. Traversing a full
+  rotation verified the two economy cards alternate between household notices.
+  This probe was also removed.
+- Acceptance heap: initially **219,492 bytes** free / **176,128** largest block;
+  finally **211,552** free / **167,936** largest; minimum **180,504** bytes.
+- A separate reset/rejoin preserved all 17 remaining notices and their exact
+  deadlines. Blob inventory and storage limits matched the pre-update snapshot
+  (no household blobs were present; logical storage usage returned to zero).
+  After restart: **219,732** free / **200,704** largest / **216,108** minimum.
+- Boot, acceptance and restart serial captures showed no panic, reboot loop,
+  startup failure, stopped HTTP server or LCD driver error. Physical screen
+  orientation, colors and legibility still need the owner's observation.
+
+Ignored evidence: `.embuild/deploy-{build,flash,monitor,acceptance,
+acceptance-monitor,layout,restart-monitor}-2026-10-01.log`,
+`pre-update-2026-10-01.json`, `post-update-2026-10-01.json`,
+`pre-acceptance-2026-10-01.json`, `pre-restart-2026-10-01.json`,
+`pre-update-partition-2026-10-01.bin`, `deploy-layout-2026-10-01.json`,
+`deployment-result-2026-10-01.json`, and `deployment-images.json`.
+
+## LCD build-cache correction — October 1, 2026
+
+The owner observed that the initial landscape flash still displayed portrait
+text. Investigation confirmed that `display.c.obj` predated the edited C source.
+Cargo had rebuilt Rust but reused the old extra-component C library, giving
+the renderer different column widths from Rust's word wrapping.
+
+The build now includes a display-component content digest in the generated SDK
+defaults watched by esp-idf-sys. A C-source-only edit, with unchanged binding
+headers, was tested through a second real C6 build: it regenerated the defaults
+and rebuilt the LCD object. The linked driver also exports its own dimensions
+and revision to startup logs and `/api/status`; live acceptance now requires
+those values as well as the Rust preview dimensions.
+
+- Corrected app: **1,405,968 / 2,097,152 bytes**, SHA-256
+  `2ebc1970ba06f6e6e186338a4d8c90e76c08882de81cf716d6e3e91dabb71916`.
+- COM17 / expected C6 MAC / 8 MiB verified; `--update` hash-verified all three
+  firmware regions while retaining NVS and SPIFFS.
+- Reset/rejoin succeeded at `minicloud.local`, **192.168.1.163**. Serial and HTTP
+  both identify **`st7789-landscape-v1`, 320 × 172**, from the compiled C driver.
+- GET-only automatic-rotation observation recorded **8.062, 7.969, 8.109 and
+  7.875 seconds** between transitions. No advance requests were sent during
+  this correction's timing check. The previous deliberate rotation traversal
+  had sent rapid manual advances to the live household screen.
+- Rust format, Clippy and Rust/SQLite tests passed. The updated live board
+  acceptance passed, including its compiled-driver check, HTTP/MQTT, expiry,
+  text sizes and RGB565 upload/streaming/MIME/ETag. Probe notices and image were
+  removed; all 15 household notices retained their content and deadlines.
+  NanaCoin's two economy cards continued refreshing normally.
+- Acceptance heap: **209,804** free / **172,032** largest initially;
+  **203,844** free / **167,936** largest finally; minimum **175,984** bytes.
+  The real landscape driver's wider DMA strip now consumes the expected
+  additional memory. No panic or LCD driver error appeared in serial captures.
+- The owner has been asked to check the corrected physical orientation and
+  wrapping. Automated verification does not establish visible LCD pixels.
+
+Ignored evidence uses `.embuild/display-fix-*-2026-10-01.{log,json}`, plus
+`display-build-tracking-2026-10-01.log`, `display-build-tracking-pass.json`, and
+`pre-display-fix-2026-10-01.json`. This correction supersedes the initial
+landscape attempt above.

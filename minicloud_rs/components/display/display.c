@@ -85,6 +85,9 @@ esp_err_t display_line(int row,const char *text,unsigned short color) {
 // Images are big-endian RGB565, exactly 320x172. No full framebuffer.
 #include <stdio.h>
 #include "include/minicloud_display.h"
+unsigned int minicloud_display_width(void) { return 320; }
+unsigned int minicloud_display_height(void) { return 172; }
+const char *minicloud_display_driver(void) { return "st7789-landscape-v1"; }
 static void overlay(int strip,int height,const char *s,int top,int scale,unsigned short color) {
     unsigned char chars[513]; int count=0;
     while(*s && count<512) { unsigned char c=(unsigned char)*s++; if((c&0xc0)==0x80) continue; chars[count++]=c>=32 && c<=126?c:'?'; }
@@ -129,3 +132,6 @@ esp_err_t minicloud_display_frame(const char *source,const char *recipient,const
     if(image) fclose(image);
     return result;
 }
+
+// build-c6.sh hashes this C source into the watched SDK defaults, so Cargo
+// cannot silently reuse a portrait driver after the renderer changes.

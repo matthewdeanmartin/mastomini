@@ -11,6 +11,25 @@ use std::{
 };
 include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 
+fn display() -> Value {
+    #[cfg(target_os = "espidf")]
+    {
+        use esp_idf_svc::sys;
+        // SAFETY: driver getters return constants and a process-lifetime C string.
+        unsafe {
+            json!({
+                "width": sys::minicloud_display_width(),
+                "height": sys::minicloud_display_height(),
+                "driver": std::ffi::CStr::from_ptr(sys::minicloud_display_driver()).to_string_lossy()
+            })
+        }
+    }
+    #[cfg(not(target_os = "espidf"))]
+    {
+        json!({"width":320,"height":172,"driver":"desktop-preview"})
+    }
+}
+
 fn memory() -> Value {
     #[cfg(target_os = "espidf")]
     {
@@ -147,7 +166,7 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
             json!({
                 "service":"minicloud", "revision":cloud.state.revision, "plugins":cloud.plugins.iter().map(|p| p.name()).collect::<Vec<_>>(),
                 "limits":{"blob_bytes":store::MAX_BLOB,"blob_budget":BLOB_BUDGET,"queue_jobs":crate::MAX_JOBS,"mqtt_clients":4,"mqtt_payload":MAX_PAYLOAD,"screen_notices":crate::MAX_NOTICES},
-                "sqlite":cfg!(feature="sqlite"), "memory":memory(), "clock":{"unix_seconds":cloud.now(),"synchronized":cloud.now() >= 1_700_000_000}, "queued":cloud.state.jobs.len(),"storage_bytes":cloud.state.blobs.iter().map(|b| b.size).sum::<u64>()
+                "sqlite":cfg!(feature="sqlite"), "display":display(), "memory":memory(), "clock":{"unix_seconds":cloud.now(),"synchronized":cloud.now() >= 1_700_000_000}, "queued":cloud.state.jobs.len(),"storage_bytes":cloud.state.blobs.iter().map(|b| b.size).sum::<u64>()
             }),
         )),
         ("GET", ["api", "screen"]) => {
