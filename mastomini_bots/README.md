@@ -17,18 +17,151 @@ Bots in this build:
 | Bot | Does |
 |---|---|
 | `good_morning` | The time bot: "Good morning, it is Saturday, September 26, 2026" every day at 07:30 US Eastern. The time, zone, message template (`{{date}}`, `{{weekday}}`, `{{time}}`, `{{zone}}`) and visibility are all settings. |
-| `llm_reply` | Answers people who mention it, with a language model through OpenRouter. By default it checks every 5 minutes. |
+| `llm_reply` | Reply Guy: a cloud-dwelling character with opinions, goals and conversation memory. Checks mentions every 5 minutes and posts a varied daily thought at noon. |
 | `llm_post` | Writes a new post with a language model. By default once a day at 12:00. |
+| `fishtank` | A daily emoji aquarium at 10:00. Reconstructs moving fish from seed `42` and start date `2026-10-08`; no model, saved board or old-post reads. |
+| `mars_rover` | Mars Expedition: a seeded rover exploring an 8×8 Mars map. Polls commands every 5 minutes; daily mission log at noon. Its game state lives in checkpoints in the mission thread. No model calls. |
 | `nana_news` | NanaCoin news: twice a day (08:00, 20:00) posts what happened in the economy — lottos, listings, loan requests… One checkbox per category; crowded categories roll up into one line. Needs a NanaCoin read key. |
 | `trader_1` … `trader_6` | NanaCoin traders: each a bot member with its own money, key and strategy (forex band, lotto, borrower, bot bank, steady buyer, rebalancer, mean reversion). Dry run until turned off; posts its trades when it has a Mastodon key. |
 
 `llm_reply` and `llm_post` are one bot type (`src/bots/llm.rs`) listed twice
 with different defaults. Either can be switched to the other mode.
+Reply mode can also post daily; switch off **Also post daily while answering
+mentions** for replies alone. The first poll at or after **Daily post time**
+posts for that local date, even if nobody has mentioned it. Missed dates are
+not backfilled. A stored date and a date-based posting key prevent duplicates
+across polls, retries and restarts. Post mode uses the same daily key.
 
-The NanaCoin bots (`src/bots/nana_news.rs`, `src/bots/trader/`) are written
-against the API in [sprint 2's contract](../sprint/nanabots-2-nanacoin.md);
-the activity feed, bot members and read keys they need are not in NanaCoin
-yet. See [the plan](../spec/nanacoin-bots.md).
+The static [character card](src/bots/cloud_character.txt) gives Reply Guy a
+disembodied cloud existence, fond but opinionated voice, goals, and a desire
+to be a welcome regular. **Character card** is editable and is combined with
+existing **System instructions**, so saved custom prompts keep working.
+Daily briefs combine 12 topics, 8 approaches, 8 moods, 6 goals and 6 forms:
+27,648 distinct combinations before the cycle repeats. The slot's local date
+chooses the brief deterministically, including on retries. The brief is
+appended even to an existing saved post prompt.
+
+**Remember conversations** makes a separate LLM summarizer call after each
+successful reply. **Memory summarizer model** can select a different model;
+empty uses the device default. It stores plain-text notes (at most 1,000
+characters per summary, eight summaries per bot) in the bot's persistent
+state. Notes older than 14 idle days are ignored, and the summarizer is asked
+to discard old events. Public conversation notes inform future posts and
+replies; restricted notes are scoped to the thread, author and visibility
+and never enter daily posts. No mentions means no summarizer call. A failed
+summary is logged without retrying the already posted reply or losing old
+notes. Each LLM entry keeps its own memory; use reply mode with daily posts
+on the same entry for both to share a character's conversation history.
+
+### Fishtank continuity
+
+Configure **Tank seed**, **Start date (YYYY-MM-DD)**, zone and posting time,
+then connect a Mastodon account and enable `fishtank`. Keep seed, start date
+and zone fixed for continuity. Four distinct fish move one grid square per
+iteration, bounce at walls and avoid occupied squares. Every run recreates
+the initial tank and advances `local_slot_date - start_date + 1` iterations.
+Thus 36 days after the start it posts iteration 37, including after skipped
+days or a restart. Before the start date it posts nothing. A late retry uses
+the original slot date, and its seed/start/iteration key prevents duplicate
+boards. The compact aquarium fits mastomini's 140-character limit. Replay
+is bounded at 100,000 days to protect the board from a broken clock.
+
+### Mars Expedition
+
+Connect a dedicated account to **Mars Expedition** and enable it. The first
+run posts a landing message and creates a mission thread. Reply in that
+thread, mentioning the account (for example `@mars scan`). Commands take
+effect at the next poll, with three processed per poll by default. Each
+result mentions its player and continues the mission's checkpoint chain;
+the rover does not create separate game threads for each command.
+
+| Command | Result |
+|---|---|
+| `help` | Commands and the local-map legend |
+| `status` | Sol, location, battery, sample count and weather |
+| `map` | A 3×3 window around the rover; unknown squares stay hidden until scanned or visited |
+| `move north/east/south/west` | Move one square; `n/e/s/w` also work. Costs 10 battery, or 15 entering a crater. Cliffs and map edges block movement. |
+| `scan` | Reveal the surrounding 3×3 area and report the site's terrain; costs 8 battery |
+| `sample` or `sample rock` | Collect the current site's material; costs 15 battery. A site can only be sampled once. |
+| `charge` | Solar charge: +25 battery in clear weather, +5 during a dust storm. At most once per sol; battery caps at 100. |
+| `name discovery Kevin` | Name the sampled current site; 1–8 ASCII letters, digits, `_` or `-`. The checkpoint retains the latest named site. |
+
+The rover starts at D4 over basalt. Terrain elsewhere is deterministically
+generated from **Mars terrain seed**: red dust, basalt, hematite, water ice,
+craters and cliffs. These are fictional game discoveries. Each daily tick
+charges the battery (+20 clear / +5 storm) and attempts one deterministic
+autonomous move. For scheduling, a “sol” is one local calendar day, with its
+daily tick on the first poll at or after **Daily mission log time**. Missed
+days replay those ticks in order, up to 100,000 days. Commands before the
+daily tick act on the preceding sol's checkpoint.
+
+Every committed update contains a complete `MR1:` checkpoint in the thread:
+seed, epoch, last tick day, position, battery, scanned/sample bitmaps,
+processed notification cursor, mission root, last manual charge and latest
+named site. Numeric fields use base36 to fit Mastomini's 140-character limit.
+Long help or map responses continue across posts, followed by the complete
+checkpoint; state is never truncated. The bot reads its own account history,
+including replies, newest first to recover. It does not store game state or
+the command cursor on the board, and never treats another account's copied
+checkpoint as authoritative.
+
+The command cursor is committed only when the result checkpoint posts.
+Each command and daily tick has a stable posting key, so retries do not
+spend battery twice. Quiet polls make no posts. Old pre-landing mentions,
+bot accounts, direct messages, mentions outside this mission and commands
+with a different visibility are ignored; their cursor may be recorded in a
+small “comms filtered” checkpoint. Keep visibility and zone fixed during a
+mission. Changing seed or start date selects a different mission thread.
+
+Keep the mission checkpoints in Mastodon: they are the save game. A malformed
+bot-authored checkpoint, failed history read, or exhausted 400-post search
+stops the run instead of silently resetting. Commands are discovered through
+mention notifications, so include the rover's `@account` in each reply.
+
+The NanaCoin bots (`src/bots/nana_news.rs`, `src/bots/trader/`) use NanaCoin's
+activity feed, bot members and read keys. See [the plan](../spec/nanacoin-bots.md).
+
+## Set up the NanaCoin bots
+
+In the admin app, open **Bots → Set up NanaCoin bots**. Enter both server
+addresses and sign in once as Nana and once as the Mastomini owner/admin.
+Review the seven usernames, trading strategies and optional initial grants,
+then choose **Create and connect**. Setup creates six NanaCoin bot members
+and seven Mastomini bot accounts, obtains their keys and saves the connections.
+The news bot uses Nana's read-only key and needs no NanaCoin member.
+
+New bots stay off, traders start in dry-run, and initial grants default to
+off. Check the connections and review each bot before enabling it. If Nana
+already has a read key, replacement needs the explicit checkbox because it
+revokes that existing key. You can instead leave the news bot unselected.
+
+Update NanaCoin and Mastomini first: NanaCoin must report `member_capacity`
+in `/api/v1/status`; Mastomini needs the admin bot enrollment endpoints.
+Remote credentials require HTTPS (localhost HTTP is allowed for development).
+Both devices must trust the household CA.
+
+The desktop alternative uses the same worker:
+
+```sh
+make setup-nanacoin ARGS="--url https://mastomini-bots.local --ca ../mastomini_rs/certs/household-ca.crt --admin owner"
+```
+
+Passwords are entered through hidden prompts, never command-line arguments.
+`--plan path.json` selects nonsecret `nanacoin`, `mastomini` and `bots` values;
+each bot has `id`, `username`, `display_name`, `strategy` and `initial_grant`.
+Without a plan, the command restores the previous selections or suggests all
+seven bots. `--replace-news-read-key` explicitly allows replacing Nana's key.
+
+If interrupted, run setup again with the original servers and usernames.
+Generated credentials and progress are saved before and after remote writes,
+so a retry does not duplicate members or initial grants. Existing connected
+bots retain their keys and settings. Administrator passwords stay in RAM;
+progress responses and the saved plan contain no passwords or API keys.
+Protect the bot store, which contains the generated bot credentials.
+
+`make coverage` writes the Rust library unit-test report to `.local/coverage`.
+It covers the portable scheduler, API, enrollment, storage and desktop client;
+ESP-IDF firmware code requires separate board validation.
 
 ## Try it on the desktop
 
@@ -71,6 +204,9 @@ The LLM bot's settings:
 | Runs, time, zone, every | When it runs: the same four settings every scheduled bot has |
 | Does | Answers mentions, or writes new posts |
 | System instructions | Who the bot is and how it writes; sent as the system message |
+| Character card | Static personality, opinions and goals, combined with system instructions |
+| Also post daily / Daily post time | In reply mode, post once per local day at or after this time |
+| Remember conversations / Memory summarizer model | Persist recent conversation summaries using a separate LLM call |
 | Prompt for a new post / for a reply | The request |
 | Bio for prompts | Fills `{{bio}}`; empty uses the bot account's profile bio |
 | Model, Longest answer | Which model; a token cap as a cost guard |
@@ -86,6 +222,8 @@ Every text setting may use these variables, all plain text:
 | `{{date}}`, `{{weekday}}`, `{{time}}`, `{{zone}}` | Now, in the bot's time zone |
 | `{{max_characters}}` | The server's post limit (mastomini: 140; Mastodon: 500) |
 | `{{recent_posts}}` | The bot's latest posts, one per line, so it doesn't repeat itself |
+| `{{daily_prompt}}` | A deterministic combinatorial creative brief for the slot's local date |
+| `{{memory}}` | Recent summary notes appropriate to this post or thread, or no recent conversations |
 | `{{conversation}}` | The thread being answered, oldest first, one `@name: text` line per post |
 | `{{reply_to}}`, `{{reply_to_author}}` | The post being answered, and its author's `@name` |
 
@@ -190,16 +328,36 @@ make certs            # certs/: a certificate for mastomini-bots.local from
 MASTOMINI_BOTS_CERT_IPS=192.168.1.170 make reissue-cert   # also valid by IP
 ```
 
-This refuses to create a second household CA. The board serves the admin site
-with the transport measured on mastomini's board: one write per response,
-`TCP_NODELAY`, and TLS session tickets, so a returning browser reconnects in
-tens of milliseconds instead of a ~1 s handshake. It also turns Wi-Fi modem
-sleep off.
+This refuses to create a second household CA. Desktop and firmware now use
+[miniframework](../../microcontroller/miniframework)'s connection loop. On the
+S3, TLS handshakes run on core 0 and serving runs on core 1, with four HTTPS
+and three HTTP connections and a 512 KiB budget for pending responses.
+`TCP_NODELAY`, TLS session tickets and disabled Wi-Fi modem sleep are retained.
+`CONFIG_FREERTOS_HZ=1000` is required for the framework's 1 ms waits.
+
+The app still owns its admin API, authentication, `/app/`, `/ca`, `/ca.pem`
+and cache policies. The framework supplies public machine diagnostics at
+`/api/v1/sys`, `/api/v1/log` and `/metrics`. Both builds optionally support
+HTTP/2 with `--features http2`; normal firmware builds use HTTP/1.1.
 
 For the bots' own requests, the board resolves `mastomini.local` once over
 mDNS, connects by address while verifying the name, keeps connections open,
 and resumes TLS sessions. Household names are verified against the household
 CA, public servers against the standard CA bundle.
+
+The portable library forbids unsafe Rust. Firmware denies it except in the
+reviewed heap/RSSI sampler, outbound ESP-IDF client and mbedTLS household trust
+callbacks. The client's `Send` implementation is required by the shared
+`HttpClient` trait: each handle remains exclusively owned by one worker.
+The immutable household trust anchor requires `Send`/`Sync` because both
+workers share it. Timer, reset reason, mDNS, Wi-Fi and serving use safe APIs.
+NVS remains in partition `store`, namespace `bots`, with the existing string
+encoding and one-time recovery marker; framework initialization never erases it.
+
+The framework is a sibling path dependency, so `--locked` pins registry
+packages but cannot freeze its source. Keep a matching checkout alongside
+this repository; a future Git dependency pinned to a commit or private
+registry release can make framework upgrades reproducible.
 
 ## Firmware
 

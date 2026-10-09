@@ -47,14 +47,22 @@ def test_a_mastomini_board_is_always_refused():
     board.refuse_mastomini("11:22:33:44:55:66", {})
 
 
-def test_the_boot_log_summary_patterns_match_the_firmware():
-    source = (CRATE / "src" / "bin" / "esp32.rs").read_text()
-    net = (CRATE / "src" / "bin" / "esp32" / "net.rs").read_text()
-    assert 'log::info!("Ready at https://{HOSTNAME}.local/app/ (https://{ip}/app/)")' in source
-    assert "No Wi-Fi in this build" in source
-    assert 'log::warn!("Could not join {ssid} ({e}); trying again in {pause} s")' in net
+@pytest.mark.parametrize(("text", "code", "summary"), [
+    ("Ready at https://mastomini-bots.local/app/ (https://192.168.1.170/app/)", 0, "ready, address 192.168.1.170"),
+    ("No Wi-Fi in this build", 2, "no Wi-Fi credentials"),
+    ("Could not join household (timeout); trying again in 5 s", 3, "could not join household (timeout)"),
+    ("Wi-Fi connect failed (ESP_ERR_WIFI_NOT_STARTED); last disconnect reason 201; retrying", 3, "could not join (ESP_ERR_WIFI_NOT_STARTED)"),
+    ("waiting for download", 1, "download mode"),
+])
+def test_the_boot_log_summarizes_legacy_and_framework_firmware(text, code, summary, monkeypatch, capsys):
+    # Summaries are pure; these tests never import a serial driver or open USB.
+    monkeypatch.setitem(sys.modules, "serial", SimpleNamespace())
     spec = importlib.util.spec_from_file_location("boot_log", CRATE / "scripts" / "boot-log.py")
     assert spec is not None
+    boot_log = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(boot_log)
+    assert boot_log.summarize(text) == code
+    assert summary in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("dry_run", [True, False])

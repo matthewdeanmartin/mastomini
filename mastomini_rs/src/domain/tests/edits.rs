@@ -21,40 +21,42 @@ fn edit(text: &str, p: Option<NewPoll>) -> StatusEdit {
 
 #[test]
 fn power_cut_while_editing_leaves_one_consistent_version() {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        let new = NewStatus {
-            poll: Some(poll(&["a", "b"])),
-            ..post("first")
-        };
-        let id = svc.post_status(0, new, T0).unwrap();
-        svc.edit_status(0, id, edit("second", Some(poll(&["a", "b"]))), T0 + 1)
-            .unwrap();
-        svc.vote(1, id, &[0], T0 + 1).unwrap();
-        svc.store().cut_after(writes);
-        let result = svc.edit_status(0, id, edit("third", Some(poll(&["x", "y"]))), T0 + 2);
-        let completed = !svc.store().is_cut();
-        let svc = Service::open(svc.into_store().inner, config()).unwrap();
-        svc.check_invariants().unwrap();
-        let status = &svc.state.statuses[&id];
-        let since = status.rec.edited_at_ms.unwrap();
-        let history: Vec<&str> = svc.revisions(id).iter().map(|r| r.text.as_str()).collect();
-        // Never a history entry as new as the current version.
-        assert!(svc.revisions(id).iter().all(|r| r.created_ms < since));
-        match status.rec.text.as_str() {
-            "second" => assert_eq!(history, ["first"], "cut at {writes}"),
-            "third" => {
-                assert_eq!(history, ["first", "second"], "cut at {writes}");
-                assert_eq!(svc.state.polls[&id].options, ["x", "y"]);
-                assert_eq!(svc.state.polls[&id].voters(), 0);
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            let new = NewStatus {
+                poll: Some(poll(&["a", "b"])),
+                ..post("first")
+            };
+            let id = svc.post_status(0, new, T0).unwrap();
+            svc.edit_status(0, id, edit("second", Some(poll(&["a", "b"]))), T0 + 1)
+                .unwrap();
+            svc.vote(1, id, &[0], T0 + 1).unwrap();
+            svc.store().fail_after(failure, writes);
+            let result = svc.edit_status(0, id, edit("third", Some(poll(&["x", "y"]))), T0 + 2);
+            let completed = !svc.store().is_cut();
+            let svc = Service::open(svc.into_store().inner, config()).unwrap();
+            svc.check_invariants().unwrap();
+            let status = &svc.state.statuses[&id];
+            let since = status.rec.edited_at_ms.unwrap();
+            let history: Vec<&str> = svc.revisions(id).iter().map(|r| r.text.as_str()).collect();
+            // Never a history entry as new as the current version.
+            assert!(svc.revisions(id).iter().all(|r| r.created_ms < since));
+            match status.rec.text.as_str() {
+                "second" => assert_eq!(history, ["first"], "cut at {writes}"),
+                "third" => {
+                    assert_eq!(history, ["first", "second"], "cut at {writes}");
+                    assert_eq!(svc.state.polls[&id].options, ["x", "y"]);
+                    assert_eq!(svc.state.polls[&id].voters(), 0);
+                }
+                other => panic!("cut at {writes}: text {other}"),
             }
-            other => panic!("cut at {writes}: text {other}"),
+            if completed {
+                result.unwrap();
+                break;
+            }
+            assert!(writes < 20, "operation never completed");
         }
-        if completed {
-            result.unwrap();
-            break;
-        }
-        assert!(writes < 20, "operation never completed");
     }
 }
 

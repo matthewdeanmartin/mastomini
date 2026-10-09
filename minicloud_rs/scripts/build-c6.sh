@@ -9,8 +9,8 @@ if [[ ${MINICLOUD_CONFIG_LOADED:-0} != 1 && -f .env ]]; then
 fi
 : "${MINICLOUD_WIFI_SSID:?Set MINICLOUD_WIFI_SSID}"
 : "${MINICLOUD_WIFI_PASSWORD:?Set MINICLOUD_WIFI_PASSWORD}"
-: "${MINICLOUD_ADMIN_TOKEN:?Set MINICLOUD_ADMIN_TOKEN (24+ characters)}"
-if [[ ${#MINICLOUD_ADMIN_TOKEN} -lt 24 ]]; then echo 'Admin token must be 24+ characters' >&2; exit 1; fi
+: "${MINICLOUD_ADMIN_TOKEN:?Set MINICLOUD_ADMIN_TOKEN (7+ characters)}"
+if [[ ${#MINICLOUD_ADMIN_TOKEN} -lt 7 ]]; then echo 'Admin token must be 7+ characters' >&2; exit 1; fi
 if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
   export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/mcr}"
   export IDF_PATH="C:/Espressif/frameworks/esp-idf-v5.5.3"
@@ -44,7 +44,16 @@ if not defaults.exists() or defaults.read_text() != text:
 PY
 export ESP_IDF_SDKCONFIG_DEFAULTS="$(pwd)/.embuild/c6.defaults"
 if command -v cygpath >/dev/null 2>&1; then export ESP_IDF_SDKCONFIG_DEFAULTS="$(cygpath -m "$ESP_IDF_SDKCONFIG_DEFAULTS")"; fi
-cargo +esp build --locked --release --no-default-features --features esp32 --bin minicloud-c6 --target riscv32imac-esp-espidf -Z build-std=std,panic_abort
+# TRANSPORT: http (default), https or http2 (see the Makefile).
+case "${MINICLOUD_TRANSPORT:-http}" in
+  http) features=esp32 ;;
+  https|http2)
+    [[ -f certs/minicloud.crt && -f certs/minicloud.key ]] || { echo 'HTTPS needs certs/minicloud.*: run make certs' >&2; exit 1; }
+    features="esp32,$MINICLOUD_TRANSPORT" ;;
+  *) echo "MINICLOUD_TRANSPORT must be http, https or http2" >&2; exit 2 ;;
+esac
+echo "Transports: ${MINICLOUD_TRANSPORT:-http}"
+cargo +esp build --locked --release --no-default-features --features "$features" --bin minicloud-c6 --target riscv32imac-esp-espidf -Z build-std=std,panic_abort
 if [[ -f /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe ]]; then
   export MINICLOUD_ESP_PYTHON='C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe'
 fi

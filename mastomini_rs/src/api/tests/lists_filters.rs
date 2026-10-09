@@ -6,6 +6,229 @@ fn id_of(v: &serde_json::Value) -> String {
     v["id"].as_str().unwrap().to_string()
 }
 
+#[test]
+fn filter_updates_group_form_rows_and_preserve_state_on_validation_errors() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read write");
+    let r = s.post_form(
+        "/api/v2/filters",
+        Some(&alice),
+        &[
+            ("title", "Animals"),
+            ("context[]", "home"),
+            ("expires_in", "60"),
+            ("keywords_attributes[][keyword]", "cat"),
+            ("keywords_attributes[][whole_word]", "true"),
+            ("keywords_attributes[][keyword]", "dog"),
+            ("keywords_attributes[][whole_word]", "false"),
+        ],
+    );
+    assert_eq!(r.status, 200);
+    let before = r.json_body();
+    assert_eq!(before["keywords"].as_array().unwrap().len(), 2);
+    assert_eq!(before["keywords"][0]["whole_word"], true);
+    assert_eq!(before["keywords"][1]["whole_word"], false);
+    let path = format!("/api/v2/filters/{}", id_of(&before));
+    for body in [
+        json!({"title":"must not persist", "context":["unknown"]}),
+        json!({"title":"must not persist", "filter_action":"unknown"}),
+        json!({"title":"must not persist", "expires_in":"not a number"}),
+        json!({"title":"must not persist", "keywords_attributes":[{"keyword":"x".repeat(41)}]}),
+    ] {
+        assert_eq!(s.send_json("PUT", &path, Some(&alice), &body).status, 422);
+        assert_eq!(s.get(&path, Some(&alice)).json_body(), before);
+    }
+    let cat = id_of(&before["keywords"][0]);
+    let dog = id_of(&before["keywords"][1]);
+    let updated = s.send_json("PUT", &path, Some(&alice), &json!({
+        "title":"Updated", "context":["public","account"], "filter_action":"blur", "expires_in":"",
+        "keywords_attributes":[{"id":cat,"_destroy":true},{"id":dog,"keyword":"hound","whole_word":true},{"keyword":"bird"}]
+    }));
+    assert_eq!(updated.status, 200);
+    let updated = updated.json_body();
+    assert_eq!(updated["context"], json!(["public", "account"]));
+    assert_eq!(updated["filter_action"], "blur");
+    assert!(updated["expires_at"].is_null());
+    assert_eq!(updated["keywords"].as_array().unwrap().len(), 2);
+    assert_eq!(updated["keywords"][0]["id"], dog);
+    assert_eq!(updated["keywords"][0]["keyword"], "hound");
+    assert_eq!(updated["keywords"][0]["whole_word"], true);
+    let mut s = s.restart();
+    assert_eq!(s.get(&path, Some(&alice)).json_body(), updated);
+    assert_eq!(
+        s.get(&format!("/api/v2/filters/keywords/{cat}"), Some(&alice))
+            .status,
+        404
+    );
+}
+
+#[test]
+fn filter_parts_are_owner_scoped_deduplicated_and_independently_removable() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read write");
+    let bob = s.add_member(&alice, "bob");
+    let filter = s
+        .post_form(
+            "/api/v2/filters",
+            Some(&alice),
+            &[("title", "Posts"), ("context[]", "public")],
+        )
+        .json_body();
+    let path = format!("/api/v2/filters/{}", id_of(&filter));
+    let post = s
+        .post_form("/api/v1/statuses", Some(&bob), &[("status", "ordinary")])
+        .json_body();
+    let post_id = id_of(&post);
+    let kw = s
+        .post_form(
+            &format!("{path}/keywords"),
+            Some(&alice),
+            &[("keyword", "never-match")],
+        )
+        .json_body();
+    let status = s
+        .post_form(
+            &format!("{path}/statuses"),
+            Some(&alice),
+            &[("status_id", &post_id)],
+        )
+        .json_body();
+    assert_eq!(
+        s.post_form(
+            &format!("{path}/statuses"),
+            Some(&alice),
+            &[("status_id", &post_id)]
+        )
+        .json_body(),
+        status
+    );
+    let keyword_path = format!("/api/v2/filters/keywords/{}", id_of(&kw));
+    let status_path = format!("/api/v2/filters/statuses/{}", id_of(&status));
+    for child in [&keyword_path, &status_path] {
+        assert_eq!(s.get(child, Some(&bob)).status, 404);
+        assert_eq!(
+            s.send_json("DELETE", child, Some(&bob), &json!({})).status,
+            404
+        );
+        assert_eq!(s.get(child, Some(&alice)).status, 200);
+    }
+    assert_eq!(
+        s.get(&format!("{path}/keywords"), Some(&alice)).json_body(),
+        json!([kw])
+    );
+    assert_eq!(
+        s.get(&format!("{path}/statuses"), Some(&alice)).json_body(),
+        json!([status])
+    );
+    let timeline = s.get("/api/v1/timelines/public", Some(&alice)).json_body();
+    assert_eq!(
+        timeline[0]["filtered"][0]["status_matches"],
+        json!([post_id])
+    );
+    assert!(timeline[0]["filtered"][0]["keyword_matches"].is_null());
+    let private = s
+        .post_form(
+            "/api/v1/statuses",
+            Some(&bob),
+            &[("status", "followers only"), ("visibility", "private")],
+        )
+        .json_body();
+    assert_eq!(
+        s.post_form(
+            &format!("{path}/statuses"),
+            Some(&alice),
+            &[("status_id", &id_of(&private))]
+        )
+        .status,
+        404
+    );
+    assert_eq!(
+        s.send_json("DELETE", &keyword_path, Some(&alice), &json!({}))
+            .status,
+        200
+    );
+    assert_eq!(
+        s.send_json("DELETE", &status_path, Some(&alice), &json!({}))
+            .status,
+        200
+    );
+    let mut s = s.restart();
+    assert_eq!(s.get(&status_path, Some(&alice)).status, 404);
+    assert_eq!(
+        s.get(&format!("{path}/statuses"), Some(&alice)).json_body(),
+        json!([])
+    );
+    assert_eq!(
+        s.send_json("DELETE", &path, Some(&alice), &json!({}))
+            .status,
+        200
+    );
+    assert_eq!(s.get(&path, Some(&alice)).status, 404);
+}
+
+#[test]
+fn v1_filter_updates_share_v2_state_without_deleting_sibling_keywords() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read write");
+    let v1 = s
+        .post_form(
+            "/api/v1/filters",
+            Some(&alice),
+            &[("phrase", "cat"), ("context[]", "home")],
+        )
+        .json_body();
+    let path = format!("/api/v1/filters/{}", id_of(&v1));
+    let f = s.get("/api/v2/filters", Some(&alice)).json_body()[0].clone();
+    let filter_path = format!("/api/v2/filters/{}", id_of(&f));
+    assert_eq!(
+        s.post_form(
+            &format!("{filter_path}/keywords"),
+            Some(&alice),
+            &[("keyword", "dog")]
+        )
+        .status,
+        200
+    );
+    let updated = send(
+        &mut s,
+        "PUT",
+        &path,
+        &alice,
+        &[
+            ("phrase", " kitten "),
+            ("whole_word", "false"),
+            ("irreversible", "true"),
+            ("context[]", "account"),
+            ("expires_in", "-1"),
+        ],
+    );
+    assert_eq!(updated.status, 200);
+    assert_eq!(updated.json_body()["phrase"], "kitten");
+    assert_eq!(updated.json_body()["irreversible"], true);
+    assert_eq!(updated.json_body()["whole_word"], false);
+    assert_eq!(s.get(&path, Some(&alice)).json_body(), updated.json_body());
+    let changed = s.get(&filter_path, Some(&alice)).json_body();
+    assert_eq!(changed["context"], json!(["account"]));
+    assert_eq!(changed["filter_action"], "hide");
+    assert_eq!(changed["keywords"].as_array().unwrap().len(), 2);
+    assert_eq!(send(&mut s, "DELETE", &path, &alice, &[]).status, 200);
+    let remaining = s.get(&filter_path, Some(&alice)).json_body();
+    assert_eq!(remaining["keywords"].as_array().unwrap().len(), 1);
+    assert_eq!(remaining["keywords"][0]["keyword"], "dog");
+    assert_eq!(
+        send(
+            &mut s,
+            "DELETE",
+            &format!("/api/v1/filters/{}", id_of(&remaining["keywords"][0])),
+            &alice,
+            &[]
+        )
+        .status,
+        200
+    );
+    assert_eq!(s.get(&filter_path, Some(&alice)).status, 404);
+}
+
 fn me(s: &mut Server, token: &str) -> String {
     id_of(
         &s.get("/api/v1/accounts/verify_credentials", Some(token))

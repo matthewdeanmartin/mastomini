@@ -77,7 +77,7 @@ impl<S: Store> Service<S> {
             return Ok(());
         }
         let rec = BlockRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
         };
         // The block is the commit point; boot finishes the unfollows.
         self.put(Ns::Rel, &keys::block(src, dst), Kind::Block, &rec)?;
@@ -123,7 +123,10 @@ impl<S: Store> Service<S> {
             return Ok(());
         }
         let rec = MuteRec {
-            id: existing.map_or_else(|| self.next_id(now_ms), |m| m.id),
+            id: match existing {
+                Some(m) => m.id,
+                None => self.next_id(now_ms)?,
+            },
             notifications: notifications.unwrap_or(true),
             expires_ms: duration_s
                 .filter(|d| *d > 0)
@@ -294,7 +297,7 @@ impl<S: Store> Service<S> {
         let mut status_ids = new.status_ids;
         status_ids.dedup();
         let rec = ReportRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             reporter,
             target: new.target,
             status_ids,

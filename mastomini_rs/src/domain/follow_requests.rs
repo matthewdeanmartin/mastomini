@@ -18,7 +18,10 @@ impl<S: Store> Service<S> {
     ) -> Result<()> {
         let existing = self.state.follow_requests.get(&(src, dst)).copied();
         let rec = FollowRec {
-            id: existing.map_or_else(|| self.next_id(now_ms), |e| e.id),
+            id: match existing {
+                Some(e) => e.id,
+                None => self.next_id(now_ms)?,
+            },
             reblogs: reblogs.unwrap_or(existing.is_none_or(|e| e.reblogs)),
             notify: notify.unwrap_or(existing.is_some_and(|e| e.notify)),
         };

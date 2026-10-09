@@ -20,6 +20,7 @@ interface Draft {
   imports: [FormsModule, RouterLink, SettingFields],
   template: `
     <h1>Bots</h1>
+    <p><a class="btn" routerLink="/nanacoin-setup">Set up NanaCoin bots</a> — create accounts and connect their keys in one pass.</p>
     <p class="lede">
       Bots are part of this device's firmware. Give each one a Mastodon server and an API key
       (on mastomini: <em>My account → API keys</em>), then turn it on.

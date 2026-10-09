@@ -17,7 +17,9 @@ Step 3 tells you which one applies. You never choose B on your own.
 
 - Work in Git Bash, in `/c/github/mastomini/mastomini_rs`.
 - Never run `esptool erase_flash`, `write_flash` by hand, `erase_region` by
-  hand, or flash a merged image. Only the two scripts above write to the board.
+  hand, or flash a merged image. Only `scripts/deploy.py` and
+  `scripts/install.py` (also invoked by the `.sh` wrappers above) write to
+  the board.
 - Never run procedure B on a board whose partition table is already the
   mastomini layout. `install.py` refuses it; do not work around the refusal.
 - Never provision the board, create accounts, register apps or post anything to
@@ -58,6 +60,11 @@ Step 3 tells you which one applies. You never choose B on your own.
 
 ## Step 1: Record the tree and pass the desktop gates
 
+The safety audit raises storage to schema 7. Password changes commit the
+verifier and password-sealed DM key in one account record, and restart repairs
+the canonical key. Firmware that only knows schema 6 refuses the upgraded
+store; rollback needs a compatible backup. No existing record kind is reused.
+
 ```bash
 cd /c/github/mastomini/mastomini_rs
 git status --short          # record it; a dirty tree is allowed, never discard changes
@@ -67,6 +74,87 @@ make check
 
 Success: `make check` exits 0 and ends with the pytest line `N passed`.
 If it fails, stop: do not deploy code that fails its own gates.
+
+### Safety audit and failure tests
+
+The portable library forbids unsafe Rust. Firmware denies unsafe by default,
+with exceptions only for NVS, diagnostic SDK queries and the household TLS
+callback module shared with `mastomini_bots`. Timer/reset/RNG queries use safe
+APIs. NVS writes use svc's own commit; there is no extra raw commit call.
+NVS blobs are bounded to 8192 bytes before allocation and read without a second
+copy. Streamed profile bodies are bounded to 160 KiB and must match the declared
+length; short/erroring streams cannot mutate profiles.
+
+`FaultStore::fail_after` covers failure before a write, persistence followed by
+a lost acknowledgement, storage full, reads, namespace enumeration, individual
+visits and statistics. Recovery tests exercise password/key consistency,
+revocation, deletion, edits, polls, DMs and scheduler publication. Boot repair
+is itself interrupted at every read/visit/write boundary and must converge.
+These simulate Store failures; they are not real ESP-IDF allocation/flash fault
+injection or physical power-cut tests.
+
+FileStore tests cut every append byte and interrupt actual compaction file
+operations after creation, writing, sync and replacement. Complete bad-checksum
+records, including the final record, now fail closed and preserve the log.
+Incomplete tails are still recoverable, but an in-range corrupted length can
+be indistinguishable from a torn append: this format has no independently
+checksummed length or explicit acknowledgement marker. Do not claim it can
+recover all arbitrary corruption. Record decoding rejects trailing bytes and
+malformed lengths.
+
+Additional tests warm DM responses before blocking/revoking/deleting/reusing a
+slot, tamper with envelopes, exercise scheduler retries/configuration changes,
+and send profile streams through the framework adapter. The reproduced
+codec/multipart/scope bugs had failing tests before their fixes. ID allocation
+returns an error on exhaustion or unrepresentable clocks.
+
+The remaining unsafe operations have these boundaries:
+
+| Boundary | Why a safe replacement is not currently equivalent |
+|---|---|
+| NVS enumeration/release/statistics | svc 0.52.1's safe iterator ignores advance errors. Store must propagate failures, so a small fallible iterator owns and releases the SDK handle with RAII. Names are decoded within the fixed 16-byte array. Partition statistics have no safe svc API. |
+| Heap and RSSI queries | Heap capability queries have no safe equivalent in the pinned svc. Its safe Wi-Fi query needs the radio owner; the independent incident sampler (now miniframework's `mf-incidents` task) must continue without application or radio locks. Local records use Default and SDK failures yield absent RSSI. |
+| Household TLS parsing/configuration/SAN callbacks | svc exposes no equivalent callback API for this constrained household CA. mbedTLS supplies live parsed structures and bounded extension slices. The CA is owned in a Box, freed on failed parsing, then retained in OnceLock. Its private Send/Sync implementations rely on SDK verification only reading the shared CA. Callbacks add verification failures and never clear existing flags. Raw operations are explicit under unsafe_op_in_unsafe_fn. |
+
+The password transition retains one additional sealed key in each changed
+account record (at most 16 accounts); plaintext keys/passwords are not stored.
+Heap/RSSI callbacks and the SDK's actual thread/allocation behavior still need
+board validation. Desktop Miri cannot execute these ESP-IDF calls.
+
+Validation on 2026-10-05: full `make check` passed (211 Rust tests, 52 UI,
+27 client and 138 conformance; 58 skipped, 14 expected failures). The two final
+recovery assertions and schema-marker regression passed in the final 212-test
+Rust suite; the feature-minimal suite passed 205 tests. All 85 bots library
+tests passed, as did the S3 release build with HTTP/2 and three targeted Miri
+checks. The S3 compiler could not emit `AtomicU32::fetch_max` even in an
+isolated reproduction; the handshake maximum now uses an atomic CAS loop,
+which compiled on that target and prevents concurrent samples lowering it.
+
+Ten mutations in an isolated source copy were detected by their targeted
+tests: accepting codec suffixes, granting excess app scopes, reusing exhausted
+IDs, accepting short profile streams, skipping password-key boot repair,
+dropping the post-commit recovery latch, advancing schema before validation,
+ignoring a complete final-record CRC failure, removing DM block checks, and
+recognizing partial multipart delimiters. Live repository sources were not
+modified during mutation runs. No board was accessed or flashed.
+
+The next tests with the highest remaining value are SDK fault tests: force
+NVS iterator find/info/next failures and verify one release on every exit;
+force blob-length changes and allocation failures; fail CA parsing partway
+through and verify cleanup; invoke TLS SAN callbacks with existing failure
+flags and verify none are cleared. A C shim or controlled board harness is
+needed to exercise these actual SDK paths. Follow that with power interruption
+during the schema-7 password transition and compaction sync/rename on the
+intended filesystem. Those tests are planned, not claimed as completed.
+
+Targeted portable checks from `mastomini_rs`:
+
+```bash
+cargo test --locked --no-default-features --lib
+cargo +nightly miri test --target x86_64-unknown-linux-gnu --no-default-features --lib records_require_exact_consumption
+cargo +nightly miri test --target x86_64-unknown-linux-gnu --no-default-features --lib multipart_delimiters
+cargo +nightly miri test --target x86_64-unknown-linux-gnu --no-default-features --lib exhaustion_and_extreme_clocks
+```
 
 ## Step 2: Identify the serial port
 
@@ -83,19 +171,65 @@ The board is the `USB Serial Device (COMn)` whose `PNPDeviceID` starts with
 ID is the board's MAC (e.g. `AC:A7:04:2C:29:9C`).
 
 - Exactly one such port: set `PORT=COMn` in Git Bash.
-- None: stop; check the cable (charge-only cables are common).
+- None: follow the two-socket check below before concluding the board is
+  disconnected. Do not open or flash an unidentified port.
 - More than one: stop and ask which board is intended.
 
 Close any serial monitor that holds the port.
 
+### If the board has two USB-C sockets
+
+The known Mastomini board has two USB-C sockets. One exposes a WCH CH343
+USB-to-UART adapter (`VID_1A86&PID_55D3`); the other exposes the ESP32-S3's
+native USB interface (`VID_303A&PID_1001`) used by this runbook. Both can
+supply power. A CH343 port may therefore be this same board through the
+other socket; its different USB ID does **not** prove it is a different board.
+
+1. List currently attached devices without opening any serial port:
+   ```powershell
+   Get-PnpDevice -PresentOnly |
+     Where-Object { $_.InstanceId -match 'VID_303A|VID_1A86' -or $_.Class -eq 'Ports' } |
+     Select-Object Status, FriendlyName, InstanceId | Format-Table -AutoSize
+   ```
+   Use `-PresentOnly`: remembered COM ports from unplugged devices are not
+   evidence that a board is connected.
+2. If only a CH343 port appears, ask the user to unplug the intended board
+   and repeat the listing. If that port disappears, it belongs to the
+   unplugged board's adapter. This identifies the connection, not the chip
+   MAC or partition layout. Do not guess from a COM number alone.
+3. Ask the user to reconnect the same data cable to the board's **other
+   USB-C socket**, then repeat the listing. Continue only when exactly one
+   native `VID_303A&PID_1001` serial port appears and the composite device's
+   MAC identifies the intended board. If none appears, check the data cable
+   and computer USB connection; if still missing or ambiguous, stop and ask.
+4. If the status light is dark or solid after the swap, run
+   `make boot-log PORT="$PORT"` once the native port is identified. This
+   performs the documented watchdog restart without flashing. Follow Step 5's
+   summary and retry/stop rules. Record the store counts as the baseline
+   before an upgrade, then resume Step 3.
+
+Power lights, blinking, and a dark RGB light do not identify the USB interface
+or establish firmware health. Use the device listing and boot-log summary.
+Do not switch deployment tools or use CH343 as a fallback around these checks.
+
 ## Step 3: Decide the procedure (read-only)
 
 ```bash
-bash scripts/install.sh "$PORT" --dry-run
+make firmware
+source scripts/esp-python.sh
+"$esp_python" scripts/install.py --port "$PORT" --images "$images" \
+  --backup-dir ../.local/board-backups --dry-run
 ```
 
-This builds the firmware (first build: 10–20 minutes), then reads the board's
+This builds the firmware **once** (first build: 10–20 minutes), then reads the board's
 MAC and partition table **without writing anything**, and prints them.
+
+Keep this Git Bash session open for Step 4: `esp_python` and `images` identify
+the interpreter and artifacts used here. Do not change firmware inputs,
+certificates, build settings or image files between this build and flashing.
+If they change, rebuild and repeat the dry run. The `.sh` wrappers rebuild on
+every invocation; use the underlying Python scripts below to reuse this
+freshly built image through the remaining steps, with the same safety checks.
 
 | Output contains | Meaning | Next |
 |---|---|---|
@@ -109,8 +243,10 @@ Record the MAC and the printed partition table in your report.
 ## Step 4A: Upgrade (board already runs mastomini)
 
 ```bash
-bash scripts/deploy.sh "$PORT" --dry-run   # builds, prints the plan, opens no port
-bash scripts/deploy.sh "$PORT"
+"$esp_python" scripts/deploy.py --port "$PORT" \
+  --image "$images/mastomini-esp32.bin" --dry-run  # plan only; no build or port access
+"$esp_python" scripts/deploy.py --port "$PORT" \
+  --image "$images/mastomini-esp32.bin"
 ```
 
 Success: the last line is
@@ -124,7 +260,8 @@ are on the wrong board or Step 3 was misread: stop.
 Use the MAC printed in Step 3:
 
 ```bash
-bash scripts/install.sh "$PORT" --confirm-mac aa:bb:cc:dd:ee:ff
+"$esp_python" scripts/install.py --port "$PORT" --images "$images" \
+  --backup-dir ../.local/board-backups --confirm-mac aa:bb:cc:dd:ee:ff
 ```
 
 It backs up the entire 16 MiB flash to `../.local/board-backups/` (about 4
@@ -252,7 +389,7 @@ If you ever run esptool by hand (you normally should not), add
 
 | Symptom | Action |
 |---|---|
-| Ambiguous or missing serial port | Stop; ask |
+| Ambiguous serial port, or native port still missing after Step 2's socket/cable checks | Stop; ask |
 | `make check` fails | Stop; fix the code first |
 | Install refused because the board runs mastomini | Use Procedure A; never bypass |
 | Deploy refused because the layout is not mastomini | Stop; wrong board or Step 3 misread |
@@ -295,6 +432,205 @@ Report, without credentials or household content:
 Add a row after every first install. Update the address when it changes.
 
 ## Deployment comments
+
+- **2026-10-08 — Wi-Fi/lwIP buffers in PSRAM and framework incidents
+  deployed; same-day before/after benchmark.** Revision `10863d6f648c`, dirty
+  working tree. Native COM11, MAC `ac:a7:04:2c:29:9c`. On arrival the board
+  answered ping at `.161` but refused every TCP connection (HTTP and HTTPS);
+  `make boot-log` restarted it (reported `power on`, so no retained lines from
+  the unresponsive period; cause unknown). Store 7 accounts, 48 statuses,
+  repairs 0; RSSI -71 dBm at boot (weaker than October 4 downstairs).
+  Before, on `f56621459135` (HTTP2 build), defaults: HTTP/1.1 cold 3/6
+  failed, HTTP/2 cold 6/6 failed; warm 10.2/22.8/28.2 (h1) and
+  13.4/28.6/33.6 (h2) req/s at 1/3/6 clients with 0/4/15 and 0/4/14
+  connection failures. Board log: 48 `esp-aes: Failed to allocate memory`,
+  each followed by `write error :-0x0001`; internal low-water 39 bytes. The
+  log over HTTPS was itself truncated at 4 KiB (curl 56); over HTTP complete.
+  `HTTP2=1 make firmware`: 2,585,408 bytes. Procedure A: install dry run
+  refused as expected with the mastomini layout; only the app at `0x10000`
+  written, hash verified. Boot 7/48/0, probe passed, `make board-version`
+  matched `64d6df178786`. `/.well-known/incidents` answers with CORS,
+  `volatile: false`; `previous` stayed empty because the boot-log restart
+  reports `power on` (RTC retention not yet verified on hardware).
+  After, same defaults: HTTP/1.1 cold 0/6 failed (median 7465 ms), HTTP/2
+  cold 0/6 failed (median 3076 ms); warm 9.3/17.4/21.8 (h1) and
+  13.5/22.9/25.5 (h2) req/s with no connection failures, but p95 at 6
+  clients rose to 1379 ms (h1) and 3147 ms (h2). No `esp-aes` or TLS write
+  errors; internal low-water 2,855 bytes; counts 7/48, no reboot. Incidents:
+  4 `slow_request` (1.4–5.1 s), 7 `heap_low`, nothing else. Side effect found:
+  `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` forces 16 static Wi-Fi TX buffers and
+  raises static RX buffers 10 → 16 (ESP-IDF Kconfig), both in internal RAM:
+  idle internal free fell from ~33 KB to ~9 KB. The second-scale tail is
+  consistent with TX-buffer exhaustion and TCP retransmission, not verified.
+  Reports: `loadtests/baselines/transport-{before,after}-incidents-20261008.json`;
+  logs in repo-root `.local/` with the `incidents-20261008` suffix. No commits.
+- Same firmware moved downstairs (RST needed after the move again; RSSI -50).
+  Locust read sweep over HTTPS, no think time, 30 s stages: 1/2/4/6/8 users
+  41/62/61/69/72 req/s with 0 failures (p50 20/27/50/78/100 ms); 10 users
+  70 req/s, 7/2107 failed; 12 users 31% failed (fast refusals beyond the 8
+  TLS slots), sweep stopped. A single 48-user stage: 26.6 successful of 135
+  attempted req/s (80% failed), no reboot, counts unchanged, recovered.
+  Incidents: `admission_rejected` 14, `tls_failed` -80 (peer reset during
+  handshake) 31, `worker_recovered` 7 (handshake task gaps), no allocation
+  failures; internal low-water 1,607 bytes. September 26 sweep on the
+  pre-miniframework firmware: 86.6 req/s at 8 users, failures from 16.
+  Reports: repo-root `.local/locust-capacity-downstairs-20261008.json`,
+  `.local/locust-overload48-downstairs-20261008.json`.
+- Mawkingbird reported CORS failures on `/instance`, `/tags`,
+  `followed_tags`, `/announcements` and then lost its login. Cause: browsers
+  send their first HTTP/2 burst before the board's SETTINGS
+  (MAX_CONCURRENT_STREAMS 8) arrive; streams past 8 were reset with
+  REFUSED_STREAM, which the browser reports as a CORS error. A one-connection
+  burst of 16 preflights + 16 GETs got 8/32 answers. miniframework now queues
+  up to 32 bodiless streams (headers only) and still answers at most 8 at a
+  time. `HTTP2=1 make firmware`, Procedure A on COM11 (app only, hash
+  verified), boot 7/48/0, probe passed, `make board-version` matched
+  `f5880a33407f`. The same burst: 32/32 answered with CORS in three runs; no
+  incidents beyond boot and `heap_low` (low-water 4,275 bytes).
+- **2026-10-09 — Firefox/Mawkingbird follow-up.** The owner still saw
+  intermittent "CORS" failures in Firefox, long after page load. Playwright
+  Firefox, cross-origin, with a temporary read token (revoked afterwards):
+  0 failures in 96 + 160 + 40 requests, but bursts after idle took 2–41 s.
+  Single 65 KB home-timeline fetches took 1.7–12.7 s after the first byte
+  (HTTP alone 1.4–4.5 s). A/B: without `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`
+  5 of 6 such HTTPS responses were truncated (5–53 KB of 65,866) with
+  internal low-water 39 bytes, so that setting stays; transfers were as slow
+  either way. Idle ping to the board: p50 65 ms, p90 258 ms, max 432 ms (router
+  2 ms), Wi-Fi power save off, RSSI -60. Also deployed: idle timeout 60 → 300 s
+  (fewer reconnect handshake storms) and `Access-Control-Allow-Private-Network`
+  for preflights that ask (Chrome only). Each change flashed by Procedure A,
+  7/48/0 after every boot; final firmware restored with the PSRAM setting.
+- Board moved downstairs again; RST needed after the move. Firmware
+  `5492b079f1f3`, RSSI -44, idle ping p50 11 ms / p90 23 ms (router 2 ms).
+  Transport benchmark, defaults: cold 0/6 failed both modes (h2 median
+  2358 ms); warm 12.4/28.5/39.3 (h1) and 12.4/31.0/42.2 (h2) req/s, no
+  connection failures; p95 at 6 clients 121 ms (h1), 831 ms (h2). No
+  `esp-aes` failures; internal low-water 3,907 bytes. HTTPS 87 KB transfers
+  after the handshake: p50 0.31 s, p90 0.77 s, max 2.66 s (5 stalls over
+  300 ms in 15). Report: `loadtests/baselines/transport-downstairs-final-20261009.json`.
+- A Firefox HAR from Mawkingbird showed connection-level failures only (new
+  TLS connection per request, preflights failing right after the handshake,
+  board log `write error -0x50` at the same uptime). Deployed: incidents
+  `h2_goaway` / `h2_peer_goaway` / `h2_refused` / `evicted`, least recently
+  used session eviction, and `CONFIG_LWIP_TCP_SND_BUF_DEFAULT` 11520 → 32768.
+  MAC `ac:a7:04:2c:29:9c` read on COM11 before flashing (bots board
+  `…:38:b8` was attached earlier on COM15 and restarted once by mistake with
+  `make boot-log`; no writes). Procedure A, boot 7/49/0, probe passed,
+  version matched. 87 KB HTTPS transfers, 20 runs at RSSI -68: p50 0.39 s,
+  p90 0.47 s, max 0.52 s, no stalls over 300 ms (before: p90 0.77 s, max
+  2.66 s, 5 stalls in 15). HTTP/2 burst 32/32; Playwright Firefox 160/160.
+- **Root cause of the Mawkingbird "CORS failed" errors: Firefox 157 Local
+  Network Access.** Owner's `about:logging` capture: each request from
+  mawkingbird.com to the board awaits an LNA permission check (25
+  `LNAPermissionRequest granted`, seconds apart). A request activated on a
+  shared HTTP/2 connection before its grant fails with `804b005d`, and Firefox
+  closes the whole connection; the blocked request is restarted, but the
+  other streams on it are aborted (`80004004`) and reach the page as "CORS
+  request did not succeed". 17 such activations and 13 killed connections in
+  one session; board incidents showed only client-initiated closes. HTTP/1.1
+  hid it (one request per connection). Fix on the owner's Firefox:
+  `network.lna.skip-domains = mastomini.local`; afterwards requests ran
+  50–250 ms instead of 1–2 s, with no failures.
+
+- **2026-10-04 — miniframework and HTTP/2 deployed; upstairs baseline.**
+  Revision `10863d6f648c`, dirty working tree. Both USB sockets attached:
+  native COM11 (`VID_303A&PID_1001`, composite MAC `ac:a7:04:2c:29:9c`)
+  and CH343 COM13. The documented watchdog restart restored visible blinking
+  and booted the previous firmware at `192.168.1.161`, with
+  `provisioned=true accounts=7 statuses=38 repairs=0`. The quiet-start cause
+  remains unknown. `make check` passed: 191 Rust tests (also bundled-web),
+  52 UI tests, smoke, 27 client tests, 138 conformance passed / 58 skipped /
+  14 expected failures. `HTTP2=1 make firmware` built 2,539,552 / 4,194,304
+  application bytes using the existing certificates and GPIO48 setting.
+  The read-only install check confirmed `nvs` at `0x9000` (24 KiB),
+  `phy_init` at `0xf000` (4 KiB), `factory` at `0x10000` (4 MiB),
+  `store` at `0x410000` (8 MiB), `media` at `0xc10000` (3 MiB), and
+  `coredump` at `0xf10000` (64 KiB); first install was refused as expected.
+  Procedure A dry run passed, then only the app at `0x10000` was written.
+  Hash verified; `Application updated. The board restarts; household data
+  was not touched.` Boot again reported 7 accounts, 38 statuses, zero repairs
+  and ready at `.161`. Strict probes passed by IP and `mastomini.local`,
+  including this build's certificate and CA. `make board-version` matched
+  `f56621459135`, built `2026-10-05T02:02:57.196Z`.
+- Anonymous upstairs benchmark, defaults: 20 samples per endpoint, 6 cold
+  views, 30 seconds at each of 1/3/6 clients, 0.5-second think time.
+  Before: HTTP/1.1 cold median 7182 ms, 0/6 failures; throughput
+  9.8/28.1/51.3 req/s, no connection failures. Old firmware offered no h2.
+  After: HTTP/1.1 cold median 7857 ms (successful views only), 4/6 failed
+  with incomplete response bodies; throughput 11.7/28.6/47.9 req/s,
+  connection failures 0/1/7. HTTP/2 negotiated successfully: cold median
+  1487 ms (successful views only), 4/6 failed with closed connections;
+  throughput 15.1/33.5/44.0 req/s, connection failures 0/0/10.
+  Completed requests had no status errors. Both runs preserved 7/38 counts,
+  store availability and increasing uptime; no reboot. Internal heap
+  low-water was 11,459 bytes before and 23 bytes after. The owner reports
+  weak upstairs Wi-Fi and plans to move downstairs for the same benchmark;
+  the failure cause is not established. Do not treat this as a clean
+  performance acceptance. Raw reports retained in `loadtests/baselines/`;
+  boot, build, check, flash and probe logs are in the repo-root `.local/`
+  with the `http2-20261004` suffix. No commits made.
+- After moving the board for the downstairs comparison, the owner reported
+  that the working USB socket shows the red power LED on plug-in, but requires
+  pressing RST to start the diagnostic light. The other socket does not show
+  the red power LED with the same cable and charger. The board is no longer
+  attached to the build PC's USB ports. Network-only probes passed after the
+  manual reset; 7 accounts and 38 statuses remain. The new boot's public log
+  reports `power on`, store repairs 0, ready about 6.1 seconds after app
+  startup; it does not capture the failed start before RST. The socket and
+  cold-start cause remains unverified. Earlier September 26 notes already
+  record a similar power-path-dependent dark start on the previous firmware.
+  Saved logs: repo-root `.local/downstairs-startup-http2-20261004.txt` and
+  `.local/downstairs-sys-http2-20261004.json`. Boot-time RSSI was -40 dBm;
+  the subsequent system snapshot was -50 dBm (upstairs boot: -61 dBm).
+- Downstairs, same image and benchmark defaults: HTTP/1.1 throughput at
+  1/3/6 clients was 12.9/32.5/59.4 req/s, with no connection failures.
+  All 6 HTTP/1.1 cold loads failed. HTTP/2 throughput was 15.6/37.0/46.9
+  req/s, with 0/3/6 connection failures; 4/6 cold loads failed, and the
+  successful-view median was 1403 ms. `/app/` warm HTTP/1.1 p50 fell from
+  19.14 ms upstairs to 14.32 ms downstairs. No status errors on completed
+  requests, no reboot, counts still 7/38 and store available. The strict
+  IP probe passed again after the run. The mid-benchmark device log explicitly
+  shows repeated `esp-aes: Failed to allocate memory` followed by
+  `esp-tls-mbedtls: write error :-0x0001`; internal heap low-water again
+  reached 23 bytes. This establishes TLS allocation failure during the
+  downstairs cold-load phase, despite stronger signal. Socket/RST cold-start
+  behavior remains a separate unresolved observation. Raw report:
+  `loadtests/baselines/transport-downstairs-http2-20261004.json`; diagnostic
+  log: repo-root `.local/downstairs-midbench-http2-20261004.json`.
+
+- **2026-10-02 — latest firmware with public `/metrics` deployed.**
+  Procedure A on COM11, MAC `ac:a7:04:2c:29:9c`, revision `10863d6`
+  with the runbook edits uncommitted. `make check` passed: 197 Rust tests,
+  52 UI tests, smoke, 27 client tests, and 138 conformance tests (58 skipped,
+  14 strict expected failures; zero unexpected failures). The read-only
+  install check confirmed the existing `nvs`, `phy_init`, 4 MiB `factory`,
+  8 MiB `store`, 3 MiB `media`, and `coredump` layout. The 2,391,056-byte
+  application was written only at `0x10000`; its hash verified and the script
+  reported `Application updated. The board restarts; household data was not
+  touched.` Boot and IP probe preserved `provisioned=true accounts=6
+  statuses=25 repairs=0`, ready at `192.168.1.161`. Strict HTTPS and the
+  existing certificate/CA checks passed. `make board-version` matched
+  `73d476749eb6`, built `2026-10-03T03:53:28.970Z`. `/metrics` returned 200
+  over HTTPS verified against the household CA, with InfluxDB machine-health
+  fields. The hostname probe was not repeated because of the previously
+  documented Windows resolver delay; IP health is verified. Boot log:
+  `mastomini_rs/.local/boot-log-2026-10-02-metrics.txt`.
+- This run followed the old wrapper sequence and compiled the release image
+  three times (about 86, 60 and 60 seconds). Steps 3 and 4 now build once and
+  reuse the resulting image through the same Python safety checks.
+
+- **2026-10-02 — two USB-C sockets identified; no flash performed.**
+  The attached board initially appeared only as CH343 COM13
+  (`VID_1A86&PID_55D3`, adapter serial `5B5E002630`). It disappeared when
+  the owner unplugged the board, confirming that the adapter belonged to
+  that board. Moving the same connection to the other USB-C socket exposed
+  native USB COM11 and composite MAC `ac:a7:04:2c:29:9c`, matching the known
+  Mastomini board. The owner reported no blinking after the socket swap;
+  `make boot-log PORT=COM11` restarted the existing firmware and ended with
+  `SUMMARY: ready, address 192.168.1.161`. GPIO48 initialized; the store was
+  `provisioned=true accounts=6 statuses=25 repairs=0`. This confirms boot
+  after the watchdog restart; it does not establish why the light was quiet
+  before it. No firmware was flashed and no board probe was run in this check.
 
 - **2026-09-26 — dark cold-start investigation and clearer boot light.**
   The owner reported power red on but RGB dark for more than 30 seconds;

@@ -12,25 +12,27 @@ fn locked(svc: &mut Service<impl Store>, slot: u8) {
 
 #[test]
 fn power_cut_while_accepting_leaves_a_request_or_a_follow() {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        locked(&mut svc, 2);
-        svc.set_follow(1, 2, true, None, None, T0).unwrap();
-        assert!(svc.state.follow_requests.contains_key(&(1, 2)));
-        svc.store().cut_after(writes);
-        let result = svc.authorize_follow(2, 1, T0 + 1);
-        let completed = !svc.store().is_cut();
-        let svc = Service::open(svc.into_store().inner, config()).unwrap();
-        svc.check_invariants().unwrap();
-        let follows = svc.state.follows(1, 2);
-        let requested = svc.state.follow_requests.contains_key(&(1, 2));
-        assert!(follows != requested, "cut at {writes}: exactly one of them");
-        if completed {
-            result.unwrap();
-            assert!(follows);
-            break;
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            locked(&mut svc, 2);
+            svc.set_follow(1, 2, true, None, None, T0).unwrap();
+            assert!(svc.state.follow_requests.contains_key(&(1, 2)));
+            svc.store().fail_after(failure, writes);
+            let result = svc.authorize_follow(2, 1, T0 + 1);
+            let completed = !svc.store().is_cut();
+            let svc = Service::open(svc.into_store().inner, config()).unwrap();
+            svc.check_invariants().unwrap();
+            let follows = svc.state.follows(1, 2);
+            let requested = svc.state.follow_requests.contains_key(&(1, 2));
+            assert!(follows != requested, "cut at {writes}: exactly one of them");
+            if completed {
+                result.unwrap();
+                assert!(follows);
+                break;
+            }
+            assert!(writes < 10, "operation never completed");
         }
-        assert!(writes < 10, "operation never completed");
     }
 }
 

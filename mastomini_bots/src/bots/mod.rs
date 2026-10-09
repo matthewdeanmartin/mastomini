@@ -12,14 +12,19 @@
 
 use crate::bot::Bot;
 
+mod daily_prompt;
+pub mod fishtank;
 pub mod good_morning;
 pub mod llm;
+pub mod mars_rover;
 pub mod nana_news;
 pub mod trader;
 
 pub fn all() -> Vec<Box<dyn Bot>> {
     vec![
         Box::new(good_morning::GoodMorning),
+        Box::new(fishtank::FishTank),
+        Box::new(mars_rover::MarsRover),
         // One bot type, two configured instances with their own settings.
         Box::new(llm::LlmBot {
             id: "llm_reply",

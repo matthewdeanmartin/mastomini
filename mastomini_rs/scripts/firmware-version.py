@@ -51,6 +51,9 @@ INPUTS = [
     'mastomini_ui/tsconfig.json',
     'mastomini_ui/tsconfig.app.json',
     'mastomini_ui/proxy.conf.mjs',
+    # miniframework: the HTTP(S) server and board runner are compiled in.
+    '../microcontroller/miniframework/crates/miniframework/Cargo.toml',
+    '../microcontroller/miniframework/crates/miniframework/src',
 ]
 
 

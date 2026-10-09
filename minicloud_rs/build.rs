@@ -48,12 +48,14 @@ fn main() {
     )
     .unwrap();
 
-    // Angular production assets are gzip-compressed at build time, kept in flash.
+    // Angular production assets are gzip-compressed at build time, kept in
+    // flash, and served by miniframework (gzip-only: no identity copy).
     println!("cargo:rerun-if-changed=web");
-    let mut assets = String::from("pub static ASSETS: &[(&str, &[u8])] = &[\n");
+    let mut assets = String::from("pub static ASSETS: &[miniframework::web::Asset] = &[\n");
     if let Ok(files) = fs::read_dir(root.join("web")) {
-        for file in files {
-            let path = file.unwrap().path();
+        let mut paths: Vec<_> = files.map(|f| f.unwrap().path()).collect();
+        paths.sort();
+        for path in paths {
             if path.extension().is_some_and(|s| s == "gz") {
                 let filename = path
                     .file_name()
@@ -61,7 +63,28 @@ fn main() {
                     .to_str()
                     .unwrap()
                     .trim_end_matches(".gz");
-                assets += &format!("({filename:?}, include_bytes!({path:?})),\n");
+                let bytes = fs::read(&path).unwrap();
+                let mime = match filename.rsplit('.').next() {
+                    Some("js") => "text/javascript; charset=utf-8",
+                    Some("css") => "text/css; charset=utf-8",
+                    Some("html") => "text/html; charset=utf-8",
+                    Some("svg") => "image/svg+xml",
+                    Some("ico") => "image/x-icon",
+                    Some("png") => "image/png",
+                    _ => "application/octet-stream",
+                };
+                // Angular's content-hashed names (main-HUGMXD6Z.js) never change.
+                let immutable = filename
+                    .rsplit_once('-')
+                    .and_then(|(_, rest)| rest.split_once('.'))
+                    .is_some_and(|(hash, _)| {
+                        hash.len() == 8 && hash.bytes().all(|b| b.is_ascii_alphanumeric())
+                    });
+                assets += &format!(
+                    "miniframework::web::Asset {{ path: {:?}, mime: {mime:?}, raw: b\"\", gzip: include_bytes!({path:?}), etag: {:?}, immutable: {immutable} }},\n",
+                    format!("/{filename}"),
+                    format!("\"{:016x}\"", fnv1a(&bytes)),
+                );
             }
         }
     }
@@ -71,6 +94,7 @@ fn main() {
         "MINICLOUD_WIFI_SSID",
         "MINICLOUD_WIFI_PASSWORD",
         "MINICLOUD_ADMIN_TOKEN",
+        "MINICLOUD_CARD_PATH",
     ] {
         println!("cargo:rerun-if-env-changed={key}");
         if let Ok(value) = env::var(key) {
@@ -79,4 +103,11 @@ fn main() {
     }
     #[cfg(feature = "esp32")]
     embuild::espidf::sysenv::output();
+}
+
+/// FNV-1a: a stable content hash for ETags (the build needs no crypto).
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &b| {
+        (hash ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }

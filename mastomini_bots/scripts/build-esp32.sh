@@ -10,9 +10,9 @@ if [[ -z "${MASTOMINI_WIFI_SSID:-}" || -z "${MASTOMINI_WIFI_PASSWORD:-}" ]]; the
     fi
   done
   if [[ -z "$have_file" ]]; then
-    echo 'No built-in Wi-Fi: boards without a saved network open the mastomini-setup network.'
+    echo 'No Wi-Fi in .env or ../.env; build.rs also checks ../mastomini_rs/.env. Without credentials startup reports an error.'
   else
-    echo "Built-in developer Wi-Fi: $have_file (values not shown; saved networks take priority)"
+    echo "Built-in Wi-Fi: $have_file (values not shown)"
   fi
 fi
 # Git Bash support for the official Windows ESP-IDF installation (same as nanacoin).

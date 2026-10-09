@@ -27,12 +27,12 @@ impl IdGen {
         self.last
     }
 
-    /// Next id for wall-clock time `now_ms`.
-    pub fn next(&mut self, now_ms: u64) -> u64 {
-        let candidate = now_ms << 16;
-        let id = candidate.max(self.last + 1);
+    /// Next id, or None if the clock cannot be represented or IDs are exhausted.
+    pub fn next(&mut self, now_ms: u64) -> Option<u64> {
+        let candidate = now_ms.checked_mul(1 << 16)?;
+        let id = candidate.max(self.last.checked_add(1)?);
         self.last = id;
-        id
+        Some(id)
     }
 }
 
@@ -79,6 +79,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn exhaustion_and_extreme_clocks_fail_without_reusing_ids() {
+        let mut gen = IdGen::default();
+        gen.observe(u64::MAX - 1);
+        assert_eq!(gen.next(0), Some(u64::MAX));
+        assert_eq!(gen.next(0), None);
+        assert_eq!(gen.last(), u64::MAX);
+        let mut gen = IdGen::default();
+        assert_eq!(gen.next((u64::MAX >> 16) + 1), None);
+        assert_eq!(gen.next(u64::MAX), None);
+        assert_eq!(gen.next(1), Some(1 << 16));
+    }
+
+    #[test]
     fn b32_round_trips_and_preserves_order() {
         let ids = [0u64, 1, 31, 32, 1_700_000_000_000 << 16, u64::MAX];
         for pair in ids.windows(2) {
@@ -92,9 +105,9 @@ mod tests {
     #[test]
     fn ids_stay_monotonic_when_clock_steps_back() {
         let mut gen = IdGen::default();
-        let a = gen.next(10_000);
-        let b = gen.next(5_000);
-        let c = gen.next(5_000);
+        let a = gen.next(10_000).unwrap();
+        let b = gen.next(5_000).unwrap();
+        let c = gen.next(5_000).unwrap();
         assert!(a < b && b < c);
     }
 
@@ -102,6 +115,6 @@ mod tests {
     fn observed_ids_are_respected() {
         let mut gen = IdGen::default();
         gen.observe(99 << 16);
-        assert!(gen.next(1) > 99 << 16);
+        assert!(gen.next(1).unwrap() > 99 << 16);
     }
 }

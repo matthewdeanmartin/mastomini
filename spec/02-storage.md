@@ -170,6 +170,18 @@ not self-describing, so a changed struct would misread every stored record).
 Boot upgrades supported older schema markers after reconstructing and repairing
 the records; firmware that only knows an older schema refuses the store instead
 of misreading it.
+
+**Schema 7** adds record kind 32, `AccountWithKey`, under the existing account
+key. A password change atomically commits the account verifier, token epoch and
+the matching password-sealed DM key together. Boot copies that sealed key into
+the canonical `mm_key` record if needed. A failure after the account commit
+latches the service until restart, including a storage-full failure, so a later
+profile write cannot overwrite the recovery copy. Older record layouts and
+kind numbers are unchanged; older firmware refuses a schema-7 store.
+
+This closes a failure where the new password was committed but the key still
+required the old password. Reset links use the same commit protocol with a new
+key; they intentionally cannot recover earlier direct messages.
 Boot repair also drops follows that cross a block (a block commits before its
 unfollows), moderation records whose account id no longer matches the slot,
 reports naming a missing account, collections of a missing curator, and (in RAM)

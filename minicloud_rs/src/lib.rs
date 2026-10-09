@@ -1,6 +1,7 @@
 pub mod broker;
 pub mod http;
 pub mod layout;
+pub mod registry;
 #[cfg(feature = "sqlite")]
 pub mod sql;
 pub mod store;
@@ -129,6 +130,10 @@ pub struct Receipt {
 pub struct State {
     pub revision: u64,
     pub blobs: Vec<Blob>,
+    #[serde(default)]
+    pub copyrights: Vec<registry::Copyright>,
+    #[serde(default)]
+    pub banks: Vec<registry::Bank>,
     pub notices: Vec<Notice>,
     pub dismissed: VecDeque<String>,
     pub jobs: VecDeque<Job>,
@@ -160,10 +165,10 @@ impl Cloud {
         Self::open_with_clock(root, token, unix_time)
     }
     pub fn open_with_clock(root: &Path, token: String, clock: fn() -> u64) -> Result<Self> {
-        if token.len() < 16 {
+        if token.len() < 7 {
             return Err(Error::new(
                 400,
-                "admin token must have at least 16 characters",
+                "admin token must have at least 7 characters",
             ));
         }
         let store = Store::open(root)?;

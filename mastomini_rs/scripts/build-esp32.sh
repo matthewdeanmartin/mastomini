@@ -51,7 +51,9 @@ fi
 bash scripts/certs.sh
 # The firmware carries the household app (feature bundled-web).
 bash scripts/build-web.sh
-cargo +esp build --locked --release --no-default-features --features esp32 \
+# HTTP and HTTPS are always built; HTTP2=1 adds HTTP/2 (browsers choose it
+# by ALPN). Like nanacoin's.
+cargo +esp build --locked --release --no-default-features --features "esp32${HTTP2:+,http2}" \
   --bin mastomini-esp32 --target xtensa-esp32s3-espidf -Z build-std=std,panic_abort "$@"
 esp_python="${MASTOMINI_ESPTOOL_PYTHON:-python}"
 if [[ -z "${MASTOMINI_ESPTOOL_PYTHON:-}" && -f /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe ]]; then

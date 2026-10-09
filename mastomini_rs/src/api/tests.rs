@@ -4,6 +4,8 @@ use super::testkit::*;
 use crate::http::Request;
 use serde_json::json;
 
+mod accounts;
+mod misc;
 mod social;
 
 #[test]

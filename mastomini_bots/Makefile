@@ -6,7 +6,7 @@ UV ?= uv
 # mastomini's client-test environment (requests, Mastodon.py, pytest).
 CLIENTTESTS ?= ../mastomini_rs/clienttests
 
-.PHONY: help run run-web build test lint fmt fmt-check web ui-test e2e e2e-llm check scripts-check certs reissue-cert firmware deploy install boot-log probe-board
+.PHONY: help run run-web build test lint fmt fmt-check web ui-test e2e e2e-llm check scripts-check setup-nanacoin coverage certs reissue-cert firmware deploy install boot-log probe-board
 
 help:
 	@printf '%s\n' \
@@ -17,6 +17,8 @@ help:
 	  'make fmt          Format Rust source' \
 	  'make web          Build the admin app (../mastomini_bots_ui) for embedding' \
 	  'make ui-test      Admin app unit tests (vitest)' \
+	  'make setup-nanacoin ARGS="--url https://mastomini-bots.local"  Create and connect the NanaCoin bots' \
+	  'make coverage     Rust library unit-test coverage (requires cargo-llvm-cov and llvm-tools)' \
 	  'make e2e          A real mastomini + mastomini-bots: good_morning posts through the admin API' \
 	  'make e2e-llm OPENROUTER_ENV_FILE=path/.env   The LLM bots with a real model (a few cents at most)' \
 	  'make check        All of the above gates' \
@@ -67,11 +69,19 @@ e2e-llm: build
 
 check: fmt-check lint scripts-check test ui-test e2e
 
+setup-nanacoin:
+	$(UV) run --no-build scripts/setup-nanacoin.py $(ARGS)
+
+coverage:
+	$(CARGO) llvm-cov --locked --lib --html --output-dir .local/coverage
+
 # Byte-compiles the board tooling and parses the shell scripts: catches
 # syntax errors in scripts that only run against real hardware.
 scripts-check:
 	$(UV) run --project $(CLIENTTESTS) python -m py_compile scripts/board.py scripts/install.py \
-	  scripts/deploy.py scripts/boot-log.py scripts/probe-board.py scripts/firmware-image.py
+	  scripts/deploy.py scripts/boot-log.py scripts/probe-board.py scripts/firmware-image.py scripts/setup-nanacoin.py
+	$(UV) run --no-build scripts/setup-nanacoin.py --help >/dev/null
+	$(UV) run --no-build --with httpx2==2.0.0 python scripts/test_setup_nanacoin.py
 	for f in scripts/*.sh; do bash -n "$$f"; done
 
 certs:

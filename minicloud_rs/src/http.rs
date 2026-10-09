@@ -3,12 +3,8 @@ use crate::{
     Error, Result, Shared, MAX_PAYLOAD,
 };
 use serde_json::{json, Value};
-use std::{
-    fs::File,
-    io::{Cursor, Read, Write},
-    net::{TcpListener, TcpStream},
-    time::{Duration, Instant},
-};
+use sha2::Digest;
+use std::{fs::File, io::Read};
 include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 
 fn display() -> Value {
@@ -114,37 +110,14 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
     } else {
         request.method
     };
+    // The UI is miniframework's static site (`config`); a page request only
+    // reaches here when no UI was bundled.
     if method == "GET" && parts.first() != Some(&"api") && parts.first() != Some(&"blobs") {
-        let asset = if parts.is_empty() || parts == ["admin"] || parts == ["screen"] {
-            "index.html"
+        return Err(if ASSETS.is_empty() {
+            Error::new(503, "management UI not built; run make web")
         } else {
-            parts[0]
-        };
-        if parts.len() <= 1 {
-            if let Some((_, bytes)) = ASSETS.iter().find(|(name, _)| *name == asset) {
-                if !request.gzip {
-                    return Err(Error::new(406, "UI assets require Accept-Encoding: gzip"));
-                }
-                let mime = if asset.ends_with(".js") {
-                    "text/javascript"
-                } else if asset.ends_with(".css") {
-                    "text/css"
-                } else {
-                    "text/html"
-                };
-                return Ok(Reply {
-                    status: 200,
-                    mime: mime.into(),
-                    length: bytes.len() as u64,
-                    body: Body::Static(bytes),
-                    headers: vec![
-                        ("Content-Encoding".into(), "gzip".into()),
-                        ("Vary".into(), "Accept-Encoding".into()),
-                    ],
-                });
-            }
-        }
-        return Err(Error::new(503, "management UI not built; run make web"));
+            Error::new(404, "not found")
+        });
     }
     let public = method == "GET"
         && (parts == ["api", "status"]
@@ -157,10 +130,190 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
                 || matches!(parts.as_slice(), ["api", "screen", _, _, "dismiss"]));
     let mut cloud = shared.lock().unwrap();
     cloud.expire()?;
-    if !public && request.authorization.strip_prefix("Bearer ") != Some(cloud.token.as_str()) {
-        return Err(Error::new(401, "admin bearer token required"));
+    let bearer = request.authorization.strip_prefix("Bearer ").unwrap_or("");
+    let admin = bearer == cloud.token;
+    let actor = if !public && !admin {
+        Some(crate::registry::authenticate(&cloud, bearer)?)
+    } else {
+        None
+    };
+    let delegated_route = matches!(
+        parts.as_slice(),
+        ["api", "blobs", ..] | ["api", "copyrights", ..]
+    );
+    if !public && !admin && !delegated_route {
+        return Err(Error::new(403, "admin permission required"));
     }
     match (method, parts.as_slice()) {
+        ("GET", ["api", "banks"]) => Ok(Reply::json(
+            200,
+            json!({"banks":cloud.state.banks.iter().map(|b| json!({"id":b.id,"origin":b.origin,"audience":b.audience})).collect::<Vec<_>>()}),
+        )),
+        ("PUT", ["api", "banks", id]) => {
+            let bank: crate::registry::Bank =
+                serde_json::from_value(read_json(body, request.length)?)?;
+            bank.validate()?;
+            if bank.id != *id {
+                return Err(Error::new(400, "bank id differs from path"));
+            }
+            let mut next = cloud.state.clone();
+            next.banks.retain(|b| b.id != *id);
+            if next.banks.len() >= 8 {
+                return Err(Error::new(429, "8 bank limit reached"));
+            }
+            next.banks.push(bank);
+            cloud.commit(next)?;
+            Ok(Reply::json(200, json!({"trusted":true})))
+        }
+        ("DELETE", ["api", "banks", id]) => {
+            let mut next = cloud.state.clone();
+            let count = next.banks.len();
+            next.banks.retain(|b| b.id != *id);
+            if next.banks.len() == count {
+                return Err(Error::new(404, "bank not found"));
+            }
+            cloud.commit(next)?;
+            Ok(Reply::json(200, json!({"deleted":true})))
+        }
+        ("GET", ["api", "storage"]) => Ok(Reply::json(
+            200,
+            json!({"card_available":cloud.store.card.as_ref().is_some_and(|p| p.is_dir()),"onboard_bytes":cloud.state.blobs.iter().filter(|b| b.tier == store::Tier::Onboard).map(|b| b.size).sum::<u64>(),"card_bytes":cloud.state.blobs.iter().filter(|b| b.tier == store::Tier::Card).map(|b| b.size).sum::<u64>()}),
+        )),
+        ("POST", ["api", "storage", "migrate"]) => {
+            let value = read_json(body, request.length)?;
+            let bucket = value["bucket"]
+                .as_str()
+                .ok_or_else(|| Error::new(400, "bucket required"))?;
+            let key = value["key"]
+                .as_str()
+                .ok_or_else(|| Error::new(400, "key required"))?;
+            let tier: store::Tier = serde_json::from_value(value["tier"].clone())?;
+            let index = cloud
+                .state
+                .blobs
+                .iter()
+                .position(|b| b.bucket == bucket && b.key == key)
+                .ok_or_else(|| Error::new(404, "file not found"))?;
+            let blob = &cloud.state.blobs[index];
+            if tier == store::Tier::Onboard
+                && blob.tier != tier
+                && cloud
+                    .state
+                    .blobs
+                    .iter()
+                    .filter(|b| b.tier == store::Tier::Onboard)
+                    .map(|b| b.size)
+                    .sum::<u64>()
+                    + blob.size
+                    > BLOB_BUDGET
+            {
+                return Err(Error::new(413, "onboard storage limit reached"));
+            }
+            let migrated = cloud.store.migrate(blob, tier)?;
+            let mut next = cloud.state.clone();
+            next.blobs[index] = migrated.clone();
+            cloud.commit(next)?;
+            // Both recovery slots now reference the verified destination before reclaiming the source.
+            let next = cloud.state.clone();
+            cloud.commit(next)?;
+            cloud.store.collect(&cloud.state)?;
+            Ok(Reply::json(200, json!({"blob":migrated})))
+        }
+        ("GET", ["api", "copyrights"]) => {
+            let q = crate::registry::query(request.path);
+            let records: Vec<_> = cloud
+                .state
+                .copyrights
+                .iter()
+                .filter(|c| {
+                    format!(
+                        "{} {} {} {} {}",
+                        c.bucket, c.key, c.owner, c.title, c.license
+                    )
+                    .to_lowercase()
+                    .contains(&q)
+                })
+                .collect();
+            Ok(Reply::json(200, json!({"copyrights":records})))
+        }
+        ("GET", ["api", "copyrights", bucket, key @ ..]) if !key.is_empty() => {
+            let key = key.join("/");
+            let record = cloud
+                .state
+                .copyrights
+                .iter()
+                .find(|c| c.bucket == *bucket && c.key == key)
+                .ok_or_else(|| Error::new(404, "copyright not found"))?;
+            Ok(Reply::json(200, json!({"copyright":record})))
+        }
+        ("PUT" | "DELETE", ["api", "copyrights", bucket, key @ ..]) if !key.is_empty() => {
+            let key = key.join("/");
+            store::object_name(bucket, &key)?;
+            let value = read_json(body, request.length)?;
+            let existing = cloud
+                .state
+                .copyrights
+                .iter()
+                .find(|c| c.bucket == *bucket && c.key == key);
+            if let Some(user) = &actor {
+                let authorized = existing.map_or_else(
+                    || {
+                        cloud.state.blobs.iter().any(|b| {
+                            b.bucket == *bucket && b.key == key && b.uploader.as_ref() == Some(user)
+                        })
+                    },
+                    |c| &c.owner == user,
+                );
+                if !authorized {
+                    return Err(Error::new(
+                        403,
+                        "file or copyright owner permission required",
+                    ));
+                }
+            }
+            let revision = value["revision"]
+                .as_u64()
+                .ok_or_else(|| Error::new(400, "revision required"))?;
+            if revision != existing.map_or(0, |c| c.revision) {
+                return Err(Error::new(409, "copyright revision changed"));
+            }
+            if method == "DELETE" && existing.is_none() {
+                return Err(Error::new(404, "copyright not found"));
+            }
+            let mut next = cloud.state.clone();
+            next.copyrights
+                .retain(|c| c.bucket != *bucket || c.key != key);
+            if method == "PUT" {
+                let mut record: crate::registry::Copyright = serde_json::from_value(value)?;
+                if record.bucket != *bucket || record.key != key {
+                    return Err(Error::new(400, "file differs from path"));
+                }
+                record.validate(&cloud)?;
+                if next.copyrights.iter().any(|c| c.hash == record.hash) {
+                    return Err(Error::new(
+                        409,
+                        "file content is already registered under another file key",
+                    ));
+                }
+                if existing.is_none() && actor.as_ref().is_some_and(|a| *a != record.owner) {
+                    return Err(Error::new(403, "initial owner must be authenticated user"));
+                }
+                if next.copyrights.len() >= 48 {
+                    return Err(Error::new(429, "48 copyright limit reached"));
+                }
+                record.revision = cloud
+                    .state
+                    .revision
+                    .checked_add(1)
+                    .ok_or_else(|| Error::new(409, "revision exhausted"))?;
+                next.copyrights.push(record.clone());
+                cloud.commit(next)?;
+                Ok(Reply::json(200, json!({"copyright":record})))
+            } else {
+                cloud.commit(next)?;
+                Ok(Reply::json(200, json!({"deleted":true})))
+            }
+        }
         ("GET", ["api", "status"]) => Ok(Reply::json(
             200,
             json!({
@@ -205,7 +358,10 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
             cloud.dismiss(source, id)?;
             Ok(Reply::json(200, json!({"dismissed":true})))
         }
-        ("GET", ["api", "blobs"]) => Ok(Reply::json(200, json!({"blobs":cloud.state.blobs}))),
+        ("GET", ["api", "blobs"]) => Ok(Reply::json(
+            200,
+            json!({"blobs":cloud.state.blobs.iter().filter(|b| format!("{} {} {} {}",b.bucket,b.key,b.mime,b.hash).to_lowercase().contains(&crate::registry::query(request.path))).collect::<Vec<_>>()}),
+        )),
         ("GET", ["api", "jobs"]) => Ok(Reply::json(
             200,
             json!({"queued":cloud.state.jobs,"receipts":cloud.state.receipts}),
@@ -256,8 +412,36 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
                 .blobs
                 .iter()
                 .find(|b| b.bucket == *bucket && b.key == key);
-            let used =
-                cloud.state.blobs.iter().map(|b| b.size).sum::<u64>() - old.map_or(0, |b| b.size);
+            if cloud
+                .state
+                .copyrights
+                .iter()
+                .any(|c| c.bucket == *bucket && c.key == key)
+            {
+                return Err(Error::new(
+                    409,
+                    "registered files are immutable; remove copyright first",
+                ));
+            }
+            if let Some(user) = &actor {
+                let namespace = format!("{:x}", sha2::Sha256::digest(user.as_bytes()));
+                if *bucket != "art"
+                    || !key.starts_with(&format!("{}/", &namespace[..16]))
+                    || old.is_some_and(|b| b.uploader.as_ref() != Some(user))
+                {
+                    return Err(Error::new(403, "upload only to your art namespace"));
+                }
+            }
+            let used = cloud
+                .state
+                .blobs
+                .iter()
+                .filter(|b| b.tier == store::Tier::Onboard)
+                .map(|b| b.size)
+                .sum::<u64>()
+                - old
+                    .filter(|b| b.tier == store::Tier::Onboard)
+                    .map_or(0, |b| b.size);
             if request.length > store::MAX_BLOB || used + request.length > BLOB_BUDGET {
                 return Err(Error::new(413, "blob storage limit reached"));
             }
@@ -265,10 +449,11 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
                 return Err(Error::new(429, "48 object limit reached"));
             }
             cloud.store.collect(&cloud.state)?;
-            let blob =
+            let mut blob =
                 cloud
                     .store
                     .upload(bucket, &key, request.content_type, body, request.length)?;
+            blob.uploader = actor.clone();
             let mut next = cloud.state.clone();
             next.blobs.retain(|b| b.bucket != *bucket || b.key != key);
             next.blobs.push(blob.clone());
@@ -315,6 +500,21 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
         ("DELETE", ["api", "blobs", bucket, key @ ..]) if !key.is_empty() => {
             let key = key.join("/");
             store::object_name(bucket, &key)?;
+            if cloud
+                .state
+                .copyrights
+                .iter()
+                .any(|c| c.bucket == *bucket && c.key == key)
+            {
+                return Err(Error::new(409, "remove copyright before deleting file"));
+            }
+            if actor.as_ref().is_some_and(|user| {
+                !cloud.state.blobs.iter().any(|b| {
+                    b.bucket == *bucket && b.key == key && b.uploader.as_ref() == Some(user)
+                })
+            }) {
+                return Err(Error::new(403, "file owner permission required"));
+            }
             if cloud.state.notices.iter().any(|n| {
                 n.image
                     .as_ref()
@@ -344,187 +544,86 @@ pub fn handle(shared: &Shared, request: &Request<'_>, body: &mut dyn Read) -> Re
     }
 }
 
-/// One HTTP socket at a time with deadlines and a fixed header buffer. File
-/// bodies are copied in 4 KiB chunks. The same transport runs on ESP-IDF std.
-pub fn serve(listener: TcpListener, shared: Shared) -> std::io::Result<()> {
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                if let Err(error) = connection(&mut stream, &shared) {
-                    eprintln!("HTTP: {error}");
+/// Minicloud as a miniframework app. The framework owns the connection loop,
+/// keep-alive, the static UI, CORS and `/metrics`; this adapter passes API and
+/// blob requests to [`handle`] unchanged. Blob uploads stream from the socket
+/// into storage and downloads stream from storage to the socket, 4 KiB at a
+/// time, so neither needs RAM for the whole file.
+pub struct Minicloud {
+    pub shared: Shared,
+}
+
+impl miniframework::Service for Minicloud {
+    fn handle(&self, req: &miniframework::Request<'_>, reply: &mut miniframework::Reply<'_>) {
+        let request = Request {
+            method: req.method,
+            path: req.uri,
+            authorization: req.header("Authorization"),
+            content_type: req.header("Content-Type"),
+            length: req.length as u64,
+            etag: req.header("If-None-Match"),
+            gzip: miniframework::web::accepts_gzip(req.header("Accept-Encoding")),
+        };
+        let mut body = req.body_reader();
+        let answer = handle(&self.shared, &request, &mut body).unwrap_or_else(Reply::error);
+        let Reply {
+            status,
+            mime,
+            length,
+            body,
+            headers,
+        } = answer;
+        match body {
+            Body::File(file) => reply.stream(status, mime, length, Box::new(file)),
+            Body::Static(bytes) => reply.bytes(status, mime, bytes),
+            Body::Bytes(bytes) if bytes.len() > reply.limit() => {
+                let error = Reply::error(Error::new(507, "response exceeds this board's limit"));
+                if let Body::Bytes(text) = error.body {
+                    reply.bytes(507, error.mime, &text);
                 }
             }
-            Err(error) => eprintln!("HTTP accept: {error}"),
+            Body::Bytes(bytes) => reply.bytes(status, mime, &bytes),
+        }
+        // Blobs revalidate with their content hash (ETag); nothing is stored
+        // without asking. Active content cannot be sniffed into something else.
+        reply.header("Cache-Control", "no-cache");
+        reply.header("X-Content-Type-Options", "nosniff");
+        for (name, value) in headers {
+            reply.header(name, value);
         }
     }
-    Ok(())
-}
-fn connection(stream: &mut TcpStream, shared: &Shared) -> std::io::Result<()> {
-    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
-    let mut timed = Timed {
-        socket: stream,
-        started: Instant::now(),
-    };
-    let stream = &mut timed;
-    let mut buffer = [0; 4096];
-    let mut used = 0;
-    let parsed = loop {
-        let mut headers = [httparse::EMPTY_HEADER; 24];
-        let mut parsed = httparse::Request::new(&mut headers);
-        match parsed.parse(&buffer[..used]) {
-            Ok(httparse::Status::Complete(offset)) => {
-                let get = |name: &str| -> String {
-                    parsed
-                        .headers
-                        .iter()
-                        .find(|h| h.name.eq_ignore_ascii_case(name))
-                        .and_then(|h| std::str::from_utf8(h.value).ok())
-                        .unwrap_or("")
-                        .to_owned()
-                };
-                let mut invalid = None;
-                if !get("transfer-encoding").is_empty() {
-                    invalid = Some(Error::new(
-                        501,
-                        "chunked requests unsupported; supply Content-Length",
-                    ));
-                }
-                if parsed
-                    .headers
-                    .iter()
-                    .filter(|h| h.name.eq_ignore_ascii_case("content-length"))
-                    .count()
-                    > 1
-                {
-                    invalid = Some(Error::new(400, "duplicate Content-Length"));
-                }
-                let method = parsed.method.unwrap_or("").to_owned();
-                let len_text = get("content-length");
-                let length = if len_text.is_empty() {
-                    if method == "PUT" || method == "POST" && get("content-type").contains("json") {
-                        invalid = Some(Error::new(411, "Content-Length required"));
-                    }
-                    0
-                } else {
-                    match len_text.parse::<u64>() {
-                        Ok(n) => n,
-                        Err(_) => {
-                            invalid = Some(Error::new(400, "invalid Content-Length"));
-                            0
-                        }
-                    }
-                };
-                break (
-                    offset,
-                    method,
-                    parsed.path.unwrap_or("/").to_owned(),
-                    get("authorization"),
-                    get("content-type"),
-                    length,
-                    get("if-none-match"),
-                    get("accept-encoding")
-                        .split(',')
-                        .any(|s| s.trim() == "gzip"),
-                    invalid,
-                );
-            }
-            Ok(httparse::Status::Partial) if used < buffer.len() => {}
-            _ => {
-                return send(
-                    stream,
-                    Reply::error(Error::new(400, "invalid/oversized HTTP headers")),
-                    false,
-                )
-            }
-        }
-        let n = stream.read(&mut buffer[used..])?;
-        if n == 0 {
-            return Ok(());
-        }
-        used += n;
-    };
-    let (offset, method, path, authorization, content_type, length, etag, gzip, invalid) = parsed;
-    let reply = if let Some(error) = invalid {
-        Reply::error(error)
-    } else {
-        let mut body = Cursor::new(&buffer[offset..used])
-            .chain(&mut *stream)
-            .take(length);
-        let reply = handle(
-            shared,
-            &Request {
-                method: &method,
-                path: &path,
-                authorization: &authorization,
-                content_type: &content_type,
-                length,
-                etag: &etag,
-                gzip,
-            },
-            &mut body,
-        )
-        .unwrap_or_else(Reply::error);
-        // Drain bounded rejected bodies before close, otherwise Windows sends
-        // a TCP reset that can discard the JSON error response.
-        if length <= store::MAX_BLOB + 4096 {
-            let mut discard = [0; 1024];
-            while body.read(&mut discard).unwrap_or(0) != 0 {}
-        }
-        reply
-    };
-    send(stream, reply, method == "HEAD")
-}
-struct Timed<'a> {
-    socket: &'a mut TcpStream,
-    started: Instant,
-}
-impl Timed<'_> {
-    fn remaining(&self) -> std::io::Result<Duration> {
-        Duration::from_secs(20)
-            .checked_sub(self.started.elapsed())
-            .filter(|d| !d.is_zero())
-            .ok_or_else(|| std::io::ErrorKind::TimedOut.into())
+
+    fn streamed_body(&self, method: &str, path: &str) -> Option<usize> {
+        // A little over the blob cap, so `handle` answers an oversized upload
+        // with its own 413 while the framework drains the rest of the body
+        // (refusing at the head would leave the client mid-send, and closing
+        // on unread data resets the connection before it reads the error).
+        (method == "PUT" && path.starts_with("/api/blobs/"))
+            .then_some(store::MAX_BLOB as usize + 64 * 1024)
+    }
+
+    fn origin_allowed(&self, origin: &str) -> bool {
+        self.shared
+            .lock()
+            .is_ok_and(|cloud| cloud.state.banks.iter().any(|b| b.origin == origin))
     }
 }
-impl Read for Timed<'_> {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        self.socket
-            .set_read_timeout(Some(self.remaining()?.min(Duration::from_secs(10))))?;
-        self.socket.read(bytes)
-    }
-}
-impl Write for Timed<'_> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.socket
-            .set_write_timeout(Some(self.remaining()?.min(Duration::from_secs(10))))?;
-        self.socket.write(bytes)
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.socket.flush()
-    }
-}
-fn send(stream: &mut impl Write, reply: Reply, head: bool) -> std::io::Result<()> {
-    write!(stream,"HTTP/1.1 {} Response\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\n",reply.status,reply.mime,reply.length)?;
-    for (key, value) in reply.headers {
-        write!(stream, "{key}: {value}\r\n")?;
-    }
-    stream.write_all(b"\r\n")?;
-    if !head {
-        match reply.body {
-            Body::Bytes(bytes) => stream.write_all(&bytes)?,
-            Body::Static(bytes) => stream.write_all(bytes)?,
-            Body::File(mut file) => {
-                let mut bytes = [0; 4096];
-                loop {
-                    let n = file.read(&mut bytes)?;
-                    if n == 0 {
-                        break;
-                    }
-                    stream.write_all(&bytes[..n])?;
-                }
-            }
-        }
-    }
-    stream.flush()
+
+/// Site settings shared by the desktop and the C6. `host` is
+/// `minicloud.local` on the board, the listening address on a PC.
+pub fn config(host: &str, target: &'static str) -> miniframework::Config {
+    let mut config = miniframework::Config::new("minicloud", host);
+    config.version = env!("CARGO_PKG_VERSION");
+    // JSON bodies (plugin commands, copyright records) are capped at 2 KiB;
+    // blob uploads are streamed, not buffered.
+    config.body_limit = 4096;
+    config.assets = ASSETS;
+    config.spa = miniframework::web::Spa::Routes(&["", "/admin", "/screen"]);
+    config.app_paths = &["/blobs"];
+    config.cors_methods = "GET, PUT, DELETE, OPTIONS";
+    config.cors_headers = "Authorization, Content-Type";
+    config.influx_tags = vec![("target", target.into())];
+    // CORS is for registered banks only (`Minicloud::origin_allowed`).
+    config.origins.clear();
+    config
 }

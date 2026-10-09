@@ -78,7 +78,7 @@ const HOUR_MS: u64 = 60 * 60 * 1000;
 /// so older firmware refuses the store instead of misreading new records.
 /// 5: local tag preferences, notes, suggestion dismissals and announcements.
 /// 6: durable scheduled drafts and the bots scheduler integration.
-pub const SCHEMA: u16 = 6;
+pub const SCHEMA: u16 = 7;
 /// Previous versions kept per edited status, and in all (spec/03).
 pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
 pub const MAX_REVISIONS: usize = 1024;
@@ -588,6 +588,7 @@ impl<S: Store> Service<S> {
     pub fn open(mut store: S, config: Config) -> core::result::Result<Self, StoreError> {
         let mut state = State::default();
         let mut idgen = IdGen::default();
+        let mut upgrade_schema = false;
 
         match store.get(Ns::Cfg, &keys::schema())? {
             Some(bytes) => {
@@ -599,8 +600,7 @@ impl<S: Store> Service<S> {
                 }
                 state.provisioned = true;
                 if schema < SCHEMA {
-                    let marker = codec::encode(Kind::Schema, &SCHEMA)?;
-                    store.set(Ns::Cfg, &keys::schema(), &marker)?;
+                    upgrade_schema = true;
                 }
             }
             None => {
@@ -645,7 +645,15 @@ impl<S: Store> Service<S> {
         }
 
         for (key, bytes) in load(&mut store, Ns::Acct)? {
-            let rec: AccountRec = codec::decode(Kind::Account, &bytes)?;
+            let (rec, sealed) = if bytes.get(1) == Some(&(Kind::AccountWithKey as u8)) {
+                let record: dm::AccountWithKey = codec::decode(Kind::AccountWithKey, &bytes)?;
+                if record.key.account_id != record.account.id {
+                    return Err(corrupt(&key, "password key belongs to another account"));
+                }
+                (record.account, Some(record.key))
+            } else {
+                (codec::decode::<AccountRec>(Kind::Account, &bytes)?, None)
+            };
             let k = key.as_str().as_bytes();
             let slot = match k {
                 [b'a', h] => unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?,
@@ -653,6 +661,14 @@ impl<S: Store> Service<S> {
             };
             idgen.observe(rec.id);
             state.accounts[slot as usize] = Some(Account { slot, rec });
+            if let Some(sealed) = sealed {
+                let key = keys::user_key(slot);
+                let bytes = codec::encode(Kind::UserKey, &sealed)?;
+                if store.get(Ns::Key, &key)?.as_ref() != Some(&bytes) {
+                    store.set(Ns::Key, &key, &bytes)?;
+                    state.repairs += 1;
+                }
+            }
         }
 
         for (key, bytes) in load(&mut store, Ns::App)? {
@@ -1125,6 +1141,13 @@ impl<S: Store> Service<S> {
         service.load_social()?;
         service.load_scheduled()?;
         service.check_invariants()?;
+        if upgrade_schema {
+            service.store.set(
+                Ns::Cfg,
+                &keys::schema(),
+                &codec::encode(Kind::Schema, &SCHEMA)?,
+            )?;
+        }
         Ok(service)
     }
 
@@ -1189,8 +1212,10 @@ impl<S: Store> Service<S> {
         self.ids.last()
     }
 
-    pub(crate) fn next_id(&mut self, now_ms: u64) -> u64 {
-        self.ids.next(now_ms)
+    pub(crate) fn next_id(&mut self, now_ms: u64) -> Result<u64> {
+        self.ids.next(now_ms).ok_or_else(|| {
+            Error::Unavailable("Status ID space exhausted or clock out of range".into())
+        })
     }
 
     /// Record the wall clock of the request being handled (mute expiry).
@@ -1215,6 +1240,9 @@ impl<S: Store> Service<S> {
 
     /// Refuse writes after a storage failure until restart.
     pub(crate) fn writable(&self) -> Result<()> {
+        if self.ids.last() == u64::MAX {
+            return Err(Error::Unavailable("Status ID space exhausted".into()));
+        }
         match &self.latched {
             Some(message) => Err(Error::Unavailable(message.clone())),
             None => Ok(()),
@@ -1230,7 +1258,7 @@ impl<S: Store> Service<S> {
     ) -> Result<()> {
         if matches!(
             kind,
-            Kind::Account | Kind::Status | Kind::Follow | Kind::Block
+            Kind::Account | Kind::AccountWithKey | Kind::Status | Kind::Follow | Kind::Block
         ) {
             self.state.account_stats.get_mut().take();
         }
@@ -1271,8 +1299,12 @@ impl<S: Store> Service<S> {
 
     /// Count one flash-writing action against the hourly budgets.
     pub(crate) fn govern(&mut self, slot: Option<u8>, now_ms: u64) -> Result<()> {
+        self.writable()?;
+        if now_ms > (u64::MAX >> 16) {
+            return Err(Error::Unavailable("Clock out of range".into()));
+        }
         let g = &mut self.state.governor;
-        if now_ms >= g.window_start_ms + HOUR_MS || now_ms < g.window_start_ms {
+        if now_ms >= g.window_start_ms.saturating_add(HOUR_MS) || now_ms < g.window_start_ms {
             *g = Governor {
                 window_start_ms: now_ms,
                 ..Governor::default()
@@ -1383,10 +1415,12 @@ impl<S: Store> Service<S> {
         {
             return;
         }
+        let Some(id) = self.ids.next(now_ms) else {
+            return;
+        };
         if self.state.notifications.len() >= MAX_NOTIFICATIONS {
             self.state.notifications.pop_front();
         }
-        let id = self.ids.next(now_ms);
         self.state.notifications.push_back(Notification {
             id,
             kind,

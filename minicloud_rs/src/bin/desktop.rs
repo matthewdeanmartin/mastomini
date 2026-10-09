@@ -1,8 +1,15 @@
-use minicloud::{broker::Broker, http, Cloud};
+//! Minicloud on a PC: miniframework's connection loop (the one the C6
+//! runs) for HTTP, plus the MQTT broker and worker on their own thread.
+use minicloud::{
+    broker::Broker,
+    http::{self, Minicloud},
+    Cloud,
+};
+use miniframework::desktop::{serve, DesktopPlatform};
+use miniframework::Site;
 use std::{
     env,
     fs::OpenOptions,
-    net::TcpListener,
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
@@ -23,14 +30,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind = env::var("MINICLOUD_BIND").unwrap_or_else(|_| "127.0.0.1".into());
     if bind != "127.0.0.1"
         && bind != "localhost"
-        && (token == "local-prototype-token" || token.len() < 24)
+        && (token == "local-prototype-token" || token.len() < 7)
     {
-        return Err("LAN binding requires your own MINICLOUD_ADMIN_TOKEN (24+ characters)".into());
+        return Err("LAN binding requires your own MINICLOUD_ADMIN_TOKEN (7+ characters)".into());
     }
     let http_port = env::var("MINICLOUD_PORT").unwrap_or_else(|_| "8090".into());
     let mqtt_port = env::var("MINICLOUD_MQTT_PORT").unwrap_or_else(|_| "1883".into());
     let shared = Arc::new(Mutex::new(Cloud::open(&root, token)?));
-    let listener = TcpListener::bind(format!("{bind}:{http_port}"))?;
+    let address = format!("{bind}:{http_port}");
     let mut broker = Broker::bind(&format!("{bind}:{mqtt_port}"))?;
     let workers = shared.clone();
     thread::Builder::new()
@@ -48,7 +55,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Public screen: /  Management: /admin  Data: {}",
         root.display()
     );
-    http::serve(listener, shared)?;
+    miniframework::desktop::init_logging();
+    let mut config = http::config(&address, "desktop");
+    // A PC has memory for large JSON listings.
+    config.response_limit = 1024 * 1024;
+    let site = Site::new(config, Minicloud { shared }, DesktopPlatform);
+    serve(&site, &address, || {})?;
     drop(lock);
     Ok(())
 }

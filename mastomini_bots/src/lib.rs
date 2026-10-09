@@ -8,6 +8,7 @@
 //!
 //! The binaries (`src/bin/desktop.rs`, `src/bin/esp32.rs`) add the network,
 //! storage and the scheduler thread.
+#![forbid(unsafe_code)]
 
 pub mod api;
 pub mod auth;
@@ -16,6 +17,7 @@ pub mod bot;
 pub mod bots;
 #[cfg(feature = "desktop")]
 pub mod desktop_client;
+pub mod enrollment;
 pub mod household_trust;
 pub mod http;
 pub mod mastodon;
@@ -24,6 +26,7 @@ pub mod openrouter;
 pub mod recovery;
 pub mod runner;
 pub mod schedule;
+pub mod server;
 pub mod service;
 pub mod settings;
 pub mod store;

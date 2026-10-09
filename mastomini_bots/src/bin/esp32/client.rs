@@ -18,7 +18,7 @@ use mastobots::household_trust::household_host;
 use mastobots::mastodon::{HttpClient, HttpRequest, HttpResponse};
 use std::collections::HashMap;
 use std::ffi::{c_char, CString};
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 const TTL: Duration = Duration::from_secs(600);
@@ -27,7 +27,10 @@ const BODY_LIMIT: usize = 256 * 1024;
 const TIMEOUT_MS: i32 = 60_000;
 
 /// Persistent connections and mDNS cache.
+type Resolver = Box<dyn Fn(&str, u16) -> std::io::Result<SocketAddr> + Send>;
+
 pub struct EspClient {
+    resolver: Resolver,
     timeout_ms: i32,
     clients: HashMap<String, Handle>,
     resolved: HashMap<String, (Ipv4Addr, Instant)>,
@@ -75,16 +78,21 @@ fn cstr(text: &str) -> Result<CString, String> {
 }
 
 impl EspClient {
-    pub fn new() -> EspClient {
+    pub fn new(
+        resolver: impl Fn(&str, u16) -> std::io::Result<SocketAddr> + Send + 'static,
+    ) -> EspClient {
         EspClient {
+            resolver: Box::new(resolver),
             timeout_ms: TIMEOUT_MS,
             clients: HashMap::new(),
             resolved: HashMap::new(),
         }
     }
 
-    pub fn scheduler() -> EspClient {
-        let mut client = Self::new();
+    pub fn scheduler(
+        resolver: impl Fn(&str, u16) -> std::io::Result<SocketAddr> + Send + 'static,
+    ) -> EspClient {
+        let mut client = Self::new(resolver);
         client.timeout_ms = 5_000;
         client
     }
@@ -96,12 +104,13 @@ impl EspClient {
                 return Ok(*ip);
             }
         }
-        let name = cstr(host.trim_end_matches(".local"))?;
-        let mut addr = esp_ip4_addr_t::default();
-        // SAFETY: NUL-terminated name, output written by the call.
-        esp!(unsafe { mdns_query_a(name.as_ptr(), 2000, &mut addr) })
-            .map_err(|e| format!("could not find {host} on the network (mDNS): {e}"))?;
-        let ip = Ipv4Addr::from(u32::from_be(addr.addr));
+        let ip = match (self.resolver)(host, 0)
+            .map_err(|e| format!("could not find {host} on the network (mDNS): {e}"))?
+            .ip()
+        {
+            std::net::IpAddr::V4(ip) => ip,
+            _ => return Err("mDNS returned an IPv6 address".into()),
+        };
         log::info!("{host} is {ip}");
         self.resolved.insert(host.to_string(), (ip, Instant::now()));
         Ok(ip)

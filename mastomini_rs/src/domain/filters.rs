@@ -106,16 +106,16 @@ impl<S: Store> Service<S> {
         }
         self.govern(Some(slot), now_ms)?;
         if rec.id == 0 {
-            rec.id = self.next_id(now_ms);
+            rec.id = self.next_id(now_ms)?;
         }
         for k in &mut rec.keywords {
             if k.id == 0 {
-                k.id = self.next_id(now_ms);
+                k.id = self.next_id(now_ms)?;
             }
         }
         for s in &mut rec.statuses {
             if s.id == 0 {
-                s.id = self.next_id(now_ms);
+                s.id = self.next_id(now_ms)?;
             }
         }
         let id = rec.id;

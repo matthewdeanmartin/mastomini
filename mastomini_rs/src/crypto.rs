@@ -213,6 +213,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tampered_or_transplanted_envelopes_never_decrypt() {
+        let (secret, public) = new_keypair();
+        let envelope = encrypt(b"protected", 7, &[(1, public)]);
+        for byte in 0..envelope.body.ct.len() {
+            let mut changed = envelope.clone();
+            changed.body.ct[byte] ^= 1;
+            assert!(decrypt(&changed, 7, 1, &secret).is_none());
+        }
+        for byte in 0..32 {
+            let mut changed = envelope.clone();
+            changed.ephemeral[byte] ^= 1;
+            assert!(decrypt(&changed, 7, 1, &secret).is_none());
+        }
+        for byte in 0..envelope.wraps[0].1.ct.len() {
+            let mut changed = envelope.clone();
+            changed.wraps[0].1.ct[byte] ^= 1;
+            assert!(decrypt(&changed, 7, 1, &secret).is_none());
+        }
+        assert!(decrypt(&envelope, 8, 1, &secret).is_none());
+        assert!(decrypt(&envelope, 7, 2, &secret).is_none());
+        let other = encrypt(b"different", 7, &[(1, public)]);
+        let mut changed = envelope;
+        changed.body = other.body;
+        assert!(decrypt(&changed, 7, 1, &secret).is_none());
+    }
+
+    #[test]
     fn only_participants_decrypt() {
         let (alice, alice_pub) = new_keypair();
         let (bob, bob_pub) = new_keypair();

@@ -60,7 +60,7 @@ fn parse(text: &str, want: &str) -> Option<String> {
 /// `scripts/firmware-version.py` has the same list and rules; a client test
 /// checks that both agree. Test-only files are left out so that editing a
 /// test does not make the board look out of date.
-const FINGERPRINT_INPUTS: [&str; 22] = [
+const FINGERPRINT_INPUTS: [&str; 24] = [
     "mastomini_bots/src/household_trust.rs",
     "mastomini_bots/src/bin/esp32/household_tls.rs",
     "mastomini_rs/Cargo.toml",
@@ -83,6 +83,9 @@ const FINGERPRINT_INPUTS: [&str; 22] = [
     "mastomini_ui/tsconfig.json",
     "mastomini_ui/tsconfig.app.json",
     "mastomini_ui/proxy.conf.mjs",
+    // miniframework: the HTTP(S) server and board runner are compiled in.
+    "../microcontroller/miniframework/crates/miniframework/Cargo.toml",
+    "../microcontroller/miniframework/crates/miniframework/src",
 ];
 
 fn test_only(name: &str) -> bool {

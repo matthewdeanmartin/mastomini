@@ -4,7 +4,7 @@ A runnable household cloud prototype: Rust HTTP service, a small MQTT broker,
 compiled Rust workers, MIME-aware blob URLs, an Angular file browser and a
 public kitchen notification screen. The first firmware target is the
 **non-Touch Waveshare ESP32-C6-LCD-1.47**, with its actual 8 MiB flash and
-no PSRAM or SD card. SQLite is an optional desktop stretch goal.
+no PSRAM and optional TF card storage. SQLite is an optional desktop stretch goal.
 
 ## Run locally
 
@@ -44,8 +44,8 @@ Python and Git Bash `make`; `make check` additionally uses `uv` for Paho.
 | `MINICLOUD_DATA` | `data`; dedicated data directory |
 | `MINICLOUD_PORT` | `8090`; HTTP port |
 | `MINICLOUD_MQTT_PORT` | `1883` |
-| `MINICLOUD_ADMIN_TOKEN` | local prototype token; 16+ characters locally |
-| `MINICLOUD_BIND` | `127.0.0.1`; LAN binding requires your own 24+ character token |
+| `MINICLOUD_ADMIN_TOKEN` | local prototype token; 7+ characters |
+| `MINICLOUD_BIND` | `127.0.0.1`; LAN binding requires your own 7+ character token |
 | `MINICLOUD_PLUGINS` | build-time comma-separated plugin file stems; unset includes all eligible plugins |
 
 HTTP and MQTT are plaintext in this first prototype. Bind to your trusted LAN
@@ -235,6 +235,61 @@ editor. Workers can invoke the SQL insert plugin from the management UI.
 
 ## C6 deployment
 
+### HTTP on miniframework (October 4, built, not deployed)
+
+The HTTP server is now miniframework's; the API, auth and storage are
+unchanged. Visible differences: keep-alive instead of `Connection: close`;
+up to three connections at once (extra ones wait instead of queueing behind
+one socket); UI files carry ETags and hashed bundles are cached for a year;
+a CORS preflight from a registered bank is 204 (was 200), and a cross-origin
+call from an unregistered origin is refused with 403 instead of being
+processed without CORS headers; chunked uploads are 400 (were 501). The
+framework adds `GET /api/v1/sys` and `/api/v1/log.txt` (public machine facts
+and the board log) and a startup-failure page on port 8080. NVS is never
+erased (the old `EspDefaultNvsPartition::take()` would erase a full one).
+
+### Transports: HTTP, HTTPS, HTTP/2
+
+**Measured on the C6, October 4, 2026** (cold load of the page's five
+files, 66 KB, from a Windows PC over household Wi-Fi):
+
+| Firmware | Page | Notes |
+|---|---|---|
+| Old (own HTTP server) | 630 ms | one connection at a time; ~220 ms waiting to be accepted |
+| miniframework, `CONFIG_FREERTOS_HZ=100` | 9,200 ms | 1 ms waits became 10 ms: ~11 KiB/s |
+| miniframework, 1000 Hz, plain HTTP (deployed) | 354 ms | ~175 KiB/s; 122 KB heap free |
+| miniframework, HTTPS / HTTP/2 | crashed | out of memory, see below |
+
+**HTTPS does not fit this board yet.** Without PSRAM the framework leaves
+~104 KB free with TLS built in (the old server left ~212 KB); a TLS session
+plus handshake needs ~45–60 KB and fragments the heap. Under a browser-like
+load TLS allocations failed and the board rebooted (`reset reason "crash"`).
+The deployed build is plain HTTP. HTTP/2 (which needs only one TLS session)
+negotiated by ALPN but could not be measured before memory ran out.
+
+`make firmware` builds plain HTTP, as deployed. For experiments:
+`make certs` (signs `minicloud.local` with mastomini's household CA, the one
+NanaCoin also uses; `certs/` is ignored), then `make firmware TRANSPORT=https`
+or `TRANSPORT=http2`. HTTPS allows two TLS sessions (no PSRAM), offers
+`/trust` and `/ca`, and resumes returning browsers with session tickets;
+HTTP/2 lets a browser load the whole page over one connection and one
+handshake. Compare with miniframework's `bench`:
+`uv run pageload --url https://minicloud.local --ca <minicloud_rs>/certs/household-ca.crt`.
+Blob uploads stream over HTTP/2 as over HTTP/1.1, with at most 16 KiB
+in flight per upload (HTTP/2 flow control), so they fit the C6's RAM.
+
+### Public machine metrics
+
+`GET /metrics` returns one Influx line,
+`board,host=minicloud.local,app=minicloud,target=esp32c6 ...`, with uptime,
+internal heap free/minimum/largest block, request and connection counters and
+Wi-Fi signal. It needs no management token and never locks or mutates cloud
+state. It is miniframework's built-in route.
+
+Build with `make firmware`, then follow `DEPLOY.md`'s **update** procedure for
+the known C6 (`ac:eb:e6:1e:13:40`). Preserve NVS and SPIFFS; never use replacement
+mode for this update. Verify `http://minicloud.local/metrics` after flashing.
+
 The messageboard was deployed to the identified non-Touch C6 on September 30,
 2026. Follow [DEPLOY.md](DEPLOY.md) for exact Git Bash commands, identity guards,
 private configuration, replacement versus update modes, acceptance and recovery.
@@ -254,7 +309,7 @@ block. Its boot minimum was 210,080 bytes while exercising public posting,
 text sizes, actual expiry, read dismissal, MQTT QoS1, blob MIME/ETag streaming
 and a 110,080-byte RGB565 image command. A separate restart retained the welcome
 notice and its original expiry, rejoined Wi-Fi and served the mDNS name again.
-There is no SD dependency and no SQLite in this firmware.
+TF storage is optional; uploads default to onboard SPIFFS. SQLite is not in this firmware.
 
 The final serial captures had no startup panic or LCD driver errors. Physical
 LCD appearance, maximum-load capacity, power-cut recovery and all reconnect
@@ -302,3 +357,5 @@ cleans up all its test messages; it no longer leaves a welcome message.
 The landscape firmware has been compiled, but actual panel direction, kitchen
 readability, DMA heap usage and BOOT behavior need hardware review after USB
 reconnection. No firmware was flashed during this update.
+
+See [files, copyright registry, bank trust and TF migration](REGISTRY.md) for the new APIs, setup and forgotten-token recovery.

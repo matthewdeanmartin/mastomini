@@ -103,56 +103,60 @@ fn reset_code_dies_with_its_member() {
 
 #[test]
 fn power_cut_while_redeeming_never_uses_a_code_twice() {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        let (_, code) = svc.issue_invite(0, T0).unwrap();
-        svc.store().cut_after(writes);
-        let result = svc.redeem_code(&code, redemption("dave", "davepw"), T0 + 1);
-        let completed = !svc.store().is_cut();
-        let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
-        svc.check_invariants().unwrap();
-        let created = svc.state.account_by_username("dave").is_some();
-        let usable = svc.find_code(&code, T0 + 2).is_some();
-        assert!(!(created && usable), "cut at {writes}");
-        if usable {
-            svc.redeem_code(&code, redemption("dave", "davepw"), T0 + 2)
-                .unwrap();
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            let (_, code) = svc.issue_invite(0, T0).unwrap();
+            svc.store().fail_after(failure, writes);
+            let result = svc.redeem_code(&code, redemption("dave", "davepw"), T0 + 1);
+            let completed = !svc.store().is_cut();
+            let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
+            svc.check_invariants().unwrap();
+            let created = svc.state.account_by_username("dave").is_some();
+            let usable = svc.find_code(&code, T0 + 2).is_some();
+            assert!(!(created && usable), "cut at {writes}");
+            if usable {
+                svc.redeem_code(&code, redemption("dave", "davepw"), T0 + 2)
+                    .unwrap();
+            }
+            if completed {
+                result.unwrap();
+                assert!(created);
+                break;
+            }
+            assert!(writes < 20, "operation never completed");
         }
-        if completed {
-            result.unwrap();
-            assert!(created);
-            break;
-        }
-        assert!(writes < 20, "operation never completed");
     }
 }
 
 #[test]
 fn power_cut_while_resetting_never_keeps_old_sessions() {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        let oob = vec![OOB.to_string()];
-        let (app, _) = svc.register_app("app", None, &oob, "read", T0).unwrap();
-        let token = svc.issue_token(1, app.id, vec!["read".into()], T0).unwrap();
-        let (_, code) = svc.issue_reset(0, 1, T0).unwrap();
-        svc.store().cut_after(writes);
-        let result = svc.redeem_code(&code, redemption("", "bobnew"), T0 + 1);
-        let completed = !svc.store().is_cut();
-        let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
-        svc.check_invariants().unwrap();
-        let changed = svc.check_password("bob", "bobnew", T0 + 2).is_ok();
-        assert_eq!(
-            svc.principal(&token, T0 + 2).is_some(),
-            !changed,
-            "cut at {writes}"
-        );
-        assert!(!(changed && svc.find_code(&code, T0 + 2).is_some()));
-        if completed {
-            result.unwrap();
-            assert!(changed);
-            break;
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            let oob = vec![OOB.to_string()];
+            let (app, _) = svc.register_app("app", None, &oob, "read", T0).unwrap();
+            let token = svc.issue_token(1, app.id, vec!["read".into()], T0).unwrap();
+            let (_, code) = svc.issue_reset(0, 1, T0).unwrap();
+            svc.store().fail_after(failure, writes);
+            let result = svc.redeem_code(&code, redemption("", "bobnew"), T0 + 1);
+            let completed = !svc.store().is_cut();
+            let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
+            svc.check_invariants().unwrap();
+            let changed = svc.check_password("bob", "bobnew", T0 + 2).is_ok();
+            assert_eq!(
+                svc.principal(&token, T0 + 2).is_some(),
+                !changed,
+                "cut at {writes}"
+            );
+            assert!(!(changed && svc.find_code(&code, T0 + 2).is_some()));
+            if completed {
+                result.unwrap();
+                assert!(changed);
+                break;
+            }
+            assert!(writes < 20, "operation never completed");
         }
-        assert!(writes < 20, "operation never completed");
     }
 }
 

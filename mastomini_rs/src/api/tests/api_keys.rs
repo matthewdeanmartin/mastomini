@@ -144,6 +144,36 @@ fn keys_are_capped_and_never_evicted_by_sign_ins() {
 }
 
 #[test]
+fn new_sign_ins_evict_the_idlest_session_not_the_one_in_use() {
+    let mut s = Server::provisioned();
+    // The long-lived client: signed in first, and used all along.
+    let daily = s.login("alice", "alicepw", "read");
+    let mut others = Vec::new();
+    for _ in 0..crate::domain::MAX_TOKENS_PER_ACCOUNT + 2 {
+        s.now += 60_000;
+        assert_eq!(
+            s.get("/api/v1/accounts/verify_credentials", Some(&daily))
+                .status,
+            200
+        );
+        s.now += 60_000;
+        others.push(s.login("alice", "alicepw", "read"));
+    }
+    assert_eq!(
+        s.get("/api/v1/accounts/verify_credentials", Some(&daily))
+            .status,
+        200,
+        "the oldest session, but the one in use, survives"
+    );
+    // The two sign-ins nobody used since went instead.
+    let status =
+        |s: &mut Server, t: &String| s.get("/api/v1/accounts/verify_credentials", Some(t)).status;
+    assert_eq!(status(&mut s, &others[0]), 401);
+    assert_eq!(status(&mut s, &others[1]), 401);
+    assert_eq!(status(&mut s, others.last().unwrap()), 200);
+}
+
+#[test]
 fn a_password_change_or_signing_out_everywhere_ends_keys() {
     let mut s = Server::provisioned();
     let token = s.login("alice", "alicepw", "read write follow");

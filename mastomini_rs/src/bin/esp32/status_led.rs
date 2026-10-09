@@ -126,8 +126,7 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         ..Default::default()
     };
     let began = super::uptime_ms();
-    // SAFETY: read-only reset query, no arguments.
-    let reason = super::reset_reason(unsafe { esp_idf_svc::sys::esp_reset_reason() });
+    let reason = super::reset_reason();
     let flashes = board_status::reset_flashes(reason);
     log::info!(
         "Status LED: WS2812 GRB, GPIO {}, dim output; reset {reason} ({flashes} white flashes)",

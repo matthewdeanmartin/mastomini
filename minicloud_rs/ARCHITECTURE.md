@@ -17,10 +17,16 @@ flowchart LR
 ```
 
 All services share one process and one persisted cloud state in this prototype.
-The board does not depend on a desktop broker. HTTP runs in one 32 KiB stack
-thread; MQTT, workers, Wi-Fi maintenance and physical rendering run in the main
-loop. Desktop uses one HTTP thread and a combined MQTT/worker thread. No Tokio
-runtime, per-client threads or whole-file blob buffering are required.
+The board does not depend on a desktop broker. HTTP is
+[miniframework](../../microcontroller/miniframework)'s connection loop (the
+same one NanaCoin and housemetrics use) on its own 32 KiB task: up to three
+keep-alive connections, more waiting in the listen backlog, the bundled UI
+with ETags and immutable caching, `/metrics`, and blob uploads and downloads
+streamed 4 KiB at a time. MQTT, workers and physical rendering run in the main
+loop every 20 ms; the framework joins and rejoins Wi-Fi in the background, so
+the screen and button work without a network. Desktop runs the same loop
+plus a combined MQTT/worker thread. No Tokio runtime, per-client threads or
+whole-file blob buffering are required.
 
 ## Persistence and work
 
@@ -70,7 +76,8 @@ accepts at most 4 KiB of headers and bounds body parsing. A blob upload currentl
 holds the cloud mutex while streaming; other mutations/work may pause during
 the upload. This favors simplicity and bounded memory over throughput. The
 first hardware load test must measure this pause and MQTT keepalive under a
-slow upload. Large images belong on a future SD card/Pi, not this 3 MiB budget.
+slow upload. Files can migrate to the optional TF card while metadata stays onboard;
+the 256 KiB per-file and 48-file limits remain. See [REGISTRY.md](REGISTRY.md).
 
 Producers use stable `(source,id)` notification identities and distinct,
 globally unique event IDs for `notify` and `read`. NanaCoin's browser-local New
@@ -110,7 +117,7 @@ These measurements show a build fits flash and linker RAM regions. They do not
 prove all services fit peak runtime heap. Start the hardware trial with one
 image, one notification and two MQTT clients; record `/api/status` heap minimum
 and largest block, then test restarts, reconnects and slow uploads before filling
-the configured limits. There is no SD dependency and no SQLite in the C6 build.
+the configured limits. TF storage is optional; SQLite is absent from the C6 build.
 
 ## Roadmap
 
@@ -118,7 +125,8 @@ the configured limits. There is no SD dependency and no SQLite in the C6 build.
   and TLS when protection against neighbors becomes a requirement. Public
   notification posting and dismissal are intentional for the first LAN trial.
 - Measure the single C6 runtime heap before increasing blob/queue limits.
-- Add an SD card or move blob storage and workers to a Pi when available.
+- Measure TF-card migration and shared SPI bus behavior on hardware; move
+  storage and workers to a Pi when larger files and workloads require it.
 - Keep the same notification contract when splitting services across boards.
 
 ### First hardware trial (September 30, 2026)

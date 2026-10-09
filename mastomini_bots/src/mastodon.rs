@@ -380,6 +380,29 @@ impl<'a> Mastodon<'a> {
             .unwrap_or_default())
     }
 
+    /// Account history including replies, newest first. Used to recover
+    /// game checkpoints; malformed history must not look like a new game.
+    pub fn account_posts(
+        &mut self,
+        account_id: &str,
+        before: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Status>, MastodonError> {
+        let mut path =
+            format!("/api/v1/accounts/{account_id}/statuses?limit={limit}&exclude_reblogs=true");
+        if let Some(id) = before {
+            path.push_str(&format!("&max_id={id}"));
+        }
+        let v = self.call("GET", &path, None, None)?;
+        let posts = v.as_array().ok_or_else(|| MastodonError {
+            status: None,
+            message: "Account history was not a list; refusing to reset the game".into(),
+        })?;
+        let mut posts: Vec<_> = posts.iter().map(Status::from).collect();
+        posts.sort_by(|a, b| id_order(&b.id, &a.id));
+        Ok(posts)
+    }
+
     pub fn post_status(
         &mut self,
         status: &NewStatus,

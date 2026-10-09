@@ -23,17 +23,25 @@ required-features = ["esp32"]
 [features]
 default = ["desktop"]
 desktop = ["dep:fs2"]
-esp32 = ["dep:esp-idf-svc", "dep:embuild"]
+esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild"]
 sqlite = ["dep:rusqlite"]
+# Transports: plain HTTP always. `https` adds TLS (needs certs/minicloud.*,
+# see `make certs`); `http2` adds HTTP/2 over HTTPS.
+https = ["miniframework/tls"]
+http2 = ["https", "miniframework/http2"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
 bytes = "1"
 mqttbytes = "=0.6.0"
-httparse = "1"
+# HTTP serving, static files, metrics and the C6 board runner.
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false }
 percent-encoding = "2"
+log = "0.4"
 fs2 = { version = "0.4", optional = true }
 rusqlite = { version = "0.37", optional = true, features = ["bundled", "limits", "hooks", "extra_check"] }
 

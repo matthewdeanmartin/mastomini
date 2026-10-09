@@ -95,7 +95,10 @@ impl<S: Store> Service<S> {
         self.govern(Some(slot), now_ms)?;
         self.make_room(Room::Status)?;
         let mut rec = StatusRec {
-            id: forced_id.unwrap_or_else(|| self.next_id(now_ms)),
+            id: match forced_id {
+                Some(id) => id,
+                None => self.next_id(now_ms)?,
+            },
             author: slot,
             text,
             spoiler_text: spoiler,
@@ -293,7 +296,7 @@ impl<S: Store> Service<S> {
         if !self.state.statuses.contains_key(&status_id) {
             return Err(Error::NotFound); // evicted to make room
         }
-        let rid = self.next_id(now_ms);
+        let rid = self.next_id(now_ms)?;
         self.put(
             Ns::Rx,
             &keys::reaction(kind, status_id, slot),
@@ -370,7 +373,7 @@ impl<S: Store> Service<S> {
             return Err(Error::NotFound);
         }
         let rec = BoostRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             booster: slot,
             target: status_id,
         };
@@ -445,7 +448,10 @@ impl<S: Store> Service<S> {
             return self.request_follow(src, dst, reblogs, notify, now_ms);
         }
         let rec = FollowRec {
-            id: existing.map_or_else(|| self.next_id(now_ms), |e| e.id),
+            id: match existing {
+                Some(e) => e.id,
+                None => self.next_id(now_ms)?,
+            },
             reblogs: reblogs.unwrap_or(existing.is_none_or(|e| e.reblogs)),
             notify: notify.unwrap_or(existing.is_some_and(|e| e.notify)),
         };

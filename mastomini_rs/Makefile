@@ -25,6 +25,7 @@ help:
 	  'make api-coverage Validate REST endpoint ledger and detect source drift' \
 	  'make bench-read   Release CPU benchmark at 4096 posts' \
 	  'make bench-desktop Disposable authenticated HTTP burst benchmark' \
+	  'make bench-transport ADDRESS=ip LABEL=name  Read-only board benchmark: HTTP/1.1 vs HTTP/2 (loadtests/)' 	  'make diag-h2-burst ADDRESS=ip   Browser-style HTTP/2 burst: every stream answered with CORS?' 	  'make diag-transfer ADDRESS=ip   Large-response transfer times and mid-transfer stalls' 	  'make diag-browser ADDRESS=ip    Real Firefox/Chromium as a cross-origin client (BROWSER=chromium)' 	  'make diag-firefox-log LOG=file  Why Firefox closed the board connections (about:logging capture)' 	  'make diag-har HAR=file          HAR timeline for the board, tokens redacted' \
 	  'make docs         Build the docs site strictly (mkdocs, as Read the Docs does)' \
 	  'make docs-serve   Preview the docs at http://127.0.0.1:8000' \
 	  'make check        All quality gates' \
@@ -101,7 +102,29 @@ scripts-check:
 api-coverage:
 	$(UV) run --project clienttests python scripts/api-coverage.py
 
-.PHONY: bench-read bench-desktop
+.PHONY: diag-h2-burst diag-transfer diag-browser diag-firefox-log diag-har
+# Connection diagnostics (loadtests/; README "Connection diagnostics"). Read
+# requests only; a token is optional (loadtests/oauth_token.py).
+diag-h2-burst:
+	$(UV) run --project loadtests python loadtests/h2_burst.py --address "$(ADDRESS)" $(ARGS)
+
+diag-transfer:
+	$(UV) run --project loadtests python loadtests/transfer_stalls.py --address "$(ADDRESS)" --scheme both $(ARGS)
+
+diag-browser:
+	$(UV) run --project loadtests python loadtests/browser_session.py --address "$(ADDRESS)" --browser "$(or $(BROWSER),firefox)" $(ARGS)
+
+diag-firefox-log:
+	$(UV) run --project loadtests python loadtests/firefox_log.py "$(LOG)" --timeline $(ARGS)
+
+diag-har:
+	$(UV) run --project loadtests python loadtests/har_summary.py "$(HAR)" $(ARGS)
+
+.PHONY: bench-read bench-desktop bench-transport
+# Anonymous GETs only (loadtests/transport.py); keep the reports you compare.
+bench-transport:
+	$(UV) run --project loadtests python loadtests/transport.py --address "$(ADDRESS)" --label "$(LABEL)" $(ARGS)
+
 bench-read:
 	$(CARGO) run --release --locked --example read_bench -- 4096 500
 

@@ -204,7 +204,7 @@ impl<S: Store> Service<S> {
             return invalid("Scheduled post queue is full (16)");
         }
         self.govern(Some(slot), now)?;
-        let id = self.next_id(now);
+        let id = self.next_id(now)?;
         self.save_scheduled(Scheduled {
             id,
             account_id,
@@ -304,7 +304,7 @@ impl<S: Store> Service<S> {
         let target = match job.target {
             Some(id) => id,
             None => {
-                let target = self.next_id(now);
+                let target = self.next_id(now)?;
                 job.target = Some(target);
                 self.save_scheduled(job.clone())?;
                 target

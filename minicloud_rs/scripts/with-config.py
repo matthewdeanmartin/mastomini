@@ -39,8 +39,8 @@ def settings():
         raise ValueError('SSID exceeds 32 bytes')
     if len(values['MINICLOUD_WIFI_PASSWORD'].encode()) > 63:
         raise ValueError('Wi-Fi password exceeds 63 bytes')
-    if len(values['MINICLOUD_ADMIN_TOKEN']) < 24:
-        raise ValueError('Management token must contain at least 24 characters')
+    if len(values['MINICLOUD_ADMIN_TOKEN']) < 7:
+        raise ValueError('Management token must contain at least 7 characters')
     return values
 
 

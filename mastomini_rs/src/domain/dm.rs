@@ -22,6 +22,12 @@ pub struct UserKeyRec {
     pub sealed: crypto::Sealed,
 }
 
+#[derive(Serialize, Deserialize)]
+pub(super) struct AccountWithKey {
+    pub account: AccountRec,
+    pub key: UserKeyRec,
+}
+
 /// An unlocked secret, redacted from debug output.
 #[derive(Clone)]
 pub struct Held(pub SecretKey);
@@ -71,20 +77,24 @@ impl<S: Store> Service<S> {
     }
 
     fn write_user_key(&mut self, slot: u8, secret: &SecretKey, password: &str) -> Result<()> {
+        let rec = self.prepare_user_key(slot, secret, password)?;
+        self.put(Ns::Key, &keys::user_key(slot), Kind::UserKey, &rec)?;
+        self.state.user_keys[slot as usize] = Some(rec);
+        Ok(())
+    }
+
+    fn prepare_user_key(&self, slot: u8, secret: &SecretKey, password: &str) -> Result<UserKeyRec> {
         let account_id = self.state.account(slot).ok_or(Error::NotFound)?.rec.id;
         let public = x25519_public(secret);
         let salt = crypto::new_salt();
         let rounds = self.config.password_rounds;
-        let rec = UserKeyRec {
+        Ok(UserKeyRec {
             account_id,
             public,
             salt,
             rounds,
             sealed: crypto::seal_with_password(secret, password, &salt, rounds, account_id),
-        };
-        self.put(Ns::Key, &keys::user_key(slot), Kind::UserKey, &rec)?;
-        self.state.user_keys[slot as usize] = Some(rec);
-        Ok(())
+        })
     }
 
     /// A new key pair for a member whose password we have just been given.
@@ -107,12 +117,24 @@ impl<S: Store> Service<S> {
 
     /// Re-seal the member's secret under a new password (the old one opens
     /// it), so their direct messages survive a password change.
-    pub(crate) fn reseal_user_key(&mut self, slot: u8, current: &str, new: &str) -> Result<()> {
-        let secret = match self.user_key(slot) {
-            Some(_) => self.unlock(slot, current)?,
-            None => crypto::new_keypair().0,
+    pub(crate) fn prepare_password_key(
+        &mut self,
+        slot: u8,
+        current: Option<&str>,
+        new: &str,
+    ) -> Result<UserKeyRec> {
+        let secret = match (current, self.user_key(slot)) {
+            (Some(password), Some(rec)) => crypto::open_with_password(
+                &rec.sealed,
+                password,
+                &rec.salt,
+                rec.rounds,
+                rec.account_id,
+            )
+            .ok_or(Error::Unauthorized)?,
+            _ => crypto::new_keypair().0,
         };
-        self.write_user_key(slot, &secret, new)
+        self.prepare_user_key(slot, &secret, new)
     }
 
     pub(crate) fn seal_for_token(

@@ -197,3 +197,50 @@ fn deleting_a_direct_message_removes_its_envelope() {
     let s = s.restart();
     assert!(s.svc.state.dms.is_empty());
 }
+
+#[test]
+fn warmed_dm_responses_do_not_leak_after_block_revoke_or_slot_reuse() {
+    let mut s = Server::provisioned();
+    let alice = s.login("alice", "alicepw", "read write follow");
+    let bob = s.add_member(&alice, "bob");
+    let carol = s.add_member(&alice, "carol");
+    let marker = "confidential-pizza-marker";
+    let id = dm(&mut s, &alice, &format!("@bob {marker}"));
+    let paths = [
+        format!("/api/v1/statuses/{id}"),
+        format!("/api/v1/statuses/{id}/source"),
+        format!("/api/v1/statuses/{id}/history"),
+        format!("/api/v1/statuses?id[]={id}"),
+        format!("/api/v1/statuses/{id}/context"),
+        "/api/v1/timelines/home".into(),
+        "/api/v1/conversations".into(),
+        format!("/api/v2/search?q={marker}&type=statuses"),
+    ];
+    for token in [&alice, &bob] {
+        assert!(contains(&s.get(&paths[0], Some(token)).body, marker));
+        for path in &paths {
+            let _ = s.get(path, Some(token));
+        }
+    }
+    let reject = |s: &mut Server, token: Option<&str>| {
+        for path in &paths {
+            let reply = s.get(path, token);
+            assert!(!contains(&reply.body, marker), "leaked through {path}");
+        }
+    };
+    reject(&mut s, None);
+    reject(&mut s, Some(&carol));
+    s.svc.set_block(0, 1, true, T0 + 1).unwrap();
+    reject(&mut s, Some(&bob));
+    s.svc.set_block(0, 1, false, T0 + 2).unwrap();
+    assert!(contains(&s.get(&paths[0], Some(&bob)).body, marker));
+    s.svc.revoke(&bob).unwrap();
+    reject(&mut s, Some(&bob));
+    s.svc.delete_account(0, 1, T0 + 3).unwrap();
+    let dave = s.add_member(&alice, "dave");
+    assert_eq!(s.svc.state.account_by_username("dave").unwrap().slot, 1);
+    reject(&mut s, Some(&dave));
+    let mut s = s.restart();
+    reject(&mut s, Some(&dave));
+    assert!(contains(&s.get(&paths[0], Some(&alice)).body, marker));
+}

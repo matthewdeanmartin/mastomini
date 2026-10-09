@@ -169,6 +169,7 @@ pub struct OpenRouterUpdate {
 }
 
 pub struct Service<S: KvStore> {
+    pub enrollment: crate::enrollment::Enrollment,
     pub led_phrase: String,
     pub(crate) store: S,
     pub scheduler: crate::scheduler::Scheduler,
@@ -229,6 +230,7 @@ impl<S: KvStore> Service<S> {
         }
         let scheduler = crate::scheduler::load(&store)?;
         Ok(Service {
+            enrollment: crate::enrollment::Enrollment::default(),
             led_phrase,
             scheduler,
             store,

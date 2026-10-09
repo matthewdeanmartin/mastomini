@@ -16,6 +16,7 @@ setting up third-party clients.
 | [api-coverage.md](api-coverage.md) | Generated per-endpoint implementation / partial / stub / missing / excluded inventory |
 | [08-performance.md](08-performance.md) | Latency findings, burst benchmark, caching and transport tuning options |
 | [roadmap.md](roadmap.md) | Sprint plan, quality gates, exit criteria, risks |
+| [federation_roadmap.md](federation_roadmap.md) | Proposed second-board federation gateway, private/public APIs, SD storage, traffic estimates and staged validation |
 | [sprints.md](sprints.md) | What each finished sprint delivered, evidence, known gaps |
 | [01-overview.md](01-overview.md) | Goals, non-goals, architecture, hardware, partition table, code reuse |
 | [02-storage.md](02-storage.md) | Flash, wear, the storage options considered, the chosen NVS entity store, key layout, crash consistency, eviction |

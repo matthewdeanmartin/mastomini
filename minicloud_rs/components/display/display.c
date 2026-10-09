@@ -20,12 +20,16 @@ static bool flushed(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t 
     return wake==pdTRUE;
 }
 #define TRY(x) do {esp_err_t e=(x); if(e) return e;} while(0)
-esp_err_t display_init(void) {
+esp_err_t minicloud_bus_init(void) {
     // SD card shares this SPI bus. Deselect it before sending LCD traffic.
     TRY(gpio_set_direction(4,GPIO_MODE_OUTPUT)); TRY(gpio_set_level(4,1));
+    TRY(gpio_set_direction(14,GPIO_MODE_OUTPUT)); TRY(gpio_set_level(14,1));
     spi_bus_config_t bus={.mosi_io_num=6,.miso_io_num=5,.sclk_io_num=7,
         .quadwp_io_num=-1,.quadhd_io_num=-1,.max_transfer_sz=320*24*2};
     TRY(spi_bus_initialize(SPI2_HOST,&bus,SPI_DMA_CH_AUTO));
+    return ESP_OK;
+}
+esp_err_t display_init(void) {
     done=xSemaphoreCreateBinary();
     pixels=heap_caps_malloc(320*24*2,MALLOC_CAP_DMA);
     if(!done || !pixels) return ESP_ERR_NO_MEM;

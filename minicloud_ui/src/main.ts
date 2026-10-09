@@ -2,7 +2,9 @@ import { Component, signal, OnDestroy } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 
-interface BlobItem { bucket: string; key: string; mime: string; size: number; hash: string }
+interface BlobItem { bucket: string; key: string; mime: string; size: number; hash: string; tier: 'onboard' | 'card'; uploader?: string }
+interface Copyright {bucket: string; key: string; hash: string; owner: string; title: string; license: string; revision: number}
+interface Bank {id: string; origin: string; audience: string}
 interface Notice { source: string; id: string; recipient: string; text: string; size: string; image?: {bucket: string; key: string} }
 interface Receipt { id: string; status: string; detail: unknown }
 @Component({
@@ -26,7 +28,7 @@ interface Receipt { id: string; status: string; detail: unknown }
         </section>
       } @else {
         @if (admin) {
-          <div class="tabs">@for (name of ['Files', 'Screen', 'Workers']; track name) { <button [class.selected]="tab() === name" (click)="tab.set(name)">{{ name }}</button> }
+          <div class="tabs">@for (name of ['Files', 'Copyrights', 'Banks', 'Screen', 'Workers']; track name) { <button [class.selected]="tab() === name" (click)="tab.set(name)">{{ name }}</button> }
             <button class="logout" (click)="lock()">Lock management</button></div>
         }
         @if (!admin || tab() === 'Screen') {
@@ -59,18 +61,46 @@ interface Receipt { id: string; status: string; detail: unknown }
         }
         @if (admin && tab() === 'Files') {
           <div class="stats"><section><span>STORED FILES</span><strong>{{ blobs().length }} <small>/ 48</small></strong></section>
-            <section><span>FLASH BUDGET</span><strong>{{ storageKB() }} <small>KiB / 3 MiB</small></strong></section>
+            <section><span>ONBOARD STORAGE</span><strong>{{ storageKB() }} <small>KiB / 3 MiB</small></strong></section>
             <section><span>FILE URLS</span><strong class="small-stat">Ready to serve</strong><small>GET · MIME type · streamed</small></section></div>
           <section class="panel upload"><div><h2>Put something in the cloud</h2><p>Images and files up to 256 KiB each. Buckets keep apps organized.</p></div>
             <label>Bucket<input [(ngModel)]="bucket"></label><label>File<input type="file" (change)="choose($event)"></label>
             <label class="checkbox"><input type="checkbox" [(ngModel)]="prepareLCD"> Also prepare image for the LCD</label>
             <button class="primary" [disabled]="!file || busy()" (click)="upload()">{{ busy() ? 'Uploading…' : 'Upload' }}</button></section>
-          <div class="file-toolbar"><h2>File browser</h2><label>Bucket<select [(ngModel)]="filter"><option value="">All buckets</option>@for (b of buckets(); track b) { <option>{{ b }}</option> }</select></label></div>
+          <div class="file-toolbar"><h2>File browser</h2><label>Search<input [(ngModel)]="search" placeholder="Name, type or fingerprint"></label><label>Bucket<select [(ngModel)]="filter"><option value="">All buckets</option>@for (b of buckets(); track b) { <option>{{ b }}</option> }</select></label></div>
           <div class="files">@for (blob of filteredBlobs(); track blob.bucket + '/' + blob.key) {
             <article class="file"><div class="file-preview">@if (blob.mime.startsWith('image/')) { <img [src]="url(blob)" [alt]="blob.key" loading="lazy"> } @else { <span>{{ blob.mime === 'application/x-rgb565' ? 'LCD' : 'FILE' }}</span> }</div>
-              <div class="file-info"><span class="tag">{{ blob.bucket }}</span><h3>{{ blob.key }}</h3><p>{{ blob.mime }} · {{ (blob.size / 1024).toFixed(1) }} KiB</p>
-                <div class="actions"><a [href]="url(blob)" target="_blank" rel="noopener">Open file ↗</a><button (click)="copyURL(blob)">Copy URL</button><button class="danger" (click)="remove(blob)">Delete</button></div></div></article>
+              <div class="file-info"><span class="tag">{{ blob.bucket }}</span><h3>{{ blob.key }}</h3><p>{{ blob.mime }} · {{ blob.tier }} · {{ (blob.size / 1024).toFixed(1) }} KiB</p>
+                <div class="actions"><a [href]="url(blob)" target="_blank" rel="noopener">Open file ↗</a><button (click)="copyURL(blob)">Copy URL</button><button (click)="editCopyright(blob)">Copyright</button><button [disabled]="blob.tier !== 'card' && !cardAvailable()" (click)="migrate(blob)">{{ blob.tier === 'card' ? 'Move onboard' : 'Move to TF card' }}</button><button class="danger" (click)="remove(blob)">Delete</button></div></div></article>
           } @empty { <div class="empty">Your files will live here. Upload an image to get started.</div> }</div>
+        }
+        @if (admin && tab() === 'Copyrights') {
+          <section class="panel"><h2>Copyright registry</h2><p>Owners are username@bank. Records refer to exact stored file fingerprints.</p>
+            <label>Search<input [(ngModel)]="copyrightSearch" placeholder="File, owner, title or license"></label>
+            @for (c of filteredCopyrights(); track c.bucket + '/' + c.key) {
+              <article class="result"><h3>{{ c.title }}</h3><p>{{ c.owner }} · {{ c.bucket }}/{{ c.key }}</p><p>{{ c.license }}</p>
+                <button (click)="editRecord(c)">Edit / transfer</button><button class="danger" (click)="deleteCopyright(c)">Delete record</button></article>
+            } @empty { <p>No matching copyright records.</p> }
+          </section>
+          @if (editing(); as c) {
+            <section class="panel"><h2>{{ c.revision ? 'Edit copyright' : 'Register copyright' }}</h2><p>{{ c.bucket }}/{{ c.key }}</p>
+              <label>Owner<input [(ngModel)]="owner" placeholder="username@bank"></label>
+              <label>Title<input [(ngModel)]="copyrightTitle" maxlength="80"></label>
+              <label>License<textarea [(ngModel)]="copyrightLicense" maxlength="256"></textarea></label>
+              <button class="primary" (click)="saveCopyright()">Save record</button><button (click)="editing.set(null)">Cancel</button>
+            </section>
+          }
+        }
+        @if (admin && tab() === 'Banks') {
+          <section class="panel"><h2>Trusted banks</h2><p>Configure one shared credential per NanaCoin instance. Its signed-in users receive short-lived file and copyright access.</p>
+            @for (b of banks(); track b.id) { <article class="result"><h3>{{ b.id }}</h3><p>{{ b.origin }} → {{ b.audience }}</p><button class="danger" (click)="revokeBank(b)">Revoke trust</button></article> }
+            <h3>Add bank / rotate credential</h3>
+            <label>Bank identifier<input [(ngModel)]="bankId" placeholder="nanacoin.local"></label>
+            <label>NanaCoin UI origin<input [(ngModel)]="bankOrigin" placeholder="https://nanacoin.local"></label>
+            <label>Minicloud audience / origin<input [(ngModel)]="bankAudience" placeholder="https://minicloud.local"></label>
+            <label>Shared credential<input type="password" [(ngModel)]="bankSecret" autocomplete="new-password" minlength="32"></label>
+            <button class="primary" (click)="trustBank()">Save bank trust</button>
+          </section>
         }
         @if (admin && tab() === 'Workers') {
           <div class="worker-grid"><section class="panel"><p class="eyebrow">COMPILED PLUGINS</p><h2>Small programs. Useful work.</h2>
@@ -96,6 +126,9 @@ class App implements OnDestroy {
   error = signal(''); success = signal(''); tab = signal('Files');
   blobs = signal<BlobItem[]>([]); notices = signal<Notice[]>([]); current = signal<Notice | null>(null); screenImage = signal(''); pageText=signal(''); page=signal(1); pages=signal(1);
   plugins = signal<string[]>([]); receipts = signal<Receipt[]>([]); queued = signal<{id: string; attempts: number}[]>([]);
+  copyrights = signal<Copyright[]>([]); banks = signal<Bank[]>([]); cardAvailable = signal(false);
+  editing = signal<Copyright | null>(null); owner = ''; copyrightTitle = ''; copyrightLicense = ''; copyrightSearch = ''; search = '';
+  bankId = 'nanacoin.local'; bankOrigin = 'https://nanacoin.local'; bankAudience = location.origin; bankSecret = '';
   bucket = 'household'; filter = ''; file: File | null = null; prepareLCD = true;
   source = 'mastomini'; recipient = 'Household'; message = 'You have a new message.'; size = 'medium'; image = '';
   pluginName = 'screen'; topic = 'minicloud/screen/notify';
@@ -118,6 +151,9 @@ class App implements OnDestroy {
       await this.showImage(screen.current, screen.revision);
       if (this.admin && this.unlocked()) {
         this.blobs.set((await this.api('/api/blobs')).blobs);
+        this.copyrights.set((await this.api('/api/copyrights')).copyrights);
+        this.banks.set((await this.api('/api/banks')).banks);
+        this.cardAvailable.set((await this.api('/api/storage')).card_available);
         const jobs = await this.api('/api/jobs'); this.queued.set(jobs.queued); this.receipts.set(jobs.receipts.slice().reverse());
       }
     } catch { this.online.set(false); }
@@ -128,13 +164,25 @@ class App implements OnDestroy {
     catch (error) { this.error.set(String(error instanceof Error ? error.message : error)); }
   }
   async unlock() { await this.action(async () => { await this.api('/api/blobs'); this.unlocked.set(true); }, 'Management connected.'); }
-  lock() { this.unlocked.set(false); this.token = ''; this.blobs.set([]); this.receipts.set([]); }
+  lock() { this.copyrights.set([]); this.banks.set([]); this.editing.set(null); this.bankSecret = ''; this.unlocked.set(false); this.token = ''; this.blobs.set([]); this.receipts.set([]); }
   url(blob: {bucket: string; key: string}) { return '/blobs/' + encodeURIComponent(blob.bucket) + '/' + blob.key.split('/').map(encodeURIComponent).join('/'); }
   stringify(value: unknown) { return JSON.stringify(value, null, 2); }
   buckets() { return [...new Set(this.blobs().map(b => b.bucket))].sort(); }
-  filteredBlobs() { return this.blobs().filter(b => !this.filter || b.bucket === this.filter); }
+  filteredBlobs() { return this.blobs().filter(b => (!this.filter || b.bucket === this.filter) && `${b.bucket} ${b.key} ${b.mime} ${b.hash}`.toLowerCase().includes(this.search.toLowerCase())); }
   imageBlobs() { return this.blobs().filter(b => b.mime.startsWith('image/') || b.mime === 'application/x-rgb565'); }
-  storageKB() { return (this.blobs().reduce((n,b) => n + b.size, 0) / 1024).toFixed(0); }
+  storageKB() { return (this.blobs().filter(b => b.tier === 'onboard').reduce((n,b) => n + b.size, 0) / 1024).toFixed(0); }
+  filteredCopyrights() { return this.copyrights().filter(c => `${c.bucket} ${c.key} ${c.owner} ${c.title} ${c.license}`.toLowerCase().includes(this.copyrightSearch.toLowerCase())); }
+  registryURL(c: {bucket: string; key: string}) { return '/api/copyrights/' + encodeURIComponent(c.bucket) + '/' + c.key.split('/').map(encodeURIComponent).join('/'); }
+  editCopyright(b: BlobItem) { this.editRecord(this.copyrights().find(c => c.bucket === b.bucket && c.key === b.key) ?? {...b, owner: b.uploader ?? '', title: b.key, license: '', revision: 0}); }
+  editRecord(c: Copyright) { this.editing.set({...c}); this.owner = c.owner; this.copyrightTitle = c.title; this.copyrightLicense = c.license; this.tab.set('Copyrights'); }
+  saveCopyright() {
+    const c = this.editing(); if (!c) return;
+    void this.action(async () => { await this.api(this.registryURL(c), {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({bucket: c.bucket, key: c.key, hash: c.hash, owner: this.owner, title: this.copyrightTitle, license: this.copyrightLicense, revision: c.revision})}); this.editing.set(null); }, 'Copyright saved.');
+  }
+  deleteCopyright(c: Copyright) { void this.action(() => this.api(this.registryURL(c), {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({revision: c.revision})}), 'Copyright record deleted.'); }
+  trustBank() { void this.action(async () => { await this.api('/api/banks/' + encodeURIComponent(this.bankId), {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: this.bankId, secret: this.bankSecret, origin: this.bankOrigin, audience: this.bankAudience})}); this.bankSecret = ''; }, 'Bank trusted.'); }
+  revokeBank(b: Bank) { void this.action(() => this.api('/api/banks/' + encodeURIComponent(b.id), {method: 'DELETE'}), 'Bank trust revoked.'); }
+  migrate(b: BlobItem) { void this.action(() => this.post('/api/storage/migrate', {bucket: b.bucket, key: b.key, tier: b.tier === 'card' ? 'onboard' : 'card'}), 'File moved and verified. Its URL and copyright remain the same.'); }
   choose(event: Event) { this.file = (event.target as HTMLInputElement).files?.[0] || null; }
   async put(key: string, mime: string, bytes: Blob | Uint8Array<ArrayBuffer>) {
     const response = await fetch('/api/blobs/' + encodeURIComponent(this.bucket) + '/' + encodeURIComponent(key), {method: 'PUT', headers: {...this.headers(), 'Content-Type': mime}, body: bytes});

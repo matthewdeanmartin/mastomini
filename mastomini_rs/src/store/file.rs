@@ -7,7 +7,7 @@
 //! lock so two servers cannot write one store.
 
 use super::mem::MemStore;
-use super::{Key, Ns, Store, StoreError, StoreStats, Visitor};
+use super::{Key, Ns, Store, StoreError, StoreStats, Visitor, KEY_MAX, VALUE_MAX};
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -98,7 +98,11 @@ fn corrupt(offset: usize, what: &str) -> StoreError {
 fn replay(bytes: &[u8], mem: &mut MemStore) -> Result<(), StoreError> {
     if bytes.len() < MAGIC.len() {
         // A crash while creating the file: nothing was ever acknowledged.
-        return Ok(());
+        return if MAGIC.starts_with(bytes) {
+            Ok(())
+        } else {
+            Err(corrupt(0, "bad magic"))
+        };
     }
     if &bytes[..MAGIC.len()] != MAGIC {
         return Err(corrupt(0, "bad magic"));
@@ -110,16 +114,20 @@ fn replay(bytes: &[u8], mem: &mut MemStore) -> Result<(), StoreError> {
             return Ok(()); // torn final header
         }
         let len = u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap_or([0; 4])) as usize;
+        if !(7..=7 + KEY_MAX + VALUE_MAX).contains(&len) {
+            return Err(corrupt(pos, "invalid record length"));
+        }
         let crc = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().unwrap_or([0; 4]));
-        let end = header_end + len;
+        let end = header_end
+            .checked_add(len)
+            .ok_or_else(|| corrupt(pos, "length overflow"))?;
         if end > bytes.len() {
             return Ok(()); // torn final record
         }
         let payload = &bytes[header_end..end];
         if crc32fast::hash(payload) != crc {
-            if end == bytes.len() {
-                return Ok(()); // torn final record with a complete length
-            }
+            // A complete bad record may be acknowledged data damaged later.
+            // Do not guess that it was an unacknowledged torn append.
             return Err(corrupt(pos, "checksum mismatch"));
         }
         apply(payload, mem).map_err(|_| corrupt(pos, "malformed record"))?;
@@ -143,18 +151,41 @@ fn apply(payload: &[u8], mem: &mut MemStore) -> Result<(), StoreError> {
             .try_into()
             .map_err(|_| bad())?,
     ) as usize;
-    let value = rest.get(4..4 + vlen).ok_or_else(bad)?;
+    let end = 4usize.checked_add(vlen).ok_or_else(bad)?;
+    let value = rest.get(4..end).ok_or_else(bad)?;
+    if end != rest.len() {
+        return Err(bad());
+    }
     match op {
         OP_SET => mem.set(ns, &key, value),
-        OP_ERASE => mem.erase(ns, &key),
+        OP_ERASE if value.is_empty() => mem.erase(ns, &key),
         _ => Err(bad()),
     }
 }
 
 fn compact(path: &Path, mem: &mut MemStore) -> Result<(), StoreError> {
+    compact_at(path, mem, |_| Ok(()))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompactPoint {
+    Created,
+    Written,
+    Synced,
+    Replaced,
+}
+
+/// The checkpoint seam exercises real file operations interrupted at each
+/// replacement boundary; the production closure is optimized away.
+fn compact_at(
+    path: &Path,
+    mem: &mut MemStore,
+    mut checkpoint: impl FnMut(CompactPoint) -> Result<(), StoreError>,
+) -> Result<(), StoreError> {
     let tmp = path.with_extension("compact");
     {
         let mut out = File::create(&tmp).map_err(io)?;
+        checkpoint(CompactPoint::Created)?;
         let mut buf = Vec::new();
         buf.extend_from_slice(MAGIC);
         for ns in Ns::ALL {
@@ -167,10 +198,22 @@ fn compact(path: &Path, mem: &mut MemStore) -> Result<(), StoreError> {
             })?;
         }
         out.write_all(&buf).map_err(io)?;
+        checkpoint(CompactPoint::Written)?;
         out.sync_all().map_err(io)?;
+        checkpoint(CompactPoint::Synced)?;
     }
     // Replaces the old log atomically on both Windows and Unix.
-    std::fs::rename(&tmp, path).map_err(io)
+    std::fs::rename(&tmp, path).map_err(io)?;
+    // POSIX rename durability also requires the directory entry to be synced.
+    #[cfg(unix)]
+    File::open(
+        path.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new(".")),
+    )
+    .and_then(|dir| dir.sync_all())
+    .map_err(io)?;
+    checkpoint(CompactPoint::Replaced)
 }
 
 impl Store for FileStore {
@@ -279,5 +322,143 @@ mod tests {
         let path = temp_path("lock");
         let _first = FileStore::open(&path).unwrap();
         assert!(matches!(FileStore::open(&path), Err(StoreError::Io(_))));
+    }
+
+    #[test]
+    fn acknowledged_corruption_is_preserved_including_the_last_record() {
+        let path = temp_path("corrupt-final");
+        {
+            let mut store = FileStore::open(&path).unwrap();
+            store
+                .set(Ns::Cfg, &Key::new("a").unwrap(), b"acknowledged")
+                .unwrap();
+        }
+        let original = std::fs::read(&path).unwrap();
+        for offset in MAGIC.len()..original.len() {
+            let mut damaged = original.clone();
+            damaged[offset] ^= 0x80;
+            // Skip length mutations that plausibly describe an incomplete append.
+            if offset < MAGIC.len() + 4 {
+                continue;
+            }
+            std::fs::write(&path, &damaged).unwrap();
+            assert!(
+                matches!(FileStore::open(&path), Err(StoreError::Corrupt(_))),
+                "byte {offset}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                damaged,
+                "must preserve evidence"
+            );
+        }
+        let mut damaged = original;
+        damaged[MAGIC.len()..MAGIC.len() + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&path, &damaged).unwrap();
+        assert!(matches!(
+            FileStore::open(&path),
+            Err(StoreError::Corrupt(_))
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), damaged);
+    }
+
+    #[test]
+    fn every_torn_append_preserves_the_acknowledged_prefix() {
+        let path = temp_path("every-cut");
+        let key = Key::new("a").unwrap();
+        {
+            FileStore::open(&path)
+                .unwrap()
+                .set(Ns::Cfg, &key, b"old")
+                .unwrap();
+        }
+        let acknowledged = std::fs::read(&path).unwrap();
+        let payload = encode(OP_SET, Ns::Cfg, &key, b"new-value");
+        let mut append = (payload.len() as u32).to_le_bytes().to_vec();
+        append.extend_from_slice(&crc32fast::hash(&payload).to_le_bytes());
+        append.extend_from_slice(&payload);
+        for cut in 0..=append.len() {
+            let mut bytes = acknowledged.clone();
+            bytes.extend_from_slice(&append[..cut]);
+            std::fs::write(&path, bytes).unwrap();
+            // A leftover compaction file must not replace the acknowledged log.
+            std::fs::write(path.with_extension("compact"), b"interrupted rewrite").unwrap();
+            let mut reopened = FileStore::open(&path).unwrap();
+            let expected = if cut == append.len() {
+                b"new-value".as_slice()
+            } else {
+                b"old"
+            };
+            assert_eq!(
+                reopened.get(Ns::Cfg, &key).unwrap().unwrap(),
+                expected,
+                "cut {cut}"
+            );
+            drop(reopened);
+            let stable = std::fs::read(&path).unwrap();
+            drop(FileStore::open(&path).unwrap());
+            assert_eq!(std::fs::read(&path).unwrap(), stable);
+        }
+    }
+
+    #[test]
+    fn checksummed_but_malformed_records_are_rejected() {
+        let key = Key::new("a").unwrap();
+        for payload in [
+            {
+                let mut p = encode(OP_SET, Ns::Cfg, &key, b"x");
+                p.push(0);
+                p
+            },
+            encode(OP_ERASE, Ns::Cfg, &key, b"unexpected"),
+        ] {
+            let mut bytes = MAGIC.to_vec();
+            bytes.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&crc32fast::hash(&payload).to_le_bytes());
+            bytes.extend_from_slice(&payload);
+            assert!(matches!(
+                replay(&bytes, &mut MemStore::default()),
+                Err(StoreError::Corrupt(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn interrupted_compaction_never_loses_acknowledged_keys() {
+        let path = temp_path("compact-cuts");
+        {
+            let mut store = FileStore::open(&path).unwrap();
+            for (key, bytes) in [("a", b"one".as_slice()), ("b", b"two")] {
+                store.set(Ns::Cfg, &Key::new(key).unwrap(), bytes).unwrap();
+            }
+        }
+        let original = std::fs::read(&path).unwrap();
+        for cut in [
+            CompactPoint::Created,
+            CompactPoint::Written,
+            CompactPoint::Synced,
+            CompactPoint::Replaced,
+        ] {
+            std::fs::write(&path, &original).unwrap();
+            let mut mem = MemStore::default();
+            replay(&original, &mut mem).unwrap();
+            assert!(compact_at(&path, &mut mem, |point| {
+                if point == cut {
+                    Err(StoreError::Io("interrupted compaction".into()))
+                } else {
+                    Ok(())
+                }
+            })
+            .is_err());
+            let mut reopened = FileStore::open(&path).unwrap();
+            assert_eq!(
+                reopened.get(Ns::Cfg, &Key::new("a").unwrap()).unwrap(),
+                Some(b"one".to_vec())
+            );
+            assert_eq!(
+                reopened.get(Ns::Cfg, &Key::new("b").unwrap()).unwrap(),
+                Some(b"two".to_vec())
+            );
+        }
     }
 }

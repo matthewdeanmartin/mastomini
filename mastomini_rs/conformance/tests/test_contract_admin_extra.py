@@ -1,4 +1,4 @@
-import httpx2 as httpx
+import httpx2 as httpx2
 import pytest
 from mastodon import Mastodon
 from mastodon.errors import MastodonNotFoundError
@@ -15,8 +15,8 @@ def test_admin_account_lookup_404(admin_client: Mastodon) -> None:
 
 
 def test_admin_accounts_filtering(live_server: str) -> None:
-    # Test origin=remote via httpx since Mastodon.py might not support all params
-    with httpx.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
+    # Test origin=remote via httpx2 since Mastodon.py might not support all params
+    with httpx2.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
         resp = client.get("/api/v2/admin/accounts", params={"origin": "remote"})
         resp.raise_for_status()
         remote = resp.json()
@@ -32,7 +32,7 @@ def test_admin_accounts_filtering(live_server: str) -> None:
 
 
 def test_admin_account_action_404(live_server: str) -> None:
-    with httpx.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
+    with httpx2.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
         resp = client.post("/api/v1/admin/accounts/123456789/action", json={"type": "none"})
         assert resp.status_code == 404
 
@@ -42,7 +42,7 @@ def test_admin_account_action_404(live_server: str) -> None:
 
 
 def test_admin_announcement_create_publish_delete_cycle(live_server: str) -> None:
-    with httpx.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
+    with httpx2.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
         # Create as a draft: it must not appear on the public endpoint yet.
         resp = client.post("/api/v1/admin/announcements", json={"text": "Heads up!", "published": False})
         resp.raise_for_status()
@@ -76,12 +76,12 @@ def test_admin_announcement_create_publish_delete_cycle(live_server: str) -> Non
 
 
 def test_admin_announcement_create_requires_text(live_server: str) -> None:
-    with httpx.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
+    with httpx2.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
         resp = client.post("/api/v1/admin/announcements", json={"text": "   "})
         assert resp.status_code == 422
 
 
 def test_admin_announcement_delete_404(live_server: str) -> None:
-    with httpx.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
+    with httpx2.Client(base_url=live_server, headers={"Authorization": "Bearer alice_token"}) as client:
         resp = client.delete("/api/v1/admin/announcements/999999999")
         assert resp.status_code == 404

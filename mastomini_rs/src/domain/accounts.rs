@@ -77,10 +77,14 @@ impl<S: Store> Service<S> {
     }
 
     pub(crate) fn insert_account(&mut self, member: NewMember, now_ms: u64) -> Result<u8> {
+        self.insert_account_kind(member, now_ms, false)
+    }
+
+    fn insert_account_kind(&mut self, member: NewMember, now_ms: u64, bot: bool) -> Result<u8> {
         self.check_new_member(&member)?;
         let slot = self.free_slot()?;
         let rec = AccountRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             username: member.username,
             display_name: member.display_name,
             note: String::new(),
@@ -89,7 +93,7 @@ impl<S: Store> Service<S> {
             disabled: false,
             deleted: false,
             locked: false,
-            bot: false,
+            bot,
             discoverable: true,
             verifier: Verifier::new(&member.password, self.config.password_rounds),
             token_epoch: 0,
@@ -156,6 +160,34 @@ impl<S: Store> Service<S> {
         }
         self.govern(Some(actor), now_ms)?;
         self.insert_account(member, now_ms)
+    }
+
+    /// Resume only an account whose generated password proves setup ownership.
+    pub fn create_bot_member(&mut self, actor: u8, member: NewMember, now_ms: u64) -> Result<u8> {
+        if !self
+            .state
+            .account(actor)
+            .is_some_and(|a| a.rec.role.is_admin())
+        {
+            return Err(Error::Forbidden("Only an admin can provision bots".into()));
+        }
+        if member.role != Role::Member {
+            return invalid("Bot accounts must have the member role");
+        }
+        if let Some(account) = self.state.account_by_username(&member.username) {
+            if !account.rec.bot || account.rec.role != Role::Member || account.rec.disabled {
+                return Err(Error::Forbidden(
+                    "An unrelated account already has this username".into(),
+                ));
+            }
+            let slot = account.slot;
+            if self.check_password(&member.username, &member.password, now_ms)? != slot {
+                return Err(Error::Unauthorized);
+            }
+            return Ok(slot);
+        }
+        self.govern(Some(actor), now_ms)?;
+        self.insert_account_kind(member, now_ms, true)
     }
 
     pub fn update_profile(&mut self, slot: u8, update: ProfileUpdate, now_ms: u64) -> Result<()> {
@@ -281,9 +313,9 @@ impl<S: Store> Service<S> {
         self.replace_password(slot, new, Some(current))
     }
 
-    /// Set a new verifier and bump the token epoch in one write (the commit
-    /// point), then re-seal the member's key: with `current` it keeps the
-    /// same secret, without it (a reset) the member gets a new key pair.
+    /// Commit the verifier, token epoch and sealed key in one account record,
+    /// then copy the key to its canonical slot. With `current` the secret is
+    /// preserved; a password reset creates a new key pair.
     pub(crate) fn replace_password(
         &mut self,
         slot: u8,
@@ -293,17 +325,32 @@ impl<S: Store> Service<S> {
         let mut rec = self.state.account(slot).ok_or(Error::NotFound)?.rec.clone();
         rec.verifier = Verifier::new(new, self.config.password_rounds);
         rec.token_epoch = rec.token_epoch.wrapping_add(1);
-        self.put(Ns::Acct, &keys::account(slot), Kind::Account, &rec)?;
+        let key = self.prepare_password_key(slot, current, new)?;
+        let committed = super::dm::AccountWithKey {
+            account: rec.clone(),
+            key: key.clone(),
+        };
+        // The accepted password and its sealed key must become durable together.
+        self.put(
+            Ns::Acct,
+            &keys::account(slot),
+            Kind::AccountWithKey,
+            &committed,
+        )?;
         if let Some(a) = self.state.accounts[slot as usize].as_mut() {
             a.rec = rec;
         }
-        match current {
-            Some(current) => self.reseal_user_key(slot, current, new)?,
-            None => {
-                self.create_user_key(slot, new)?;
-            }
-        }
-        self.forget_stale_tokens(slot)
+        self.state.user_keys[slot as usize] = Some(key.clone());
+        // Until the canonical key is durable, a later profile write must not
+        // replace the recovery copy in the account. Even Full requires reboot.
+        self.put(Ns::Key, &keys::user_key(slot), Kind::UserKey, &key)
+            .and_then(|_| self.forget_stale_tokens(slot))
+            .map_err(|error| {
+                let message =
+                    format!("Password committed; storage repair requires restart: {error}");
+                self.latched = Some(message.clone());
+                Error::Unavailable(message)
+            })
     }
 
     /// "Sign out everywhere": every token of the member stops working.

@@ -69,7 +69,7 @@ impl<S: Store> Service<S> {
             })?;
         self.govern(Some(slot), now_ms)?;
         let rec = ListRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             title,
             replies_policy,
             exclusive,

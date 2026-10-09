@@ -101,12 +101,28 @@ impl Store for MemStore {
 /// Simulates losing power: once `budget` mutating operations have completed,
 /// every later operation fails and nothing more reaches the inner store.
 /// Reads keep working until the cut so the service can be exercised normally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Failure {
+    /// Fail before a mutation; no change reaches the backing store.
+    Write,
+    /// Complete a mutation, then lose the acknowledgement.
+    PersistThenError,
+    /// Reject a mutation without latching the simulated power cut.
+    Full,
+    Read,
+    Enumerate,
+    /// Fail after visiting a prefix of a namespace.
+    Visit,
+    Stats,
+}
+
 #[derive(Debug)]
 pub struct FaultStore<S: Store> {
     pub inner: S,
     budget: Option<usize>,
     pub writes: usize,
     cut: bool,
+    failure: Option<(Failure, usize)>,
 }
 
 impl<S: Store> FaultStore<S> {
@@ -116,12 +132,48 @@ impl<S: Store> FaultStore<S> {
             budget: None,
             writes: 0,
             cut: false,
+            failure: None,
         }
     }
 
     /// Allow `writes` more mutating operations, then cut power.
     pub fn cut_after(&mut self, writes: usize) {
         self.budget = Some(self.writes + writes);
+    }
+
+    /// Fail after `successful` matching operations; other operations are unaffected.
+    pub fn fail_after(&mut self, failure: Failure, successful: usize) {
+        self.failure = Some((failure, successful));
+    }
+
+    fn inject(
+        state: &mut Option<(Failure, usize)>,
+        cut: &mut bool,
+        at: Failure,
+    ) -> Result<(), StoreError> {
+        if *cut {
+            return Err(StoreError::Io("power cut".into()));
+        }
+        let Some((failure, remaining)) = state.as_mut() else {
+            return Ok(());
+        };
+        if *failure != at {
+            return Ok(());
+        }
+        if *remaining > 0 {
+            *remaining -= 1;
+            return Ok(());
+        }
+        *state = None;
+        if at == Failure::Full {
+            return Err(StoreError::Full);
+        }
+        *cut = true;
+        Err(StoreError::Io(format!("injected {at:?}")))
+    }
+
+    fn fault(&mut self, at: Failure) -> Result<(), StoreError> {
+        Self::inject(&mut self.failure, &mut self.cut, at)
     }
 
     pub fn is_cut(&self) -> bool {
@@ -145,30 +197,38 @@ impl<S: Store> FaultStore<S> {
 
 impl<S: Store> Store for FaultStore<S> {
     fn get(&mut self, ns: Ns, key: &Key) -> Result<Option<Vec<u8>>, StoreError> {
-        if self.cut {
-            return Err(StoreError::Io("power cut".into()));
-        }
+        self.fault(Failure::Read)?;
         self.inner.get(ns, key)
     }
 
     fn set(&mut self, ns: Ns, key: &Key, value: &[u8]) -> Result<(), StoreError> {
         self.admit()?;
-        self.inner.set(ns, key, value)
+        self.fault(Failure::Write)?;
+        self.fault(Failure::Full)?;
+        self.inner.set(ns, key, value)?;
+        self.fault(Failure::PersistThenError)
     }
 
     fn erase(&mut self, ns: Ns, key: &Key) -> Result<(), StoreError> {
         self.admit()?;
-        self.inner.erase(ns, key)
+        self.fault(Failure::Write)?;
+        self.fault(Failure::Full)?;
+        self.inner.erase(ns, key)?;
+        self.fault(Failure::PersistThenError)
     }
 
     fn for_each(&mut self, ns: Ns, visit: &mut Visitor<'_>) -> Result<(), StoreError> {
-        if self.cut {
-            return Err(StoreError::Io("power cut".into()));
-        }
-        self.inner.for_each(ns, visit)
+        self.fault(Failure::Enumerate)?;
+        let failure = &mut self.failure;
+        let cut = &mut self.cut;
+        self.inner.for_each(ns, &mut |key, value| {
+            Self::inject(failure, cut, Failure::Visit)?;
+            visit(key, value)
+        })
     }
 
     fn stats(&mut self) -> Result<StoreStats, StoreError> {
+        self.fault(Failure::Stats)?;
         self.inner.stats()
     }
 }
@@ -176,6 +236,32 @@ impl<S: Store> Store for FaultStore<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lost_acknowledgements_persist_and_full_does_not() {
+        let key = Key::new("a").unwrap();
+        for erase in [false, true] {
+            let mut fault = FaultStore::new(MemStore::default());
+            fault.inner.set(Ns::Cfg, &key, b"old").unwrap();
+            fault.fail_after(Failure::PersistThenError, 0);
+            let result = if erase {
+                fault.erase(Ns::Cfg, &key)
+            } else {
+                fault.set(Ns::Cfg, &key, b"new")
+            };
+            assert!(matches!(result, Err(StoreError::Io(_))));
+            assert_eq!(
+                fault.inner.get(Ns::Cfg, &key).unwrap(),
+                if erase { None } else { Some(b"new".to_vec()) }
+            );
+            assert!(fault.stats().is_err());
+        }
+        let mut fault = FaultStore::new(MemStore::default());
+        fault.fail_after(Failure::Full, 0);
+        assert_eq!(fault.set(Ns::Cfg, &key, b"no"), Err(StoreError::Full));
+        assert_eq!(fault.get(Ns::Cfg, &key).unwrap(), None);
+        fault.set(Ns::Cfg, &key, b"retry").unwrap();
+    }
 
     #[test]
     fn namespaces_are_isolated_and_ordered() {

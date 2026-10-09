@@ -23,22 +23,24 @@ required-features = ["esp32"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tiny_http", "dep:ureq", "dep:rustls", "dep:rustls-pemfile", "dep:webpki-roots"]
-esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
+desktop = ["miniframework/desktop-tls", "dep:ureq", "dep:rustls", "dep:rustls-pemfile", "dep:webpki-roots"]
+esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "bundled-web"]
+http2 = ["miniframework/http2"]
 # Embed the admin app (mastomini_bots_ui); needs `make web` first.
 bundled-web = []
 
 [dependencies]
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 getrandom = "0.2"
 percent-encoding = "2.3"
-log = { version = "0.4", optional = true }
-# Desktop only. The admin server is plain HTTP (or HTTPS with make certs),
+log = "0.4"
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls"] }
+# Desktop only. miniframework serves HTTP (or HTTPS with make certs),
 # the Mastodon client is ureq with the public roots plus the household CA.
-tiny_http = { version = "0.12", optional = true, features = ["ssl-rustls"] }
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls", "json"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-pemfile = { version = "2", optional = true }
@@ -49,6 +51,11 @@ esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"
 
 [build-dependencies]
 embuild = { version = "0.33", optional = true, features = ["espidf"] }
+
+[dev-dependencies]
+tempfile = "3"
+mastomini = { package = "mastomini_rs", path = "../mastomini_rs", default-features = false }
+nanacoin = { package = "nanacoin_rs", path = "../../nanacoin/nanacoin_rs", default-features = false }
 
 [profile.release]
 opt-level = "s"

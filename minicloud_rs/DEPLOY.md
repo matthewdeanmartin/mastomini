@@ -1,5 +1,20 @@
 # Deploy the Minicloud messageboard
 
+## October 3 observability update (prepared, not flashed)
+
+The old `/metrics` request fell into the management-UI fallback (live HTTP
+503). The new public route precedes that fallback and returns Influx machine
+health without a management token or cloud-state mutation. Desktop checks
+passed (core, SQLite, HTTP/MQTT smoke, formatting and clippy), including a
+regression for public metrics and unchanged cloud revision.
+
+Prepared C6 app: 1,408,560 / 2,097,152 bytes. The current hashes and image
+paths are in `.embuild/deployment-images.json`; build log:
+`.embuild/observability-firmware.log`. The board was not flashed. Use the
+existing **update** procedure after confirming MAC `ac:eb:e6:1e:13:40`;
+preserve NVS and SPIFFS. Require HTTP 200 and a `board,app=minicloud` line
+from `/metrics` during acceptance, along with the normal checks below.
+
 This is a runbook for a future Luna delegation as well as manual deployment.
 Run every command in **Git Bash**, from `C:/github/mastomini/minicloud_rs`.
 Deploy only the identified Minicloud C6. This task does not deploy NanaCoin,
@@ -93,15 +108,14 @@ cmd, WSL, or download a different toolchain to solve a routine path problem.
 ```dotenv
 MINICLOUD_WIFI_SSID="household-2.4GHz-SSID"
 MINICLOUD_WIFI_PASSWORD="household-Wi-Fi-password"
-MINICLOUD_ADMIN_TOKEN="private-random-management-token-at-least-24-characters"
+MINICLOUD_ADMIN_TOKEN="your-private-management-token-or-seven-digit-pin"
 ```
 
 The values above are placeholders, not working credentials. The existing
 private file was created from the saved Mastomini household Wi-Fi settings,
-with a new random management token. Reuse it for this unit. Never print the
+with a management token. Reuse the owner’s configured token for this unit. Never print the
 file, put its values in chat/logs, or commit it. If recreating it is necessary,
-read already-authorized local settings without displaying them; use a random
-token, not the desktop prototype token. The loader supports JSON double-quoted,
+read already-authorized local settings without displaying them; use the owner’s chosen token (seven or more characters), not the desktop prototype token. The loader supports JSON double-quoted,
 single-quoted and unquoted values; it does not evaluate shell substitutions.
 Double-quoted values must be valid JSON strings.
 
@@ -501,3 +515,37 @@ Ignored evidence uses `.embuild/display-fix-*-2026-10-01.{log,json}`, plus
 `display-build-tracking-2026-10-01.log`, `display-build-tracking-pass.json`, and
 `pre-display-fix-2026-10-01.json`. This correction supersedes the initial
 landscape attempt above.
+
+## Copyright registry and seven-digit PIN deployment — October 3, 2026
+
+- The owner requested a seven-digit PIN and authorized deployment. Build,
+  configuration loader and runtime validation now accept seven or more
+  characters. The existing private `.env` value was used without logging it.
+- C6 / COM17 / base MAC `ac:eb:e6:1e:13:40` / 8 MiB identity verified by the
+  deployment helper. `--update` verified all firmware regions and retained
+  NVS and SPIFFS. No card or onboard data was formatted.
+- App: **1,543,840 / 2,097,152 bytes**, SHA-256
+  `34dcb965d75f48cf3f18dabfcad22761421cf7d164def71191495bbe522223d8`.
+- HTTP rejoined at **192.168.1.163**, `minicloud.local`. The first immediate
+  HTTP checks timed out while Wi-Fi was joining; later checks succeeded.
+  Startup reached LCD, SPIFFS, HTTP, MQTT, SNTP and mDNS without a panic.
+  The owner observed that messages continued rotating on the LCD.
+- The configured PIN authenticated `/api/blobs`, `/api/copyrights`,
+  `/api/banks` and `/api/storage`. Live copyright creation, read, search,
+  update, stale-write rejection and deletion passed; probe files and records
+  were removed. Card migration correctly returned 503 with no available card.
+- Full existing live acceptance passed: bundled UI, compiled display driver,
+  HTTP/MQTT auth, QoS1, MIME/ETag streaming, RGB565 image command, text sizes,
+  notice deadlines, actual expiry and read dismissal. This run’s probes were
+  cleaned up. Acceptance free heap was **208,924** initially and **206,656**
+  finally, minimum **178,944**; largest block **163,840**.
+- The two pre-update notices were automatically refreshed NanaCoin economy
+  cards. Their identifiers changed through normal producer refresh; two
+  economy cards remained present after the update.
+- TF-card initialization returned 0x107. Onboard storage is active and
+  `/api/storage` reports `card_available: false`; real card migration is
+  unverified until a usable FAT card is inserted and the board restarted.
+
+Ignored evidence: `.embuild/pre-update-{status,screen}.json`,
+`post-update-{status,screen}.json`, `board-serial.log`,
+`deployment-board-ip.txt` and `deployment-images.json`.

@@ -87,6 +87,27 @@ from Phase 5 can update it without code changes.
 
 ## Authentication inside the app
 
+### Bot enrollment from mastomini-bots
+
+The separate bots admin app can create all NanaCoin posting accounts with one
+Mastomini administrator login. These household endpoints support its resumable
+worker:
+
+| Endpoint | Body / result |
+|---|---|
+| `POST /api/mastomini/v1/admin/bots/login` | `{username,password}` → temporary `{access_token}`; admin role required |
+| `GET /api/mastomini/v1/admin/bots/capacity` | Admin bearer → `{accounts_available,keys_available}` |
+| `POST /api/mastomini/v1/admin/bots` | Admin bearer + `{username,password,display_name}` → member with `bot:true`, role always `member` |
+| `POST /api/mastomini/v1/admin/bots/:id/api_keys` | Admin bearer + generated bot `{password,name}` → `{key}` with `read write` scopes |
+
+An existing bot username can be resumed only by proving its generated password;
+human, disabled and privileged accounts cannot be claimed. Enrollment key names
+start with `mmb-`; recovery replaces only the matching name, preserving unrelated
+keys. The caller revokes the temporary session through `/oauth/revoke`. Admin
+passwords are never saved in the bots store or returned in progress responses.
+
+### Household browser login
+
 The app signs in through the same `/oauth/authorize` page as any client (PKCE
 S256, with a pure-TypeScript SHA-256 because `crypto.subtle` is missing on
 plain HTTP), and keeps its token in `localStorage`. So it exercises the same

@@ -138,9 +138,171 @@ impl HttpClient for DesktopClient {
         let mut body = Vec::new();
         response
             .into_reader()
-            .take(BODY_LIMIT)
+            .take(BODY_LIMIT + 1)
             .read_to_end(&mut body)
             .map_err(|e| e.to_string())?;
+        if body.len() as u64 > BODY_LIMIT {
+            return Err("HTTP response exceeds 1 MiB".into());
+        }
         Ok(HttpResponse { status, body })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use ureq::Resolver as _;
+
+    #[test]
+    fn resolver_honors_overrides_expires_cache_and_forgets_failed_addresses() {
+        let client =
+            DesktopClient::new(None, " EXAMPLE.test=127.0.0.1,example.test=127.0.0.2 ").unwrap();
+        let expected = vec![
+            "127.0.0.1:1234".parse().unwrap(),
+            "127.0.0.2:1234".parse().unwrap(),
+        ];
+        assert_eq!(
+            client.resolver.resolve("example.test:1234").unwrap(),
+            expected
+        );
+        assert_eq!(
+            client.resolver.resolve("EXAMPLE.test:bad").unwrap()[0].port(),
+            443
+        );
+        let resolver = Resolver::default();
+        let key = "127.0.0.1:1234";
+        let cached = vec!["127.0.0.2:1234".parse().unwrap()];
+        resolver
+            .cache
+            .lock()
+            .unwrap()
+            .insert(key.into(), (cached.clone(), Instant::now()));
+        assert_eq!(resolver.resolve(key).unwrap(), cached);
+        resolver.cache.lock().unwrap().get_mut(key).unwrap().1 = Instant::now() - TTL;
+        assert_eq!(resolver.resolve(key).unwrap(), vec![key.parse().unwrap()]);
+        resolver.forget();
+        assert!(resolver.cache.lock().unwrap().is_empty());
+        assert!(resolver.resolve("invalid address:123").is_err());
+    }
+
+    #[test]
+    fn invalid_resolver_and_certificates_are_reported() {
+        assert!(DesktopClient::new(None, "missing-ip").is_err());
+        assert!(DesktopClient::new(None, "host=bad-ip").is_err());
+        assert!(DesktopClient::new(
+            Some(b"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"),
+            ""
+        )
+        .is_err());
+        assert!(DesktopClient::new(
+            Some(b"-----BEGIN CERTIFICATE-----\n!\n-----END CERTIFICATE-----"),
+            ""
+        )
+        .is_err());
+    }
+
+    fn serve(status: u16, body: Vec<u8>) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let task = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                if request.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let headers = String::from_utf8(request.clone()).unwrap();
+            let length = headers
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length: ")
+                        .and_then(|s| s.parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            let mut payload = vec![0; length];
+            socket.read_exact(&mut payload).unwrap();
+            request.extend(payload);
+            write!(
+                socket,
+                "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            // An oversize response may cause the client to close the connection early.
+            let _ = socket.write_all(&body);
+            String::from_utf8(request).unwrap()
+        });
+        (url, task)
+    }
+
+    #[test]
+    fn transport_sends_headers_and_body_and_preserves_http_errors() {
+        let mut client = DesktopClient::with_timeout(None, "", Duration::from_secs(5)).unwrap();
+        for (method, status, payload) in [("GET", 200, ""), ("POST", 503, "{\"test\":true}")] {
+            let (url, task) = serve(status, b"answer".to_vec());
+            let result = client
+                .send(&HttpRequest {
+                    method,
+                    url,
+                    headers: vec![("X-Test".into(), "value".into())],
+                    body: payload.as_bytes().to_vec(),
+                })
+                .unwrap();
+            assert_eq!(
+                result,
+                HttpResponse {
+                    status,
+                    body: b"answer".to_vec()
+                }
+            );
+            let request = task.join().unwrap();
+            assert!(request.starts_with(method));
+            assert!(request.to_ascii_lowercase().contains("x-test: value"));
+            assert!(request.ends_with(payload));
+        }
+        let (url, task) = serve(200, vec![b'x'; BODY_LIMIT as usize + 1]);
+        assert!(client
+            .send(&HttpRequest {
+                method: "GET",
+                url,
+                headers: vec![],
+                body: vec![]
+            })
+            .unwrap_err()
+            .contains("1 MiB"));
+        task.join().unwrap();
+    }
+
+    #[test]
+    fn transport_failure_invalidates_dns_cache() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let mut client = DesktopClient::with_timeout(None, "", Duration::from_secs(1)).unwrap();
+        client
+            .resolver
+            .cache
+            .lock()
+            .unwrap()
+            .insert(address.to_string(), (vec![address], Instant::now()));
+        assert!(client
+            .send(&HttpRequest {
+                method: "GET",
+                url: format!("http://{address}"),
+                headers: vec![],
+                body: vec![]
+            })
+            .is_err());
+        assert!(client.resolver.cache.lock().unwrap().is_empty());
     }
 }

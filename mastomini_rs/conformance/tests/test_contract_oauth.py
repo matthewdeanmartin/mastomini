@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-import httpx2 as httpx
+import httpx2 as httpx2
 from mastodon import Mastodon
 
 
@@ -17,7 +17,7 @@ def test_create_app_returns_client_credentials(live_server: str) -> None:
 def test_client_credentials_grant_and_app_verify(live_server: str) -> None:
     client_id, client_secret = Mastodon.create_app("verify-app", api_base_url=live_server)
 
-    token_resp = httpx.post(
+    token_resp = httpx2.post(
         f"{live_server}/oauth/token",
         data={
             "grant_type": "client_credentials",
@@ -29,7 +29,7 @@ def test_client_credentials_grant_and_app_verify(live_server: str) -> None:
     assert token_resp.status_code == 200
     app_token = token_resp.json()["access_token"]
 
-    verify = httpx.get(
+    verify = httpx2.get(
         f"{live_server}/api/v1/apps/verify_credentials",
         headers={"Authorization": f"Bearer {app_token}"},
     )
@@ -60,7 +60,7 @@ def test_duplicate_username_signup_is_rejected(live_server: str) -> None:
 
     # "alice" already exists in the seed; signing up again must 422.
     token = _app_token(live_server, client_id, client_secret)
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{live_server}/api/v1/accounts",
         data={
             "username": "alice",
@@ -76,7 +76,7 @@ def test_duplicate_username_signup_is_rejected(live_server: str) -> None:
 def test_signup_requires_agreement(live_server: str) -> None:
     client_id, client_secret = Mastodon.create_app("agree-app", api_base_url=live_server)
     token = _app_token(live_server, client_id, client_secret)
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{live_server}/api/v1/accounts",
         data={
             "username": "noagree",
@@ -93,7 +93,7 @@ def test_authorization_code_grant_issues_user_token(live_server: str) -> None:
     # The picker mints an opaque ``mockcode_<username>`` code for any local account.
     code = _authorize_code(live_server, client_id, "alice")
 
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{live_server}/oauth/token",
         data={
             "grant_type": "authorization_code",
@@ -111,18 +111,18 @@ def test_authorization_code_grant_issues_user_token(live_server: str) -> None:
 
 def test_authorization_code_grant_rejects_disabled_account(live_server: str) -> None:
     # Create a fresh user, mint a code for it, then disable it via the admin action.
-    created = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
+    created = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
     username = created["username"]
 
     client_id, client_secret = Mastodon.create_app("disabled-app", api_base_url=live_server)
     code = _authorize_code(live_server, client_id, username)
 
-    admin = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={"admin": True}).json()
-    target_id = httpx.get(
+    admin = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={"admin": True}).json()
+    target_id = httpx2.get(
         f"{live_server}/api/v1/accounts/verify_credentials",
         headers={"Authorization": f"Bearer {created['access_token']}"},
     ).json()["id"]
-    disable = httpx.post(
+    disable = httpx2.post(
         f"{live_server}/api/v1/admin/accounts/{target_id}/action",
         json={"type": "disable"},
         headers={"Authorization": f"Bearer {admin['access_token']}"},
@@ -130,7 +130,7 @@ def test_authorization_code_grant_rejects_disabled_account(live_server: str) -> 
     assert disable.status_code == 200
 
     # The code is still well-formed, but the account can no longer authenticate.
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{live_server}/oauth/token",
         data={
             "grant_type": "authorization_code",
@@ -144,7 +144,7 @@ def test_authorization_code_grant_rejects_disabled_account(live_server: str) -> 
 
 
 def test_unsupported_grant_type_rejected(live_server: str) -> None:
-    resp = httpx.post(f"{live_server}/oauth/token", data={"grant_type": "password"})
+    resp = httpx2.post(f"{live_server}/oauth/token", data={"grant_type": "password"})
     assert resp.status_code == 400
 
 
@@ -152,10 +152,10 @@ def test_token_revocation(live_server: str) -> None:
     client = Mastodon(access_token="alice_token", api_base_url=live_server)
     assert client.account_verify_credentials().username == "alice"
 
-    resp = httpx.post(f"{live_server}/oauth/revoke", data={"token": "alice_token"})
+    resp = httpx2.post(f"{live_server}/oauth/revoke", data={"token": "alice_token"})
     assert resp.status_code == 200
 
-    revoked = httpx.get(
+    revoked = httpx2.get(
         f"{live_server}/api/v1/accounts/verify_credentials",
         headers={"Authorization": "Bearer alice_token"},
     )
@@ -163,7 +163,7 @@ def test_token_revocation(live_server: str) -> None:
 
 
 def test_oauth_server_metadata(live_server: str) -> None:
-    resp = httpx.get(f"{live_server}/.well-known/oauth-authorization-server")
+    resp = httpx2.get(f"{live_server}/.well-known/oauth-authorization-server")
     assert resp.status_code == 200
     body = resp.json()
     assert body["token_endpoint"].endswith("/oauth/token")
@@ -171,7 +171,7 @@ def test_oauth_server_metadata(live_server: str) -> None:
 
 
 def test_oauth_userinfo(live_server: str) -> None:
-    resp = httpx.get(
+    resp = httpx2.get(
         f"{live_server}/oauth/userinfo",
         headers={"Authorization": "Bearer alice_token"},
     )
@@ -180,13 +180,13 @@ def test_oauth_userinfo(live_server: str) -> None:
 
 
 def test_mock_dev_user_creates_usable_token(live_server: str) -> None:
-    resp = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={})
+    resp = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={})
     assert resp.status_code == 200
     body = resp.json()
     assert body["role"] == "user"
     assert body["username"].startswith("user_")
 
-    me = httpx.get(
+    me = httpx2.get(
         f"{live_server}/api/v1/accounts/verify_credentials",
         headers={"Authorization": f"Bearer {body['access_token']}"},
     )
@@ -195,7 +195,7 @@ def test_mock_dev_user_creates_usable_token(live_server: str) -> None:
 
 
 def test_mock_dev_user_admin_role_and_explicit_username(live_server: str) -> None:
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{live_server}/api/v1/_mock/dev_user",
         json={"admin": True, "username": "moderator1"},
     )
@@ -205,14 +205,14 @@ def test_mock_dev_user_admin_role_and_explicit_username(live_server: str) -> Non
     assert body["username"] == "moderator1"
 
     # A second create with the same username is rejected.
-    dup = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={"username": "moderator1"})
+    dup = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={"username": "moderator1"})
     assert dup.status_code == 422
 
 
 def test_mock_dev_users_lists_tokened_accounts(live_server: str) -> None:
-    created = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
+    created = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
 
-    resp = httpx.get(f"{live_server}/api/v1/_mock/dev_users")
+    resp = httpx2.get(f"{live_server}/api/v1/_mock/dev_users")
     assert resp.status_code == 200
     users = resp.json()
     usernames = {u["username"] for u in users}
@@ -226,10 +226,10 @@ def test_mock_dev_users_lists_tokened_accounts(live_server: str) -> None:
 
 
 def test_verify_credentials_reports_role_for_staff(live_server: str) -> None:
-    admin = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={"admin": True}).json()
-    user = httpx.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
+    admin = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={"admin": True}).json()
+    user = httpx2.post(f"{live_server}/api/v1/_mock/dev_user", json={}).json()
 
-    admin_me = httpx.get(
+    admin_me = httpx2.get(
         f"{live_server}/api/v1/accounts/verify_credentials",
         headers={"Authorization": f"Bearer {admin['access_token']}"},
     ).json()
@@ -238,7 +238,7 @@ def test_verify_credentials_reports_role_for_staff(live_server: str) -> None:
 
     # Ordinary users get the default "everyone" role (id -99, no permissions),
     # matching real Mastodon 4.x — the Role schema requires an object, not null.
-    user_me = httpx.get(
+    user_me = httpx2.get(
         f"{live_server}/api/v1/accounts/verify_credentials",
         headers={"Authorization": f"Bearer {user['access_token']}"},
     ).json()
@@ -252,7 +252,7 @@ def _authorize_code(base_url: str, client_id: str, username: str) -> str:
     Uses the ``oob`` redirect so the code comes back in the HTML body rather than a
     302 redirect we'd have to follow.
     """
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{base_url}/oauth/authorize",
         data={
             "username": username,
@@ -269,7 +269,7 @@ def _authorize_code(base_url: str, client_id: str, username: str) -> str:
 
 def _app_token(base_url: str, client_id: str, client_secret: str) -> str:
     """Obtain an app-only token via the client_credentials grant."""
-    resp = httpx.post(
+    resp = httpx2.post(
         f"{base_url}/oauth/token",
         data={
             "grant_type": "client_credentials",

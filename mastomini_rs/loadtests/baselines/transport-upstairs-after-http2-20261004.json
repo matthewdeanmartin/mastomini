@@ -1,0 +1,502 @@
+{
+  "label": "after-http2-20261004",
+  "started": "2026-10-04T22:06:57",
+  "host": "mastomini.local",
+  "address": "192.168.1.161",
+  "scheme": "https",
+  "settings": {
+    "samples": 20,
+    "repeats": 6,
+    "levels": [
+      1,
+      3,
+      6
+    ],
+    "duration": 30.0,
+    "think": 0.5,
+    "page_connections": 6,
+    "warm_connections": 1
+  },
+  "health_before": {
+    "uptime_ms": 38320,
+    "fingerprint": "f56621459135",
+    "version": "0.1.0",
+    "accounts": 7,
+    "statuses": 38,
+    "available": true,
+    "metrics": {
+      "uptime_s": 38.0,
+      "heap_internal_free": 39043.0,
+      "heap_internal_min": 2927.0,
+      "heap_internal_largest": 12288.0,
+      "heap_psram_free": 8138564.0,
+      "heap_psram_largest": 8126464.0,
+      "requests": 17.0,
+      "errors": 2.0,
+      "tls_handshakes": 2.0,
+      "tls_open": 0.0,
+      "rejected": 0.0,
+      "heap_psram_min": 8088912.0,
+      "store_entries_used": 773.0,
+      "store_entries_total": 258048.0
+    }
+  },
+  "site_files": [
+    "/app/",
+    "/app/styles-BYMBAIOY.css",
+    "/app/main-OU56HL5V.js"
+  ],
+  "pages": [
+    "/about",
+    "/favicon.ico",
+    "/avatars/original/missing.png"
+  ],
+  "api": [
+    "/api/v1/instance",
+    "/api/v2/instance",
+    "/api/v1/instance/rules",
+    "/api/v1/instance/extended_description",
+    "/api/v1/custom_emojis",
+    "/.well-known/nodeinfo",
+    "/nodeinfo/2.0",
+    "/.well-known/oauth-authorization-server",
+    "/api/mastomini/v1/version",
+    "/api/mastomini/v1/status"
+  ],
+  "modes": {
+    "h1": {
+      "endpoints": {
+        "/api/v1/instance": {
+          "status": 200,
+          "bytes": 1923,
+          "p50_ms": 30.27,
+          "p95_ms": 59.41,
+          "server_app_ms": 7.929,
+          "server_lock_ms": 0.006
+        },
+        "/api/v2/instance": {
+          "status": 200,
+          "bytes": 2231,
+          "p50_ms": 34.54,
+          "p95_ms": 56.2,
+          "server_app_ms": 8.671,
+          "server_lock_ms": 0.007
+        },
+        "/api/v1/instance/rules": {
+          "status": 200,
+          "bytes": 266,
+          "p50_ms": 19.56,
+          "p95_ms": 28.36,
+          "server_app_ms": 1.842,
+          "server_lock_ms": 0.007
+        },
+        "/api/v1/instance/extended_description": {
+          "status": 200,
+          "bytes": 116,
+          "p50_ms": 20.2,
+          "p95_ms": 30.9,
+          "server_app_ms": 2.036,
+          "server_lock_ms": 0.008
+        },
+        "/api/v1/custom_emojis": {
+          "status": 200,
+          "bytes": 2,
+          "p50_ms": 17.01,
+          "p95_ms": 31.93,
+          "server_app_ms": 1.176,
+          "server_lock_ms": 0.007
+        },
+        "/.well-known/nodeinfo": {
+          "status": 200,
+          "bytes": 115,
+          "p50_ms": 19.13,
+          "p95_ms": 41.12,
+          "server_app_ms": 1.542,
+          "server_lock_ms": 0.007
+        },
+        "/nodeinfo/2.0": {
+          "status": 200,
+          "bytes": 250,
+          "p50_ms": 20.71,
+          "p95_ms": 42.96,
+          "server_app_ms": 1.919,
+          "server_lock_ms": 0.007
+        },
+        "/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "bytes": 732,
+          "p50_ms": 23.13,
+          "p95_ms": 44.22,
+          "server_app_ms": 2.72,
+          "server_lock_ms": 0.007
+        },
+        "/api/mastomini/v1/version": {
+          "status": 200,
+          "bytes": 236,
+          "p50_ms": 23.38,
+          "p95_ms": 42.02,
+          "server_app_ms": 2.143,
+          "server_lock_ms": 0.008
+        },
+        "/api/mastomini/v1/status": {
+          "status": 200,
+          "bytes": 429,
+          "p50_ms": 20.6,
+          "p95_ms": 40.96,
+          "server_app_ms": 1.935,
+          "server_lock_ms": 0.008
+        },
+        "/about": {
+          "status": 200,
+          "bytes": 1918,
+          "p50_ms": 27.82,
+          "p95_ms": 74.34,
+          "server_app_ms": 1.504,
+          "server_lock_ms": 0.008
+        },
+        "/favicon.ico": {
+          "status": 200,
+          "bytes": 3792,
+          "p50_ms": 32.17,
+          "p95_ms": 53.73,
+          "server_app_ms": 2.507,
+          "server_lock_ms": 0.007
+        },
+        "/avatars/original/missing.png": {
+          "status": 200,
+          "bytes": 116,
+          "p50_ms": 17.78,
+          "p95_ms": 30.41,
+          "server_app_ms": 1.099,
+          "server_lock_ms": 0.006
+        },
+        "/app/": {
+          "status": 200,
+          "bytes": 1229,
+          "p50_ms": 19.14,
+          "p95_ms": 48.01,
+          "server_app_ms": 0.682,
+          "server_lock_ms": 0.007
+        }
+      },
+      "cold": {
+        "views": [
+          {
+            "ms": 8378.492100047879,
+            "connections": 6,
+            "setup_ms": [
+              946,
+              1016,
+              1042,
+              1261,
+              2858,
+              1210
+            ],
+            "bytes": 287249,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "error": "ConnectionResetError: IncompleteRead: IncompleteRead(15360 bytes read, 71582 more expected)"
+          },
+          {
+            "ms": 7335.904199979268,
+            "connections": 6,
+            "setup_ms": [
+              1229,
+              1536,
+              1099,
+              1263,
+              1030,
+              1079
+            ],
+            "bytes": 287249,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "error": "ConnectionResetError: IncompleteRead: IncompleteRead(16384 bytes read, 70558 more expected)"
+          },
+          {
+            "error": "ConnectionResetError: IncompleteRead: IncompleteRead(36864 bytes read, 50078 more expected)"
+          },
+          {
+            "error": "ConnectionResetError: IncompleteRead: IncompleteRead(35840 bytes read, 51102 more expected)"
+          }
+        ],
+        "page_ms_median": 7857,
+        "page_ms_p95": 8378,
+        "setup_ms_median": 1154,
+        "failed_views": 4
+      },
+      "warm": [
+        {
+          "requests": 360,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 26.1,
+          "p95_ms": 72.5,
+          "p99_ms": 126.3,
+          "level": 1,
+          "requests_per_s": 11.7,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 880,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 29.0,
+          "p95_ms": 72.8,
+          "p99_ms": 177.9,
+          "level": 3,
+          "requests_per_s": 28.6,
+          "connection_failures": 1,
+          "failure_examples": [
+            "ConnectionResetError: IncompleteRead: IncompleteRead(1024 bytes read, 1207 more expected)"
+          ]
+        },
+        {
+          "requests": 1470,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 40.3,
+          "p95_ms": 99.1,
+          "p99_ms": 185.4,
+          "level": 6,
+          "requests_per_s": 47.9,
+          "connection_failures": 7,
+          "failure_examples": [
+            "ConnectionResetError: IncompleteRead: IncompleteRead(1024 bytes read, 1207 more expected)",
+            "ConnectionResetError: IncompleteRead: IncompleteRead(1024 bytes read, 899 more expected)",
+            "ConnectionResetError: IncompleteRead: IncompleteRead(386 bytes read, 1537 more expected)"
+          ]
+        }
+      ]
+    },
+    "h2": {
+      "endpoints": {
+        "/api/v1/instance": {
+          "status": 200,
+          "bytes": 1923,
+          "p50_ms": 36.26,
+          "p95_ms": 55.99,
+          "server_app_ms": 7.93,
+          "server_lock_ms": 0.008
+        },
+        "/api/v2/instance": {
+          "status": 200,
+          "bytes": 2231,
+          "p50_ms": 36.2,
+          "p95_ms": 74.06,
+          "server_app_ms": 8.783,
+          "server_lock_ms": 0.006
+        },
+        "/api/v1/instance/rules": {
+          "status": 200,
+          "bytes": 266,
+          "p50_ms": 17.63,
+          "p95_ms": 30.44,
+          "server_app_ms": 1.863,
+          "server_lock_ms": 0.009
+        },
+        "/api/v1/instance/extended_description": {
+          "status": 200,
+          "bytes": 116,
+          "p50_ms": 20.98,
+          "p95_ms": 42.16,
+          "server_app_ms": 2.041,
+          "server_lock_ms": 0.009
+        },
+        "/api/v1/custom_emojis": {
+          "status": 200,
+          "bytes": 2,
+          "p50_ms": 21.19,
+          "p95_ms": 36.98,
+          "server_app_ms": 1.163,
+          "server_lock_ms": 0.007
+        },
+        "/.well-known/nodeinfo": {
+          "status": 200,
+          "bytes": 115,
+          "p50_ms": 18.27,
+          "p95_ms": 34.88,
+          "server_app_ms": 1.569,
+          "server_lock_ms": 0.009
+        },
+        "/nodeinfo/2.0": {
+          "status": 200,
+          "bytes": 250,
+          "p50_ms": 19.34,
+          "p95_ms": 35.89,
+          "server_app_ms": 1.918,
+          "server_lock_ms": 0.009
+        },
+        "/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "bytes": 732,
+          "p50_ms": 26.53,
+          "p95_ms": 36.57,
+          "server_app_ms": 2.713,
+          "server_lock_ms": 0.009
+        },
+        "/api/mastomini/v1/version": {
+          "status": 200,
+          "bytes": 237,
+          "p50_ms": 17.09,
+          "p95_ms": 23.29,
+          "server_app_ms": 2.107,
+          "server_lock_ms": 0.008
+        },
+        "/api/mastomini/v1/status": {
+          "status": 200,
+          "bytes": 429,
+          "p50_ms": 17.99,
+          "p95_ms": 27.46,
+          "server_app_ms": 1.933,
+          "server_lock_ms": 0.009
+        },
+        "/about": {
+          "status": 200,
+          "bytes": 1918,
+          "p50_ms": 23.1,
+          "p95_ms": 42.53,
+          "server_app_ms": 1.509,
+          "server_lock_ms": 0.007
+        },
+        "/favicon.ico": {
+          "status": 200,
+          "bytes": 3792,
+          "p50_ms": 31.89,
+          "p95_ms": 59.52,
+          "server_app_ms": 2.505,
+          "server_lock_ms": 0.006
+        },
+        "/avatars/original/missing.png": {
+          "status": 200,
+          "bytes": 116,
+          "p50_ms": 18.93,
+          "p95_ms": 30.74,
+          "server_app_ms": 1.073,
+          "server_lock_ms": 0.009
+        },
+        "/app/": {
+          "status": 200,
+          "bytes": 691,
+          "p50_ms": 17.08,
+          "p95_ms": 80.97,
+          "server_app_ms": 0.635,
+          "server_lock_ms": 0.009
+        }
+      },
+      "cold": {
+        "views": [
+          {
+            "error": "ConnectionResetError: server closed the connection"
+          },
+          {
+            "error": "ConnectionResetError: server closed the connection"
+          },
+          {
+            "ms": 1578.8410999812186,
+            "connections": 1,
+            "setup_ms": [
+              979
+            ],
+            "bytes": 95116,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "error": "ConnectionResetError: server closed the connection"
+          },
+          {
+            "ms": 1394.546499941498,
+            "connections": 1,
+            "setup_ms": [
+              930
+            ],
+            "bytes": 95116,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "error": "ConnectionResetError: server closed the connection"
+          }
+        ],
+        "page_ms_median": 1487,
+        "page_ms_p95": 1579,
+        "setup_ms_median": 954,
+        "failed_views": 4
+      },
+      "warm": [
+        {
+          "requests": 460,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 89.2,
+          "p95_ms": 148.5,
+          "p99_ms": 469.3,
+          "level": 1,
+          "requests_per_s": 15.1,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 1020,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 163.3,
+          "p95_ms": 316.3,
+          "p99_ms": 645.9,
+          "level": 3,
+          "requests_per_s": 33.5,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 1380,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 199.5,
+          "p95_ms": 478.1,
+          "p99_ms": 1323.0,
+          "level": 6,
+          "requests_per_s": 44.0,
+          "connection_failures": 10,
+          "failure_examples": [
+            "ConnectionResetError: server closed the connection"
+          ]
+        }
+      ]
+    }
+  },
+  "health_end": {
+    "uptime_ms": 299332,
+    "fingerprint": "f56621459135",
+    "version": "0.1.0",
+    "accounts": 7,
+    "statuses": 38,
+    "available": true,
+    "metrics": {
+      "uptime_s": 299.0,
+      "heap_internal_free": 40035.0,
+      "heap_internal_min": 23.0,
+      "heap_internal_largest": 12288.0,
+      "heap_psram_free": 8138564.0,
+      "heap_psram_largest": 8126464.0,
+      "requests": 6425.0,
+      "errors": 4.0,
+      "tls_handshakes": 82.0,
+      "tls_open": 0.0,
+      "rejected": 0.0,
+      "heap_psram_min": 7629696.0,
+      "store_entries_used": 773.0,
+      "store_entries_total": 258048.0
+    }
+  }
+}

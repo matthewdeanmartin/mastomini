@@ -4,10 +4,21 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
-CONFIG_FREERTOS_HZ=100
+# miniframework's connection loop waits in 1 ms steps; at 100 Hz each
+# wait is 10 ms, which throttled sending (see README, HTTP on miniframework).
+CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=32768
 CONFIG_LWIP_MAX_SOCKETS=10
+# HTTPS builds (TRANSPORT=https|http2) use esp-tls server sessions with
+# tickets, so returning browsers resume instead of a full handshake. Unused
+# in plain-HTTP builds, where the linker drops it.
+CONFIG_ESP_TLS_SERVER=y
+CONFIG_ESP_TLS_SERVER_SESSION_TICKETS=y
 CONFIG_LWIP_LOCAL_HOSTNAME="minicloud"
 CONFIG_SPIFFS_MAX_PARTITIONS=1
 CONFIG_SPIFFS_OBJ_NAME_LEN=32
+
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=64
+CONFIG_FATFS_FS_LOCK=4

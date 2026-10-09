@@ -8,7 +8,7 @@
 //! everywhere, a password change, deleting the account) ends these too.
 //!
 //! API keys are a separate pool: signing in on a ninth device evicts the
-//! member's oldest *session*, never a key a bot depends on. Browser sessions
+//! member's least recently used *session*, never a key a bot depends on. Browser sessions
 //! are devices like any other. Neither can read direct messages: those stay
 //! sealed to devices that signed in with the password through an app. A key
 //! can still send them (that needs only the recipients' public keys).
@@ -112,6 +112,88 @@ impl<S: Store> Service<S> {
         self.issue_local(slot, LocalKind::ApiKey, &name, scopes, now_ms)
     }
 
+    /// A setup session, revoked by the coordinator when enrollment ends.
+    pub fn bot_setup_session(
+        &mut self,
+        username: &str,
+        password: &str,
+        now_ms: u64,
+    ) -> Result<String> {
+        let slot = self.check_password(username, password, now_ms)?;
+        if !self
+            .state
+            .account(slot)
+            .is_some_and(|a| a.rec.role.is_admin())
+        {
+            return Err(Error::Forbidden("Only an admin can provision bots".into()));
+        }
+        self.issue_local(
+            slot,
+            LocalKind::Browser,
+            "Bot setup",
+            parse_scopes("read write")?,
+            now_ms,
+        )
+        .map(|(_, token)| token)
+    }
+
+    /// Replace only this enrollment's own key when recovering a lost response.
+    pub fn create_bot_api_key(
+        &mut self,
+        actor: u8,
+        slot: u8,
+        password: &str,
+        name: &str,
+        now_ms: u64,
+    ) -> Result<(u64, String)> {
+        if !self
+            .state
+            .account(actor)
+            .is_some_and(|a| a.rec.role.is_admin())
+            || !self
+                .state
+                .account(slot)
+                .is_some_and(|a| a.rec.bot && a.rec.role == Role::Member && !a.rec.disabled)
+        {
+            return Err(Error::Forbidden("Only an admin can issue a bot key".into()));
+        }
+        if !name.starts_with("mmb-")
+            || name.len() > MAX_API_KEY_NAME
+            || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        {
+            return invalid("Invalid enrollment key name");
+        }
+        let username = self
+            .state
+            .account(slot)
+            .ok_or(Error::NotFound)?
+            .rec
+            .username
+            .clone();
+        self.check_password(&username, password, now_ms)?;
+        let old: Vec<_> = self
+            .api_keys(slot)
+            .into_iter()
+            .filter(|(_, key)| key.name == name)
+            .map(|(token, _)| token.rec.hash)
+            .collect();
+        for hash in old {
+            self.forget_token(&hash)?;
+        }
+        self.create_api_key(slot, password, name, "read write", now_ms)
+    }
+
+    pub fn bot_setup_capacity(&self) -> (usize, usize) {
+        let accounts = self.state.accounts.iter().filter(|a| a.is_none()).count();
+        let keys = self
+            .state
+            .tokens
+            .iter()
+            .filter(|t| self.state.is_api_key(t.rec.id))
+            .count();
+        (accounts, MAX_API_KEYS.saturating_sub(keys))
+    }
+
     /// The member's API keys, newest first.
     pub fn api_keys(&self, slot: u8) -> Vec<(&Token, &LocalTokenRec)> {
         let mut out: Vec<_> = self
@@ -151,8 +233,8 @@ impl<S: Store> Service<S> {
         scopes: Vec<String>,
         now_ms: u64,
     ) -> Result<(u64, String)> {
-        // A browser session is a device: it may evict the member's oldest
-        // session. An API key is capped separately above and evicts nothing.
+        // A browser session is a device: it may evict the member's least
+        // recently used session. An API key is capped separately above and evicts nothing.
         let token =
             self.issue_token_with(slot, LOCAL_APP, scopes, now_ms, kind == LocalKind::Browser)?;
         let hash = sha256(&token);

@@ -1,19 +1,10 @@
 //! Transport-neutral request and response for the admin site, so the same
-//! code serves the desktop build (tiny_http) and the board (esp_http_server).
+//! code serves the desktop and board through miniframework.
 
 use serde_json::Value;
 
 /// The admin API takes small JSON bodies only.
 pub const BODY_LIMIT: usize = 8 * 1024;
-
-/// Request headers the board passes on (esp_http_server cannot list them).
-pub const FORWARDED_HEADERS: [&str; 5] = [
-    "Host",
-    "Authorization",
-    "Content-Type",
-    "Accept-Encoding",
-    "If-None-Match",
-];
 
 #[derive(Debug, Clone, Default)]
 pub struct Request {

@@ -188,9 +188,9 @@ impl<S: Store> Service<S> {
             added.push(slot);
         }
         self.govern(Some(owner), now_ms)?;
-        rec.id = self.next_id(now_ms);
+        rec.id = self.next_id(now_ms)?;
         for item in &mut rec.items {
-            item.id = self.ids.next(now_ms);
+            item.id = self.next_id(now_ms)?;
         }
         let id = rec.id;
         self.write_collection(rec)?;
@@ -269,7 +269,7 @@ impl<S: Store> Service<S> {
         let mut rec = self.owned_collection(actor, id)?;
         let slot = self.featurable(actor, &rec, account_id)?;
         self.govern(Some(actor), now_ms)?;
-        let item_id = self.next_id(now_ms);
+        let item_id = self.next_id(now_ms)?;
         rec.items.push(CollectionItemRec {
             id: item_id,
             account_id,

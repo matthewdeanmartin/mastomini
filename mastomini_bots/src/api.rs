@@ -247,6 +247,22 @@ pub fn handle<S: KvStore>(
     if !signed_in {
         return Response::error(401, "Sign in first").with_header("WWW-Authenticate", "Bearer");
     }
+    if rest == ["integrations", "nanacoin", "setup"] {
+        return match method {
+            "GET" => Response::ok(crate::enrollment::status(svc)),
+            "POST" => match req.json().and_then(|body| {
+                serde_json::from_value(body)
+                    .map_err(|_| Response::error(422, "Invalid setup request"))
+            }) {
+                Ok(input) => match crate::enrollment::start(svc, input) {
+                    Ok(()) => Response::json(202, &crate::enrollment::status(svc)),
+                    Err(error) => Response::error(422, &error),
+                },
+                Err(error) => error,
+            },
+            _ => Response::error(405, "Use GET or POST"),
+        };
+    }
     if method == "GET" && rest == ["scheduler"] {
         return Response::ok(
             json!({"instance": svc.scheduler.instance, "key_set": !svc.scheduler.token.is_empty(),
@@ -298,6 +314,9 @@ pub fn handle<S: KvStore>(
         ))),
         ("GET", ["bots", id]) => Ok(Response::ok(bot_json(svc, find(svc, id)?, now))),
         ("PUT" | "PATCH", ["bots", id]) => {
+            if svc.enrollment.is_busy() && svc.enrollment.rows.iter().any(|row| row.id == *id) {
+                return Err(Response::error(409, "Wait for account setup to finish"));
+            }
             let i = find(svc, id)?;
             let update: ConfigUpdate = serde_json::from_value(body.clone())
                 .map_err(|e| Response::error(400, &format!("Bad settings: {e}")))?;
@@ -306,6 +325,9 @@ pub fn handle<S: KvStore>(
             Ok(Response::ok(bot_json(svc, i, now)))
         }
         ("POST", ["bots", id, action @ ("run" | "check" | "check-model")]) => {
+            if svc.enrollment.is_busy() && svc.enrollment.rows.iter().any(|row| row.id == *id) {
+                return Err(Response::error(409, "Wait for account setup to finish"));
+            }
             let i = find(svc, id)?;
             let kind = if *action == "run" {
                 JobKind::Manual

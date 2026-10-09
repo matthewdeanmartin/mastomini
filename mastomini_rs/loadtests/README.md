@@ -44,3 +44,48 @@ uv run --project loadtests locust -f loadtests/locustfile.py --host https://192.
 
 The standalone CLI does not perform the sweep's recovery/count checks. See
 [Locust documentation](https://docs.locust.io/en/stable/running-without-web-ui.html).
+
+# Connection diagnostics
+
+For "CORS request did not succeed", logins that will not stick, or slow
+loads in a web client (Mawkingbird, Elk, Phanpy). In October 2026 every such
+report was a dropped or refused connection, never a missing CORS header
+(`DEPLOY.md`, `spec/09-connection-diagnostics.md`). Work down the list; each
+step names the failure it rules in or out. All of them only read.
+
+1. **The board's own view:** `curl http://<ip>/.well-known/incidents`.
+   `h2_goaway` (the board ended a connection, with the HTTP/2 error code),
+   `h2_refused` (too many streams), `evicted`, `allocation_failed`,
+   `heap_low`, `tls_connection_failed`. Only `h2_peer_goaway` and
+   `peer_reset` means the browser closed the connections: go to step 5.
+2. **`make diag-h2-burst ADDRESS=<ip>`** (`h2_burst.py`): a browser's startup
+   burst (a preflight and a GET per request) on one HTTP/2 connection. Every
+   stream must be answered with CORS; exit status 1 otherwise.
+3. **`make diag-transfer ADDRESS=<ip>`** (`transfer_stalls.py`): large
+   responses over HTTP and HTTPS, p50/p90/max after the handshake and stalls
+   over 300 ms (TCP retransmission timeouts). HTTPS much slower than HTTP
+   points at the TLS write path; both slow at the network. Compare with ping
+   to the router.
+4. **`make diag-browser ADDRESS=<ip>`** (`browser_session.py`, Firefox or
+   `BROWSER=chromium`): a real browser engine, cross-origin, with idle gaps
+   (`--gaps`), large downloads (`--big`), slot pressure (`--squat`) and
+   Firefox's networking log (`--moz-log`). Install the browsers once:
+   `uv run --project loadtests playwright install firefox chromium`.
+   `idle_close.py --idle 330` shows how the board closes an idle connection;
+   `--resume 8` checks TLS session resumption.
+5. **The user's own browser.** Playwright's browsers do not have the user's
+   prefs or permission prompts, so capture from the real one:
+   - a HAR (devtools Network → Save All As HAR) → `make diag-har HAR=<file>`;
+   - better, Firefox `about:logging` (preset Networking, save to a file) →
+     `make diag-firefox-log LOG=<file>`, which names why each connection
+     closed and spots Firefox's Local Network Access pattern (fix:
+     `about:config` → `network.lna.skip-domains` = `mastomini.local`).
+
+Authenticated runs: `oauth_token.py --address <ip> --username <name>`
+(password from `MASTOMINI_PASSWORD` or a prompt) saves a read token to
+`<repo>/.local/diag-token`; pass `--token-file ../.local/diag-token`.
+A member keeps at most 8 sessions (a ninth evicts the least recently used),
+so revoke it afterwards: `oauth_token.py --address <ip> --revoke`. The app
+registration is reused, never re-registered. Every tool redacts tokens from
+what it prints and saves; HARs and browser logs contain them, so keep those
+files out of the repository.

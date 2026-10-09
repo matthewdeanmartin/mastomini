@@ -43,6 +43,8 @@ pub enum Kind {
     Scheduler = 29,
     Scheduled = 30,
     LedPhrase = 31,
+    /// Password verifier and matching sealed DM key share one commit point.
+    AccountWithKey = 32,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {
@@ -55,8 +57,14 @@ pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError
 
 pub fn decode<T: DeserializeOwned>(kind: Kind, bytes: &[u8]) -> Result<T, StoreError> {
     match bytes {
-        [VERSION, k, payload @ ..] if *k == kind as u8 => postcard::from_bytes(payload)
-            .map_err(|e| StoreError::Corrupt(format!("decode {kind:?}: {e}"))),
+        [VERSION, k, payload @ ..] if *k == kind as u8 => {
+            let (value, rest) = postcard::take_from_bytes(payload)
+                .map_err(|e| StoreError::Corrupt(format!("decode {kind:?}: {e}")))?;
+            if !rest.is_empty() {
+                return Err(StoreError::Corrupt(format!("trailing bytes in {kind:?}")));
+            }
+            Ok(value)
+        }
         [VERSION, k, ..] => Err(StoreError::Corrupt(format!(
             "expected {kind:?}, found kind {k}"
         ))),
@@ -70,6 +78,19 @@ pub fn decode<T: DeserializeOwned>(kind: Kind, bytes: &[u8]) -> Result<T, StoreE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn records_require_exact_consumption_and_complete_payloads() {
+        let bytes = encode(Kind::Follow, &(7u64, true)).unwrap();
+        for end in 0..bytes.len() {
+            assert!(decode::<(u64, bool)>(Kind::Follow, &bytes[..end]).is_err());
+        }
+        for suffix in [vec![0], vec![255], bytes.clone()] {
+            let mut extra = bytes.clone();
+            extra.extend(suffix);
+            assert!(decode::<(u64, bool)>(Kind::Follow, &extra).is_err());
+        }
+    }
 
     #[test]
     fn round_trip_and_kind_check() {

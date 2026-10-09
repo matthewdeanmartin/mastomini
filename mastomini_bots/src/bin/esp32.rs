@@ -6,40 +6,40 @@
 //! The admin site's certificate comes from `certs/` (`make certs`), issued
 //! by mastomini's household CA; the CA's private key is never in here.
 
+#![deny(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 #[cfg(not(target_os = "espidf"))]
 compile_error!(
     "build firmware with --target xtensa-esp32s3-espidf --no-default-features --features esp32"
 );
 
-use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
-    hal::{cpu::Core, peripherals::Peripherals, task::thread::ThreadSpawnConfiguration},
-    mdns::EspMdns,
-    nvs::{EspDefaultNvsPartition, EspNvsPartition, NvsCustom},
-    sntp::{EspSntp, SntpConf},
-    wifi::{BlockingWifi, EspWifi},
+use esp_idf_svc::hal::{
+    cpu::Core, peripherals::Peripherals, task::thread::ThreadSpawnConfiguration,
 };
+use mastobots::server::{self, Bots};
 use mastobots::{
     api::{Ctx, Platform, Tls},
     service::Service,
 };
+use miniframework::{
+    esp::{self, BoardConfig},
+    Site,
+};
 use std::{
-    net::Ipv4Addr,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[allow(unsafe_code)] // Reviewed ESP-IDF outbound HTTP client boundary.
 #[path = "esp32/client.rs"]
 mod client;
+#[allow(unsafe_code)] // mbedTLS trust-anchor and verification callback boundary.
 #[path = "esp32/household_tls.rs"]
 mod household_tls;
 use mastobots::household_trust;
-#[path = "esp32/net.rs"]
-mod net;
 #[path = "esp32/nvs_kv.rs"]
 mod nvs_kv;
-#[path = "esp32/server.rs"]
-mod server;
 #[path = "esp32/status_led.rs"]
 mod status_led;
 
@@ -61,8 +61,6 @@ type Shared = Arc<Mutex<Service<nvs_kv::NvsKv>>>;
 /// Before this instant SNTP has not set the clock (2024-01-01).
 const CLOCK_VALID_AFTER_MS: u128 = 1_704_067_200_000;
 
-static IP: OnceLock<Ipv4Addr> = OnceLock::new();
-
 fn now_ms() -> Option<u64> {
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -72,57 +70,47 @@ fn now_ms() -> Option<u64> {
 }
 
 fn uptime_ms() -> u64 {
-    // SAFETY: reads the monotonic system timer.
-    (unsafe { esp_idf_svc::sys::esp_timer_get_time() } / 1000) as u64
+    static TIMER: std::sync::OnceLock<esp_idf_svc::timer::EspTaskTimerService> =
+        std::sync::OnceLock::new();
+    TIMER
+        .get_or_init(|| esp_idf_svc::timer::EspTaskTimerService::new().expect("task timer service"))
+        .now()
+        .as_millis() as u64
 }
 
-// ESP-IDF constants in match patterns keep their C names.
-#[allow(non_upper_case_globals)]
 fn reset_reason() -> &'static str {
-    use esp_idf_svc::sys::*;
-    // SAFETY: takes no arguments.
-    match unsafe { esp_reset_reason() } {
-        esp_reset_reason_t_ESP_RST_POWERON => "power on",
-        esp_reset_reason_t_ESP_RST_SW => "software restart",
-        esp_reset_reason_t_ESP_RST_PANIC => "crash",
-        esp_reset_reason_t_ESP_RST_INT_WDT
-        | esp_reset_reason_t_ESP_RST_TASK_WDT
-        | esp_reset_reason_t_ESP_RST_WDT => "watchdog",
-        esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout (power dipped)",
-        _ => "other",
-    }
+    esp::reset_reason()
 }
 
+// Heap/RSSI statistics have no safe SDK wrapper available to this callback.
+#[allow(unsafe_code)]
 fn platform() -> Platform {
     use esp_idf_svc::sys::*;
     let internal = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
     // SAFETY: heap queries take no pointers; the AP record is a local the
     // call fills in.
-    unsafe {
-        let mut ap: wifi_ap_record_t = core::mem::zeroed();
-        let rssi = (esp_wifi_sta_get_ap_info(&mut ap) == ESP_OK).then_some(i32::from(ap.rssi));
-        Platform {
-            target: "esp32s3",
-            uptime_ms: uptime_ms(),
-            heap_internal_free: Some(heap_caps_get_free_size(internal) as u64),
-            heap_internal_min_free: Some(heap_caps_get_minimum_free_size(internal) as u64),
-            psram_free: Some(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) as u64),
-            wifi_rssi: rssi,
-            reset_reason: Some(reset_reason()),
-            ip: IP.get().map(|ip| ip.to_string()),
-        }
+    let mut ap = wifi_ap_record_t::default();
+    let rssi =
+        (unsafe { esp_wifi_sta_get_ap_info(&mut ap) } == ESP_OK).then_some(i32::from(ap.rssi));
+    Platform {
+        target: "esp32s3",
+        uptime_ms: uptime_ms(),
+        // SAFETY: capability masks are SDK constants; no pointer arguments.
+        heap_internal_free: Some(unsafe { heap_caps_get_free_size(internal) } as u64),
+        heap_internal_min_free: Some(unsafe { heap_caps_get_minimum_free_size(internal) } as u64),
+        psram_free: Some(unsafe { heap_caps_get_free_size(MALLOC_CAP_SPIRAM) } as u64),
+        wifi_rssi: rssi,
+        reset_reason: Some(reset_reason()),
+        ip: esp::station_ip(),
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
+    esp::init();
     if let Err(e) = run() {
         log::error!("Startup failed: {e}");
         status_led::fatal();
-        loop {
-            std::thread::sleep(Duration::from_secs(1));
-        }
+        esp::fail(&e.to_string());
     }
     Ok(())
 }
@@ -136,30 +124,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let peripherals = Peripherals::take()?;
     status_led::start(peripherals.pins);
-    let event_loop = EspSystemEventLoop::take()?;
-    let _wifi_events = event_loop
-        .subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
-            if matches!(event, esp_idf_svc::wifi::WifiEvent::StaDisconnected(_)) {
-                status_led::wifi(false);
-            }
-        })
-        .map_err(|e| log::warn!("Status LED Wi-Fi events: {e}"))
-        .ok();
-    let _ip_events = event_loop
-        .subscribe::<esp_idf_svc::netif::IpEvent, _>(|event| match event {
-            esp_idf_svc::netif::IpEvent::DhcpIpAssigned(_) => status_led::wifi(true),
-            esp_idf_svc::netif::IpEvent::DhcpIpDeassigned(_) => status_led::wifi(false),
-            _ => {}
-        })
-        .map_err(|e| log::warn!("Status LED IP events: {e}"))
-        .ok();
-    // Never auto-erase NVS: the store partition holds the bots' settings.
-    let system_nvs = EspDefaultNvsPartition::take_with(false)?;
-    // SAFETY: static NUL-terminated partition name.
-    esp_idf_svc::sys::esp!(unsafe {
-        esp_idf_svc::sys::nvs_flash_init_partition(nvs_kv::PARTITION.as_ptr())
-    })?;
-    let partition = EspNvsPartition::<NvsCustom>::take("store")?;
+    let mut config = BoardConfig::s3(
+        option_env!("MASTOMINI_WIFI_SSID").unwrap_or(""),
+        option_env!("MASTOMINI_WIFI_PASSWORD").unwrap_or(""),
+        HOSTNAME,
+    );
+    config.instance = "mastomini-bots";
+    config.cert_pem = SERVER_CERT.as_bytes();
+    config.key_pem = SERVER_KEY.as_bytes();
+    config.mdns_https_path = "/app/";
+    config.ntp_server = option_env!("MASTOMINI_NTP_SERVER");
+    if config.ssid.is_empty() {
+        log::error!("No Wi-Fi in this build: set MASTOMINI_WIFI_SSID/PASSWORD in .env and rebuild");
+        return Err("No Wi-Fi in this build".into());
+    }
+    // Preserve the old 4 HTTPS / 3 HTTP limit; leave sockets for bot clients.
+    config.limits.tls_clients = 4;
+    config.limits.http_clients = 3;
+    config.limits.response_budget = 512 * 1024;
+    let board = esp::start(config, peripherals.modem)?;
+    let partition = board.partition(nvs_kv::PARTITION.to_str()?)?;
     let mut store = nvs_kv::NvsKv::open(partition)?;
     if mastobots::recovery::reset_admin_once(
         &mut store,
@@ -180,58 +164,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let shared: Shared = Arc::new(Mutex::new(svc));
 
-    let wifi = BlockingWifi::wrap(
-        EspWifi::new(peripherals.modem, event_loop.clone(), Some(system_nvs))?,
-        event_loop,
-    )?;
-    let mut net = net::Net::new(wifi);
-    let (ssid, password) = match (
-        option_env!("MASTOMINI_WIFI_SSID"),
-        option_env!("MASTOMINI_WIFI_PASSWORD"),
-    ) {
-        (Some(s), p) => (s, p.unwrap_or("")),
-        _ => {
-            log::error!(
-                "No Wi-Fi in this build: set MASTOMINI_WIFI_SSID/PASSWORD in .env and rebuild"
-            );
-            loop {
-                std::thread::sleep(Duration::from_secs(60));
-            }
-        }
-    };
-    let ip = net.join(ssid, password);
-    let _ = IP.set(ip);
-    status_led::wifi(true);
-    log::info!("Wi-Fi up: {ip}");
-    // Answer promptly: modem sleep delays an idle board by 100-300 ms. The
-    // board is mains powered.
-    // SAFETY: Wi-Fi is started.
-    unsafe { esp_idf_svc::sys::esp_wifi_set_ps(esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_NONE) };
-
-    let mut time_config = SntpConf::default();
-    if let Some(server) = option_env!("MASTOMINI_NTP_SERVER") {
-        time_config.servers.fill(server);
-    }
-    let _sntp = EspSntp::new(&time_config)?;
-
-    let mut mdns = EspMdns::take()?;
-    mdns.set_hostname(HOSTNAME)?;
-    mdns.set_instance_name("mastomini-bots")?;
-    mdns.add_service(
-        Some("mastomini-bots"),
-        "_https",
-        "_tcp",
-        443,
-        &[("path", "/app/")],
-    )?;
-    mdns.add_service(
-        Some("mastomini-bots (plain)"),
-        "_http",
-        "_tcp",
-        80,
-        &[("path", "/app/")],
-    )?;
-
     let ctx = Arc::new(Ctx {
         platform,
         tls: Some(Tls {
@@ -240,24 +172,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info: serde_json::from_str(CERT_INFO)?,
         }),
     });
-    // Sockets: (4 + 2) + (3 + 2) = 11 of CONFIG_LWIP_MAX_SOCKETS (16),
-    // leaving room for the bots' own connections. One admin, a few tabs.
-    server::init_tls(SERVER_CERT, SERVER_KEY)?;
-    for (secure, port, ctrl_port, sockets) in [(true, 443, 32769, 4), (false, 80, 32768, 3)] {
-        server::start(
-            &server::Settings {
-                port,
-                ctrl_port,
-                sockets,
-                backlog: 5,
-            },
-            server::Listener {
-                secure,
-                shared: Arc::clone(&shared),
-                ctx: Arc::clone(&ctx),
-            },
-        )?;
-    }
+    let site = Site::new(
+        server::config(&format!("{HOSTNAME}.local"), "esp32s3"),
+        Bots::new(Arc::clone(&shared), ctx, now_ms, uptime_ms).on_error(status_led::error),
+        board.platform(peripherals.temp_sensor),
+    );
 
     // The scheduler: its own task, so a slow server never holds up the admin
     // site. TLS client handshakes need a deep stack.
@@ -270,10 +189,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     .set()?;
     {
         let shared = Arc::clone(&shared);
+        let resolver = board.resolver();
         std::thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || {
-                let mut client = client::EspClient::new();
+                let mut client = client::EspClient::new(resolver);
                 loop {
                     status_led::scheduler_busy(true);
                     mastobots::runner::tick(&shared, &mut client, now_ms);
@@ -285,10 +205,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Independent timer worker: an LLM request must not hold up scheduled posts.
     {
         let shared = Arc::clone(&shared);
+        let resolver = board.resolver();
         std::thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || {
-                let mut client = client::EspClient::scheduler();
+                let mut client = client::EspClient::scheduler(resolver);
                 loop {
                     mastobots::scheduler::tick(&shared, &mut client, now_ms());
                     std::thread::sleep(Duration::from_secs(1));
@@ -296,29 +217,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             })?;
     }
     ThreadSpawnConfiguration::default().set()?;
-    status_led::ready(true);
-    log::info!("Ready at https://{HOSTNAME}.local/app/ (https://{ip}/app/)");
-
-    let mut ticks: u32 = 0;
-    loop {
-        std::thread::sleep(Duration::from_secs(1));
-        ticks = ticks.wrapping_add(1);
-        server::probe_progress();
+    let mut announced = false;
+    let mut maintenance = std::time::Instant::now();
+    board.serve(site, |_| {
+        if !announced && miniframework::status::SIGNALS.health(false).ready {
+            if let Some(ip) = esp::station_ip() {
+                log::info!("Ready at https://{HOSTNAME}.local/app/ (https://{ip}/app/)");
+                announced = true;
+            }
+        }
+        if maintenance.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        maintenance = std::time::Instant::now();
         if let Ok(svc) = shared.try_lock() {
             status_led::phrase(&svc.led_phrase);
         }
-        if ticks % 30 == 0 {
-            net.keep_connected();
-        }
-        if ticks % 300 == 0 {
-            let p = platform();
-            log::info!(
-                "heap internal free={:?} min={:?} psram free={:?} clock={}",
-                p.heap_internal_free,
-                p.heap_internal_min_free,
-                p.psram_free,
-                if now_ms().is_some() { "valid" } else { "unset" }
-            );
-        }
-    }
+    })
 }

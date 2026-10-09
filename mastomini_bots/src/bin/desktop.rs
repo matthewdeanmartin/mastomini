@@ -9,15 +9,15 @@
 //!   for the bots' own requests, so `https://mastomini.local` verifies
 //! - `MASTOBOTS_RESOLVE`: `mastomini.local=192.168.1.161`, skip name lookups
 
-use mastobots::api::{self, Ctx, Platform, Tls};
+use mastobots::api::{Ctx, Platform, Tls};
 use mastobots::desktop_client::DesktopClient;
-use mastobots::http::{Request, BODY_LIMIT};
+use mastobots::server::{self, Bots};
 use mastobots::service::Service;
 use mastobots::store::FileStore;
-use std::io::Read;
+use miniframework::desktop::{serve_https, DesktopPlatform, Https};
+use miniframework::Site;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use tiny_http::{Header, Response, Server, SslConfig};
 
 type Shared = Arc<Mutex<Service<FileStore>>>;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -50,7 +50,7 @@ fn platform() -> Platform {
     }
 }
 
-fn load_tls() -> Result<(SslConfig, Tls), String> {
+fn load_tls(address: String) -> Result<(Https, Tls), String> {
     let read = |name: &str| {
         std::fs::read(format!("certs/{name}")).map_err(|e| format!("certs/{name}: {e}"))
     };
@@ -61,15 +61,17 @@ fn load_tls() -> Result<(SslConfig, Tls), String> {
         info,
     };
     Ok((
-        SslConfig {
-            certificate: read("server.crt")?,
-            private_key: read("server.key")?,
+        Https {
+            address,
+            cert_pem: read("server.crt")?,
+            key_pem: read("server.key")?,
         },
         tls,
     ))
 }
 
 fn main() -> Result<(), BoxError> {
+    miniframework::desktop::init_logging();
     mono_ms();
     let bind = env("MASTOBOTS_BIND", "127.0.0.1");
     let port = env("MASTOBOTS_PORT", "8090");
@@ -84,10 +86,10 @@ fn main() -> Result<(), BoxError> {
     };
     let mut https = None;
     if !https_port.is_empty() {
-        match load_tls() {
+        match load_tls(format!("{bind}:{https_port}")) {
             Ok((config, tls)) => {
                 ctx.tls = Some(tls);
-                https = Some(Server::https(format!("{bind}:{https_port}"), config)?);
+                https = Some(config);
             }
             Err(e) => println!("HTTPS off: {e}. Run make certs to turn it on."),
         }
@@ -125,72 +127,11 @@ fn main() -> Result<(), BoxError> {
             std::thread::sleep(std::time::Duration::from_secs(1));
         });
     }
-    if let Some(server) = https {
-        println!("HTTPS on https://localhost:{https_port}");
-        let (svc, ctx) = (Arc::clone(&svc), Arc::clone(&ctx));
-        std::thread::spawn(move || serve(&server, true, &svc, &ctx));
-    }
-    let server = Server::http(format!("{bind}:{port}"))?;
-    serve(&server, false, &svc, &ctx);
+    let site = Site::new(
+        server::config("mastomini-bots.local", "desktop"),
+        Bots::new(svc, ctx, now_ms, mono_ms),
+        DesktopPlatform,
+    );
+    serve_https(&site, &format!("{bind}:{port}"), https.as_ref(), || {})?;
     Ok(())
-}
-
-fn serve(server: &Server, secure: bool, svc: &Shared, ctx: &Ctx) {
-    for mut request in server.incoming_requests() {
-        let mut req = Request::new(request.method().as_str(), request.url());
-        req.secure = secure;
-        req.headers = request
-            .headers()
-            .iter()
-            .map(|h| (h.field.as_str().to_string(), h.value.as_str().to_string()))
-            .collect();
-        let mut body = Vec::new();
-        if request
-            .as_reader()
-            .take(BODY_LIMIT as u64 + 1)
-            .read_to_end(&mut body)
-            .is_err()
-        {
-            continue;
-        }
-        req.body = body;
-        let reply = {
-            let mut svc = svc.lock().unwrap_or_else(|e| e.into_inner());
-            api::handle(&mut svc, ctx, &req, now_ms(), mono_ms())
-        };
-        let headers: Vec<Header> = reply
-            .headers
-            .iter()
-            .filter_map(|(k, v)| Header::from_bytes(k.as_bytes(), v.as_bytes()).ok())
-            .collect();
-        if reply.status == 304 {
-            let _ = not_modified(request, headers);
-            continue;
-        }
-        let len = reply.body.len();
-        let response = Response::new(
-            reply.status.into(),
-            headers,
-            &reply.body[..],
-            Some(len),
-            None,
-        );
-        let _ = request.respond(response);
-    }
-}
-
-// tiny_http 0.12 adds an incorrect zero length to empty 304 responses.
-fn not_modified(request: tiny_http::Request, headers: Vec<Header>) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut writer = request.into_writer();
-    writer.write_all(b"HTTP/1.1 304 Not Modified")?;
-    writer.write_all(&[13, 10])?;
-    for header in headers {
-        if !header.field.equiv("Content-Length") && !header.field.equiv("Transfer-Encoding") {
-            write!(writer, "{}: {}", header.field, header.value)?;
-            writer.write_all(&[13, 10])?;
-        }
-    }
-    writer.write_all(&[13, 10])?;
-    writer.flush()
 }

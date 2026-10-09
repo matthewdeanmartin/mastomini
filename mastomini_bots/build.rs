@@ -70,6 +70,9 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src");
+    // Path dependencies may change independently while this checkout stays clean.
+    println!("cargo:rerun-if-changed=../../microcontroller/miniframework/crates/miniframework/src");
+    println!("cargo:rerun-if-changed=../../microcontroller/miniframework/crates/miniframework/Cargo.toml");
     println!("cargo:rerun-if-env-changed=MASTOMINI_TRACE_TIMING");
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
 

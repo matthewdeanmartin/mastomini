@@ -141,7 +141,7 @@ impl<S: Store> Service<S> {
         }
         let secret = auth::random_secret();
         let rec = AppRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             client_id: auth::random_secret(),
             secret_hash: sha256(&secret),
             name: truncate(name.trim(), MAX_APP_NAME),
@@ -296,7 +296,7 @@ impl<S: Store> Service<S> {
         }
         let token = auth::random_secret();
         let rec = TokenRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             hash: sha256(&token),
             slot,
             app_id,
@@ -311,19 +311,20 @@ impl<S: Store> Service<S> {
         Ok(token)
     }
 
-    /// Evict the oldest sessions past the per-member and overall caps. API
-    /// keys neither count nor go.
+    /// Evict the least recently used sessions past the per-member and overall
+    /// caps (ties, such as sessions unused since boot, go oldest first). A
+    /// device in daily use is never pushed out by fresh sign-ins elsewhere.
+    /// API keys neither count nor go.
     fn make_room_for_session(&mut self, slot: u8) -> Result<()> {
         loop {
             let state = &self.state;
             let sessions = || state.tokens.iter().filter(|t| !state.is_api_key(t.rec.id));
             let mine = sessions().filter(|t| t.rec.slot == slot).count();
+            let idlest = |t: &&Token| (t.last_used_ms, t.rec.id);
             let victim = if mine >= MAX_TOKENS_PER_ACCOUNT {
-                sessions()
-                    .filter(|t| t.rec.slot == slot)
-                    .min_by_key(|t| t.rec.id)
+                sessions().filter(|t| t.rec.slot == slot).min_by_key(idlest)
             } else if sessions().count() >= MAX_TOKENS {
-                sessions().min_by_key(|t| t.rec.id)
+                sessions().min_by_key(idlest)
             } else {
                 None
             };
@@ -344,6 +345,10 @@ impl<S: Store> Service<S> {
     ) -> Result<(String, Vec<String>)> {
         let app_id = self.check_client(client_id, Some(client_secret))?;
         let scopes = parse_scopes(scopes)?;
+        let app = self.state.apps.get(&app_id).ok_or(Error::Unauthorized)?;
+        if !scopes_within(&scopes, &app.scopes) {
+            return invalid("The requested scope is invalid, unknown, or malformed.");
+        }
         if self.state.app_tokens.len() >= MAX_APP_TOKENS {
             self.state.app_tokens.pop_front();
         }

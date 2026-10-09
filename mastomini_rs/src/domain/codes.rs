@@ -53,7 +53,7 @@ impl<S: Store> Service<S> {
         }
         let code = auth::random_secret();
         let rec = CodeRec {
-            id: self.next_id(now_ms),
+            id: self.next_id(now_ms)?,
             hash: sha256(&code),
             kind,
             expires_ms: now_ms + CODE_LIFETIME_MS,

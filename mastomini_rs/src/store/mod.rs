@@ -191,6 +191,30 @@ impl StoreStats {
 /// mastomini record needs more.
 pub const VALUE_MAX: usize = 8 * 1024;
 
+/// Read one bounded NVS blob without allocating a second copy.
+pub fn read_blob(
+    len: usize,
+    read: impl FnOnce(&mut [u8]) -> Result<Option<usize>, StoreError>,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    if len > VALUE_MAX {
+        return Err(StoreError::Corrupt(
+            "stored blob exceeds record limit".into(),
+        ));
+    }
+    let mut buf = Vec::new();
+    buf.try_reserve_exact(len)
+        .map_err(|_| StoreError::Io("blob allocation failed".into()))?;
+    buf.resize(len, 0);
+    let Some(actual) = read(&mut buf)? else {
+        return Ok(None);
+    };
+    if actual > len {
+        return Err(StoreError::Corrupt("blob grew while reading".into()));
+    }
+    buf.truncate(actual);
+    Ok(Some(buf))
+}
+
 /// Entries NVS uses for one key/value: a header entry, a blob index entry and
 /// the data rounded up to whole entries.
 pub fn entries_for(value_len: usize) -> usize {
@@ -236,6 +260,29 @@ impl<S: Store + ?Sized> Store for Box<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupt_blob_lengths_fail_before_allocating_or_reading() {
+        for len in [VALUE_MAX + 1, usize::MAX] {
+            assert!(matches!(
+                read_blob(len, |_| panic!("must not read")),
+                Err(StoreError::Corrupt(_))
+            ));
+        }
+        assert!(matches!(
+            read_blob(2, |_| Ok(Some(3))),
+            Err(StoreError::Corrupt(_))
+        ));
+        assert_eq!(
+            read_blob(4, |buf| {
+                assert_eq!(buf, [0; 4]);
+                buf[..2].copy_from_slice(b"ok");
+                Ok(Some(2))
+            })
+            .unwrap(),
+            Some(b"ok".to_vec())
+        );
+    }
 
     #[test]
     fn keys_are_bounded_printable_ascii() {

@@ -1,5 +1,31 @@
 # Deploy mastomini-bots to its ESP32-S3 board
 
+### 2026-10-09: Reply Guy, Fishtank and Mars Expedition deployed
+
+- Procedure A upgraded COM15, confirmed chip MAC `ac:a7:04:2c:38:b8`.
+  The read-only install check confirmed the existing bots partition layout:
+  `nvs` at `0x9000` / `0x6000`, `phy_init` at `0xf000` / `0x1000`,
+  `factory` at `0x10000` / `0x400000`, `store` at `0x410000` / `0x100000`,
+  and `coredump` at `0x510000` / `0x10000`. First install was refused as
+  expected; no store, bootloader or partition-table writes were performed.
+- `make check` passed: 124 Rust tests, 15 UI tests, 12 end-to-end tests,
+  and three skipped live-model tests; formatting, Clippy and script checks
+  passed. Existing certificate checks passed without replacing the CA or
+  certificate. The ESP32 build included the bundled admin app.
+- Application: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+  2,033,648 bytes, flashed only at `0x10000`; esptool verified its hash.
+  SHA-256: `debd442852e8cb688257af18d5345976b66a87a176d1820f2d269526a5729cde`.
+  Firmware reports dirty revision `10863d6f648c`, built
+  `2026-10-09T12:29:16.314Z`. Sibling miniframework checkout was dirty at
+  `f30ea2557d7f`; that checkout remains the dependency used for validation.
+- Pre-upgrade boot reported ten bots and an existing admin password.
+  Post-upgrade boot reported twelve bots, admin password still set, PSRAM
+  test passed, and ready at `192.168.1.162`. Both strict read-only probes
+  (IP and `mastomini-bots.local`) passed, including the bundled app,
+  sign-in enforcement, firmware identity, synchronized clock and exact
+  server-certificate/household-CA matches. No admin settings, bot keys,
+  enable flags or manual bot jobs were changed to verify deployment.
+
 This runbook is written to be followed step by step, by a person or by an
 automated agent. Every step says what to run, what output means success, and
 when to **stop and ask**. Do not improvise around a failed step.
@@ -35,7 +61,9 @@ for a way around it.
 
 - Work in Git Bash, in `/c/github/mastomini/mastomini_bots`.
 - Never run `esptool erase_flash`, `write_flash` by hand, `erase_region` by
-  hand, or flash a merged image. Only the two scripts above write to the board.
+  hand, or flash a merged image. Only `scripts/deploy.py` and
+  `scripts/install.py` (also invoked by the `.sh` wrappers above) write to
+  the board.
 - Never run procedure B on a board whose partition table is the mastomini-bots
   layout, or the mastomini layout. `install.py` refuses both; do not work around
   a refusal.
@@ -120,6 +148,24 @@ fingerprint equal to mastomini's (compare with `../mastomini_rs/DEPLOY.md`).
   `MASTOMINI_BOTS_CERT_IPS=192.168.x.y make reissue-cert`, then procedure A
   again. Never rotate the CA for this board.
 
+## Framework migration (build before deploying)
+
+Firmware now uses the sibling miniframework crate for Wi-Fi, SNTP, mDNS,
+nonblocking HTTP/HTTPS and partition initialization. Storage layout and
+encoding remain `store` / `bots`, including existing settings, keys and
+the one-time admin-recovery marker. Do not change the partition table.
+
+Build with `make firmware` to apply `CONFIG_FREERTOS_HZ=1000`; the framework
+requires it. The admin's RGB Morse light now reads actual framework serving
+and handshake progress. Outbound bot clients retain their session reuse and
+household CA constraints. `/metrics` is now the framework's public board
+health output, alongside `/api/v1/sys` and `/api/v1/log`.
+
+The local path dependency is mutable independently of this repository.
+Keep the framework checkout used for validation with the firmware artifact.
+This migration does not authorize a hardware update; follow the board
+identity checks and app-only update procedure below when deploying.
+
 ## Step 2: Identify the serial port
 
 In PowerShell (read-only, does not open ports):
@@ -138,8 +184,9 @@ Each board is a `USB Serial Device (COMn)` whose `PNPDeviceID` starts with
   set `PORT=COMn` in Git Bash.
 - Two boards: take the one whose MAC is not mastomini's. If neither or both
   match the known bots board, stop and ask.
-- Only the mastomini board: stop. The bots board is not connected.
-- None: stop; check the cable (charge-only cables are common).
+- Only the mastomini native interface, or none: follow the two-socket check
+  below before concluding the bots board is disconnected. Never open or
+  flash an unidentified port.
 
 Close any serial monitor that holds the port.
 
@@ -151,16 +198,68 @@ chip MAC. Do not infer the board identity from those numbers or assume only
 the new board's connection with the user before opening a port. Step 3 must
 still verify its chip MAC and partition table before any write.
 
+### If the board has two USB-C sockets
+
+These boards have separate native USB and USB-to-UART connections. One socket
+can expose a WCH CH343 adapter (`VID_1A86&PID_55D3`); the other exposes native
+ESP32-S3 USB (`VID_303A&PID_1001` for the installed firmware). Both can supply
+power. Seeing CH343 instead of native USB does **not** prove a different board
+is attached. Adapter serial numbers are not the ESP32 chip MAC.
+
+1. List only currently attached devices, without opening ports:
+   ```powershell
+   Get-PnpDevice -PresentOnly |
+     Where-Object { $_.InstanceId -match 'VID_303A|VID_1A86' -or $_.Class -eq 'Ports' } |
+     Select-Object Status, FriendlyName, InstanceId | Format-Table -AutoSize
+   ```
+   Remembered ports from unplugged devices are not evidence of a connection.
+2. If the intended board's connection is unclear, ask the owner to unplug
+   **the bots board**, then repeat the listing. The device that disappears
+   identifies that connection; it does not yet establish the chip MAC or
+   partition layout. Do not guess from a COM number.
+3. Ask the owner to reconnect the same data cable to the board's **other
+   USB-C socket** and list again. For the known installed bots board, look
+   for composite MAC `ac:a7:04:2c:38:b8` (previously COM15), distinct from
+   mastomini's `ac:a7:04:2c:29:9c`. If native USB is still missing, check the
+   data cable and computer USB connection. Stop if the target remains missing
+   or ambiguous. Factory USB CDC may differ; follow Step 3's identification
+   and the first-install history below rather than bypassing the protections.
+4. Once the known installed bots board's native port is identified, a dark
+   or solid status light calls for `make boot-log PORT="$PORT"`, the documented
+   watchdog restart without flashing. Follow Step 5's summary and retry/stop
+   rules. Record the bot count and admin-password state before upgrading.
+
+Power lights, blinking, and a dark RGB light do not identify the USB interface
+or establish firmware health. Use the device listing, chip MAC, partition
+checks and boot log. Do not switch flashing tools to bypass these checks.
+
+On 2026-10-02 the mastomini server appeared as CH343 COM13 through one socket;
+unplugging removed it, and moving the cable to the other socket restored
+native COM11 with its known MAC. The bots board subsequently appeared on
+native COM15 with its own known MAC. Port numbers can change.
+
 ## Step 3: Decide the procedure (read-only)
 
 ```bash
-bash scripts/install.sh "$PORT" --dry-run
+make firmware
+source scripts/esp-python.sh
+"$esp_python" scripts/install.py --port "$PORT" --images "$images" \
+  --backup-dir ../.local/board-backups --dry-run
 ```
 
-This builds the firmware and the admin app (the first build takes 10–20
+This builds the firmware and the admin app **once** (the first build takes 10–20
 minutes; target directory `C:/mmb`, separate from mastomini's `C:/mmr`). Then
 it reads the board's MAC and partition table **without writing anything**, and
 prints them.
+
+Keep this Git Bash session open for Step 4: `esp_python` and `images` identify
+the interpreter and artifacts used here. Do not change firmware inputs,
+certificates, build settings or image files between building and flashing.
+If they change, rebuild and repeat the dry run. The `.sh` wrappers rebuild
+on every invocation; the old install-dry-run, deploy-dry-run, deploy sequence
+compiled three times. Use the underlying Python scripts below to reuse this
+freshly built image with the same MAC, partition and image safety checks.
+Never use the password-recovery wrapper for an ordinary upgrade.
 
 | Output contains | Meaning | Next |
 |---|---|---|
@@ -182,8 +281,10 @@ firmware. If a board was refused, do not continue installing on it.
 ## Step 4A: Upgrade (board already runs mastomini-bots)
 
 ```bash
-bash scripts/deploy.sh "$PORT" --dry-run   # builds, prints the plan, opens no port
-bash scripts/deploy.sh "$PORT"
+"$esp_python" scripts/deploy.py --port "$PORT" \
+  --image "$images/mastomini-bots-esp32.bin" --dry-run  # no build or port access
+"$esp_python" scripts/deploy.py --port "$PORT" \
+  --image "$images/mastomini-bots-esp32.bin"
 ```
 
 Success: the last line is
@@ -200,7 +301,8 @@ record start empty, and a bot's new settings start at their defaults.
 Use the MAC printed in Step 3:
 
 ```bash
-bash scripts/install.sh "$PORT" --confirm-mac aa:bb:cc:dd:ee:ff
+"$esp_python" scripts/install.py --port "$PORT" --images "$images" \
+  --backup-dir ../.local/board-backups --confirm-mac aa:bb:cc:dd:ee:ff
 ```
 
 It backs up the entire 16 MiB flash to `../.local/board-backups/` (about 4
@@ -316,7 +418,7 @@ If you ever run esptool by hand (you normally should not), add
 | Symptom | Action |
 |---|---|
 | Any `REFUSED: … runs mastomini` | Stop; wrong board. Never bypass |
-| Ambiguous or missing serial port, or only the mastomini board attached | Stop; ask |
+| Ambiguous or missing bots connection after Step 2's socket/cable checks, or only mastomini attached | Stop; ask |
 | `make check` fails | Stop; fix the code first |
 | No household CA for `make certs` | Stop; ask. Never create a second CA |
 | No Wi-Fi credentials in the build | Stop; ask |
@@ -422,6 +524,37 @@ Add a row after every first install, and add the MAC to nothing else: only
 mastomini boards go in `MASTOMINI_BOARDS`. Update the address when it changes.
 
 ## Deployment comments
+
+### 2026-10-03: latest firmware and build-once procedure
+
+- Identified the attached bots board on native USB COM15, composite/chip MAC
+  `ac:a7:04:2c:38:b8`, distinct from the protected mastomini server. Before
+  upgrading: 10 bots, admin password set, ready at `192.168.1.162`.
+- Revision `10863d6f648c`, dirty with deployment-runbook edits. `make check`
+  passed: 85 Rust tests, 11 UI tests, 7 end-to-end tests; 3 live-model tests
+  skipped. Formatting, clippy and script checks passed. Existing household
+  certificates were checked and reused without reissue or CA rotation.
+- Built firmware once (`make firmware`, release compilation about 30 seconds),
+  then reused the image with `install.py --dry-run`, `deploy.py --dry-run`
+  and `deploy.py`. The identification check refused first install as expected:
+  existing `nvs`, `phy_init`, 4 MiB `factory` at `0x10000`, 1 MiB `store`
+  at `0x410000`, and 64 KiB `coredump` at `0x510000`. Procedure A wrote only
+  the 1,722,848-byte application at `0x10000`; its hash verified. The script
+  reported `Application updated. The board restarts; bot settings and keys
+  were not touched.` No password-recovery identifier was present.
+- After upgrade: GPIO48 initialized, 10 bots, admin password still set, no
+  Wi-Fi retries reported, ready at `192.168.1.162`. Strict probes passed by
+  IP and `mastomini-bots.local`, including sign-in enforcement and exact
+  server/CA certificate matches. Clock synchronized. Board build timestamp
+  `2026-10-03T04:00:34.503Z` matches generated build metadata
+  (`MASTOBOTS_BUILT_MS=1791000034503`). `/metrics` returned HTTP 200 over
+  strictly verified HTTPS with InfluxDB machine-health fields.
+- Bot settings, API keys, memory, Wi-Fi configuration and admin verifier were
+  outside the written application region. No admin settings were changed,
+  no keys were checked, and no bot/model jobs were manually triggered.
+- Step 2 now documents two-socket identification and present-device listings;
+  Steps 3 and 4 reuse one fresh build instead of compiling through each
+  shell-wrapper invocation.
 
 After each deployment, add a dated entry here as in mastomini's runbook:
 what was deployed, from which revision, what the logs and probe showed, and

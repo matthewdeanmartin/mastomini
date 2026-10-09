@@ -28,17 +28,10 @@ pub fn phrase(value: &str) {
     }
 }
 
-static READY: AtomicBool = AtomicBool::new(false);
-static READY_AT: AtomicU32 = AtomicU32::new(0);
-static WIFI: AtomicBool = AtomicBool::new(false);
 static BUSY: AtomicBool = AtomicBool::new(false);
 static SCHEDULER: AtomicU32 = AtomicU32::new(0);
-static SERVERS: [AtomicU32; 2] = [AtomicU32::new(0), AtomicU32::new(0)];
 static ERROR_AT: AtomicU32 = AtomicU32::new(0);
 
-pub fn server_beat(secure: bool) {
-    SERVERS[usize::from(secure)].store(super::uptime_ms() as u32, Relaxed);
-}
 pub fn scheduler_busy(busy: bool) {
     if !busy {
         SCHEDULER.store(super::uptime_ms() as u32, Relaxed);
@@ -48,17 +41,8 @@ pub fn scheduler_busy(busy: bool) {
 pub fn error() {
     ERROR_AT.store(super::uptime_ms() as u32, Relaxed);
 }
-static MDNS: AtomicBool = AtomicBool::new(false);
 static FATAL: AtomicBool = AtomicBool::new(false);
 
-pub fn wifi(up: bool) {
-    WIFI.store(up, Relaxed);
-}
-pub fn ready(mdns: bool) {
-    MDNS.store(mdns, Relaxed);
-    READY_AT.store(super::uptime_ms() as u32, Relaxed);
-    READY.store(true, Relaxed);
-}
 pub fn fatal() {
     FATAL.store(true, Relaxed);
 }
@@ -138,7 +122,6 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         ..Default::default()
     };
     let began = super::uptime_ms();
-    // SAFETY: read-only reset query, no arguments.
     let reason = super::reset_reason();
     let flashes = board_status::reset_flashes(reason);
     log::info!(
@@ -154,15 +137,13 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         let stamp = now as u32;
         let fresh = |at: u32, limit| at != 0 && stamp.wrapping_sub(at) < limit;
         let busy = BUSY.load(Relaxed);
-        let started = SERVERS.iter().all(|v| v.load(Relaxed) != 0) && SCHEDULER.load(Relaxed) != 0;
+        let framework = miniframework::status::SIGNALS.health(false);
         let health = Health {
-            ready: READY.load(Relaxed)
-                && (started || stamp.wrapping_sub(READY_AT.load(Relaxed)) >= 15_000),
-            wifi: WIFI.load(Relaxed),
+            ready: framework.ready,
+            wifi: framework.wifi,
             setup: false,
-            workers: SERVERS.iter().all(|v| fresh(v.load(Relaxed), 15_000))
-                && (busy || fresh(SCHEDULER.load(Relaxed), 5_000)),
-            mdns: MDNS.load(Relaxed),
+            workers: framework.turning && (busy || fresh(SCHEDULER.load(Relaxed), 5_000)),
+            mdns: framework.mdns,
             fatal: FATAL.load(Relaxed),
             recent_error: busy
                 || super::now_ms().is_none()

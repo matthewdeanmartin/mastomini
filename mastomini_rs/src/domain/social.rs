@@ -127,7 +127,7 @@ impl<S: Store> Service<S> {
             if tags.len() >= limit {
                 return invalid("Validation failed: Too many tags");
             }
-            let id = self.next_id(now);
+            let id = self.next_id(now)?;
             tags.push(FeaturedTag { id, name });
             Some(id)
         } else {
@@ -225,7 +225,7 @@ impl<S: Store> Service<S> {
                     "Validation failed: At most 16 announcements; delete an old one first",
                 );
             }
-            rec.id = self.next_id(now);
+            rec.id = self.next_id(now)?;
         }
         if rec.published && rec.published_ms.is_none() {
             rec.published_ms = Some(now);

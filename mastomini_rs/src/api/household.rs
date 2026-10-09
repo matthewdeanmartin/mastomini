@@ -76,6 +76,63 @@ fn create_member<S: Store>(c: &mut Call<'_, S>) -> Reply {
     Ok(Response::ok(entities::account(c.svc, c.ctx, account)))
 }
 
+fn bot_login<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let token = c
+        .svc
+        .bot_setup_session(
+            c.params.get("username").unwrap_or(""),
+            c.params.get("password").unwrap_or(""),
+            c.now,
+        )
+        .map_err(fail)?;
+    Ok(Response::ok(json!({"access_token": token})))
+}
+
+fn bot_capacity<S: Store>(c: &Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    if !c
+        .svc
+        .state
+        .account(actor)
+        .is_some_and(|a| a.rec.role.is_admin())
+    {
+        return Err(fail(Error::Forbidden(
+            "Only an admin can provision bots".into(),
+        )));
+    }
+    let (accounts, keys) = c.svc.bot_setup_capacity();
+    Ok(Response::ok(
+        json!({"accounts_available": accounts, "keys_available": keys}),
+    ))
+}
+
+fn create_bot<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    let mut member = member_from(c, Role::Member)?;
+    member.role = Role::Member;
+    let slot = c
+        .svc
+        .create_bot_member(actor, member, c.now)
+        .map_err(fail)?;
+    member_reply(c, slot)
+}
+
+fn bot_api_key<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
+    let actor = c.user()?;
+    let slot = member_slot(c, id)?;
+    let (_, key) = c
+        .svc
+        .create_bot_api_key(
+            actor,
+            slot,
+            c.params.get("password").unwrap_or(""),
+            c.params.get("name").unwrap_or(""),
+            c.now,
+        )
+        .map_err(fail)?;
+    Ok(Response::ok(json!({"key": key})))
+}
+
 fn members<S: Store>(c: &Call<'_, S>) -> Reply {
     let actor = c.user()?;
     if !c
@@ -399,6 +456,10 @@ fn revoke_device<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", ["status"]) => status(c),
+        ("POST", ["admin", "bots", "login"]) => bot_login(c),
+        ("GET", ["admin", "bots", "capacity"]) => bot_capacity(c),
+        ("POST", ["admin", "bots"]) => create_bot(c),
+        ("POST", ["admin", "bots", id, "api_keys"]) => bot_api_key(c, id),
         ("POST", ["provision"]) => provision(c),
         ("POST", ["codes", "redeem"]) => redeem(c),
         ("POST", ["me", "password"]) => change_password(c),
@@ -433,4 +494,150 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("PUT" | "PATCH", ["admin", "server"]) => put_server(c),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod bot_setup_tests {
+    use crate::api::testkit::Server;
+    use crate::domain::{records::Role, NewMember};
+    use serde_json::json;
+
+    #[test]
+    fn bot_setup_requires_admin_and_mints_only_owned_bot_credentials() {
+        let mut s = Server::provisioned();
+        s.svc
+            .create_member(
+                0,
+                NewMember {
+                    username: "person".into(),
+                    password: "pass".into(),
+                    display_name: "Person".into(),
+                    role: Role::Member,
+                },
+                s.now,
+            )
+            .unwrap();
+        let base = "/api/mastomini/v1/admin/bots";
+        assert_eq!(
+            s.send_json(
+                "POST",
+                &format!("{base}/login"),
+                None,
+                &json!({"username":"alice", "password":"wrong"})
+            )
+            .status,
+            401
+        );
+        assert_eq!(
+            s.send_json(
+                "POST",
+                &format!("{base}/login"),
+                None,
+                &json!({"username":"person", "password":"pass"})
+            )
+            .status,
+            403
+        );
+        let login = s.send_json(
+            "POST",
+            &format!("{base}/login"),
+            None,
+            &json!({"username":"alice", "password":"alicepw"}),
+        );
+        let token = login.json_body()["access_token"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(s.get(&format!("{base}/capacity"), None).status, 401);
+        assert_eq!(
+            s.get(&format!("{base}/capacity"), Some(&token)).json_body()["accounts_available"],
+            14
+        );
+        let request = json!({"username":"trader", "password":"generated-secret", "display_name":"Trader", "role":"owner"});
+        let first = s.send_json("POST", base, Some(&token), &request);
+        assert_eq!(first.status, 200);
+        assert_eq!(first.json_body()["bot"], true);
+        assert_eq!(first.json_body()["role"], "member");
+        let retry = s.send_json("POST", base, Some(&token), &request);
+        assert_eq!(retry.json_body()["id"], first.json_body()["id"]);
+        assert_eq!(s.svc.state.active_accounts().count(), 3);
+        assert_eq!(
+            s.send_json(
+                "POST",
+                base,
+                Some(&token),
+                &json!({"username":"trader", "password":"different", "display_name":"Trader"})
+            )
+            .status,
+            401
+        );
+        assert_eq!(
+            s.send_json(
+                "POST",
+                base,
+                Some(&token),
+                &json!({"username":"person", "password":"pass", "display_name":"Person"})
+            )
+            .status,
+            403
+        );
+        let id = first.json_body()["id"].as_str().unwrap().to_string();
+        let key_path = format!("{base}/{id}/api_keys");
+        let key_request = json!({"name":"mmb-owned", "password":"generated-secret"});
+        let key = s
+            .send_json("POST", &key_path, Some(&token), &key_request)
+            .json_body()["key"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let slot = s.svc.state.account_by_username("trader").unwrap().slot;
+        let (_, unrelated_key) = s
+            .svc
+            .create_api_key(slot, "generated-secret", "Unrelated client", "read", s.now)
+            .unwrap();
+        let replacement = s
+            .send_json("POST", &key_path, Some(&token), &key_request)
+            .json_body()["key"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(key, replacement);
+        assert_eq!(
+            s.get("/api/v1/accounts/verify_credentials", Some(&unrelated_key))
+                .status,
+            200,
+            "Enrollment must preserve unrelated API keys"
+        );
+        assert_eq!(
+            s.get("/api/v1/accounts/verify_credentials", Some(&key))
+                .status,
+            401
+        );
+        assert_eq!(
+            s.get("/api/v1/accounts/verify_credentials", Some(&replacement))
+                .status,
+            200
+        );
+        assert_eq!(
+            s.send_json(
+                "POST",
+                &key_path,
+                Some(&token),
+                &json!({"name":"Unrelated key", "password":"generated-secret"})
+            )
+            .status,
+            422
+        );
+        let person_token = s.login("person", "pass", "read write");
+        assert_eq!(
+            s.get(&format!("{base}/capacity"), Some(&person_token))
+                .status,
+            403
+        );
+        assert_eq!(
+            s.send_json("POST", &key_path, Some(&person_token), &key_request)
+                .status,
+            403
+        );
+    }
 }

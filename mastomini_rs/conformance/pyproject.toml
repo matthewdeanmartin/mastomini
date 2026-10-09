@@ -5,7 +5,7 @@ description = "mastodon_mock's Mastodon.py contract suite, run against the masto
 requires-python = ">=3.11"
 dependencies = [
     "Mastodon.py>=2.2.1",
-    "httpx2>=2.4.0",
+    "httpx2>=2.0,<3",
     "pytest>=8",
     "requests>=2.31",
 ]

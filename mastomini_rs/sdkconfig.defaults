@@ -11,8 +11,16 @@ CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
 CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM=y
+# Wi-Fi and lwIP buffers in PSRAM: with them internal, a few concurrent
+# timeline sends drained internal RAM to ~0, esp-aes could not allocate its
+# DMA bounce buffer and TLS writes failed mid-response (browsers report
+# that as a CORS error, and clients then drop the login).
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
 CONFIG_FREERTOS_UNICORE=n
+# miniframework waits in 1 ms steps; at the 100 Hz default each is 10 ms
+# and sending is ~15x slower (the framework refuses to build below 1000).
+CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
 CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
 # Mastodon clients send long OAuth URLs and headers (spec/01 sdkconfig table).
@@ -22,8 +30,10 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
 # with headroom for captive DNS, mDNS and SNTP.
 CONFIG_LWIP_MAX_SOCKETS=24
 CONFIG_LWIP_MAX_ACTIVE_TCP=24
-# 8 segments in flight instead of 4: a 40-post timeline is tens of KiB.
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+# 22 segments in flight: a 40-post timeline is 65 KiB. With 8, one lost
+# segment often waited out a ~1 s retransmission timeout (too few duplicate
+# ACKs for fast retransmit). The buffers live in PSRAM (TRY_ALLOCATE above).
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768
 CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
 # HTTPS on 443 next to HTTP on 80 (docs/security/https.md), on esp-tls
 # directly (src/bin/esp32/server.rs).

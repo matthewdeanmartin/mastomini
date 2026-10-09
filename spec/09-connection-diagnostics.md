@@ -44,14 +44,26 @@ established. Startup fixes discussed below remain separate work.
 
 ## Implemented: under 4 KiB retained RAM
 
-`mastomini_rs/src/incidents.rs` contains the recorder, with the same implementation
-in NanaCoin. The existing admin-only `/api/mastomini/v1/diag` now includes
-`incidents`; Health displays the events, samples, counters and a local JSON
-download. A random boot ID and uptime identify each history. No raw request data,
-credentials or client addresses are recorded.
+The recorder moved into miniframework (`miniframework::incidents`, re-exported
+as `mastomini::incidents`; NanaCoin still has its own copy). Every framework
+transport and Wi-Fi event is recorded before any app observer sees it, and the
+history is served unauthenticated at `/.well-known/incidents`, like
+`/api/v1/sys` and `/api/v1/log`. The admin-only `/api/mastomini/v1/diag` still
+includes `incidents`; Health displays the events, samples, counters, the
+previous boot's retained entries and a local JSON download. A random boot ID and
+uptime identify each history. No raw request data, credentials or client
+addresses are recorded.
+
+The framework added what the October 2026 CORS investigation lacked: TLS
+connection failures after the handshake (with the mbedTLS code; peer resets are
+counted only), ESP-IDF's failed-allocation hook (size and heap capabilities, so
+an esp-aes DMA bounce-buffer failure is visible), a `heap_low` incident when
+internal RAM reaches a new low under 16 KiB (with the open connections), and
+`Ready` when serving starts.
 
 Retained recorder state is compile-time checked below 4 KiB. The independent
-core-0 sampler adds an 8 KiB task stack plus RTOS overhead. The native recorder
+sampler (the network core, priority 3) adds a 6 KiB task stack, in PSRAM when
+the board config allows PSRAM stacks, plus RTOS overhead. The native recorder
 mutex is initialized once at boot before workers start. Snapshot vectors and
 JSON serialization also use temporary memory during retrieval. The 4 KiB bound
 is the retained recorder, not the entire diagnostics feature.
@@ -116,19 +128,38 @@ when the ring contains no errors.
 Never store tokens, cookies, passwords, bodies, raw URLs/query strings, client
 IP addresses or user-agent strings. Use a finite route/category ID where needed.
 
+## Browsers: Firefox Local Network Access (October 2026)
+
+Firefox 157 checks Local Network Access (LNA) for every request a public site
+(a web client such as Mawkingbird) makes to a household board. While a
+request's permission is pending, Firefox can still place it on a shared
+HTTP/2 connection; the check then fails (`804b005d`) and Firefox closes the
+whole connection. The blocked request is retried, but the other requests on
+that connection are aborted and reach the page as "CORS request did not
+succeed" (status 0), with nothing wrong on the board: its incidents show only
+`h2_peer_goaway` and peer resets. HTTP/1.1 hides the effect because each
+request owns its connection.
+
+Workaround per browser: `about:config` → `network.lna.skip-domains` =
+`mastomini.local` (measured: requests 50–250 ms instead of 1–2 s, no
+failures). Clients should still retry an idempotent request once on status 0,
+and must never treat status 0 as a rejected token.
+
 ## Recovery, reboot and the client's view
 
-A RAM ring survives a temporary freeze and is available after recovery. It does
-not survive a normal reboot or loss of power; say that explicitly in the UI.
+A RAM ring survives a temporary freeze and is available after recovery. The
+counters and the 16 newest entries are also mirrored to RTC memory (about 1 KiB,
+each entry checksummed), so the next boot serves them as `previous` after a
+crash, watchdog or software reset. Nothing survives loss of power; the UI says
+which applies.
 The existing reset reason tells us the broad restart category, not the preceding
 events. Firmware already enables flash core dumps and has a coredump partition;
 verify dump extraction and decoding in a separate controlled crash test before
 relying on it. A dump may help after a supported panic, not power loss or every
 kind of hang. Do not add per-request flash logging to solve this.
 
-If later needed, evaluate a tiny checksummed RTC-retained incident summary for
-supported reset types; it is not a power-loss guarantee. Keep that separate from
-the first RAM-only implementation.
+The checksummed RTC-retained summary described above is now implemented in
+miniframework; it is not a power-loss guarantee.
 
 Mawkingbird's ongoing API trace complements the board log: it can record request
 start, elapsed time, outcome and loss of contact while the board cannot answer.

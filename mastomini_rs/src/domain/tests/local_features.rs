@@ -17,6 +17,115 @@ fn announcement() -> AnnouncementRec {
 }
 
 #[test]
+fn interrupted_local_token_creation_never_leaves_an_orphan_or_loses_an_existing_key() {
+    let mut base = household(MemStore::default());
+    let (existing_id, existing) = base
+        .create_api_key(1, "pass", "Existing", "read", T0)
+        .unwrap();
+    let image = base.into_store();
+    for browser in [false, true] {
+        for failure in [Failure::Write, Failure::PersistThenError, Failure::Full] {
+            let mut completed = false;
+            for at in 0..8 {
+                let mut svc = Service::open(FaultStore::new(image.clone()), config()).unwrap();
+                svc.store().fail_after(failure, at);
+                let result = if browser {
+                    svc.browser_session("bob", "pass", T0 + 1)
+                } else {
+                    svc.create_api_key(1, "pass", "Pending", "read write", T0 + 1)
+                        .map(|(_, token)| token)
+                };
+                let mut reboot = Service::open(svc.into_store().inner, config()).unwrap();
+                assert!(
+                    reboot.principal(&existing, T0 + 2).is_some(),
+                    "{browser} {failure:?} {at}"
+                );
+                assert!(reboot.state.local_tokens.contains_key(&existing_id));
+                for token in &reboot.state.tokens {
+                    assert!(
+                        reboot.state.local_tokens.contains_key(&token.rec.id),
+                        "orphan token after {failure:?} at {at}"
+                    );
+                }
+                assert!(reboot.state.local_tokens.len() <= 2);
+                if let Ok(token) = result {
+                    let principal = reboot.principal(&token, T0 + 2).unwrap();
+                    assert_eq!(principal.slot, Some(1));
+                    assert!(!browser || !principal.allows("write"));
+                    reboot.open_session(1, &token);
+                    assert!(
+                        reboot.state.session.is_none(),
+                        "local tokens cannot unlock DMs"
+                    );
+                    completed = true;
+                }
+                assert_eq!(reopen(reboot).state.repairs, 0, "repair must converge");
+                if completed {
+                    break;
+                }
+            }
+            assert!(
+                completed,
+                "{browser} {failure:?}: operation never completed"
+            );
+        }
+    }
+}
+
+#[test]
+fn household_api_key_capacity_refuses_new_keys_and_reuses_only_a_revoked_slot() {
+    let mut svc = household(MemStore::default());
+    svc.create_member(0, member("dave"), T0).unwrap();
+    svc.create_member(0, member("erin"), T0).unwrap();
+    let mut issued = Vec::new();
+    for slot in 0..4 {
+        for n in 0..MAX_API_KEYS_PER_ACCOUNT {
+            issued.push(
+                svc.create_api_key(slot, "pass", &format!("Bot {n}"), "read", T0 + 1)
+                    .unwrap(),
+            );
+        }
+    }
+    assert_eq!(issued.len(), MAX_API_KEYS);
+    assert!(matches!(
+        svc.create_api_key(4, "pass", "Over capacity", "read", T0 + 2),
+        Err(Error::TooMany(_))
+    ));
+    for (_, token) in &issued {
+        assert!(svc.principal(token, T0 + 3).is_some());
+    }
+    svc.revoke(&issued[0].1).unwrap();
+    let (_, replacement) = svc
+        .create_api_key(4, "pass", "Replacement", "read", T0 + 4)
+        .unwrap();
+    let mut svc = reopen(svc);
+    assert!(svc.principal(&issued[0].1, T0 + 5).is_none());
+    assert!(svc.principal(&replacement, T0 + 5).is_some());
+    for (_, token) in &issued[1..] {
+        assert!(svc.principal(token, T0 + 5).is_some());
+    }
+    assert_eq!(svc.state.local_tokens.len(), MAX_API_KEYS);
+}
+
+#[test]
+fn blob_reads_preserve_errors_and_distinguish_disappearance_from_an_empty_value() {
+    use crate::store::read_blob;
+    assert_eq!(read_blob(16, |_| Ok(None)).unwrap(), None);
+    assert_eq!(
+        read_blob(0, |buf| {
+            assert!(buf.is_empty());
+            Ok(Some(0))
+        })
+        .unwrap(),
+        Some(vec![])
+    );
+    assert_eq!(
+        read_blob(16, |_| Err(StoreError::Io("read failure".into()))),
+        Err(StoreError::Io("read failure".into()))
+    );
+}
+
+#[test]
 fn local_preferences_commit_atomically_and_purge_after_power_cuts() {
     for budget in 0..20 {
         let mut svc = household(FaultStore::new(MemStore::default()));

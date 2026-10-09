@@ -66,6 +66,11 @@ def main() -> int:
                 deadline = min(deadline, time.monotonic() + 2)
     port.close()
 
+    return summarize(text)
+
+
+def summarize(text: str) -> int:
+    """Describe an old httpd or new framework firmware boot without opening USB."""
     # "Ready at https://mastomini-bots.local/app/ (https://192.168.1.170/app/)"
     ready = re.search(r'Ready at \S+ \(https?://([\d.]+)/', text)
     if ready:
@@ -78,6 +83,11 @@ def main() -> int:
     if joins:
         ssid, why = joins[-1]
         print(f'\nSUMMARY: Wi-Fi: could not join {ssid} ({why}) in {len(joins)} attempts; '
+              'the board keeps retrying (see DEPLOY.md step 5)')
+        return 3
+    failures = re.findall(r'Wi-Fi connect failed \(([^)]*)\)', text)
+    if failures:
+        print(f'\nSUMMARY: Wi-Fi: could not join ({failures[-1]}) in {len(failures)} attempts; '
               'the board keeps retrying (see DEPLOY.md step 5)')
         return 3
     if 'waiting for download' in text:

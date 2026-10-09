@@ -3,7 +3,33 @@
 
 use super::query::{AccountStatusesQuery, Entry, PageQuery};
 use super::*;
-use crate::store::mem::{FaultStore, MemStore};
+use crate::store::mem::{Failure, FaultStore, MemStore};
+use std::sync::{Arc, Mutex};
+
+/// Keeps the durable image inspectable when a failed boot consumes its Store.
+#[derive(Clone)]
+struct SharedStore(Arc<Mutex<MemStore>>);
+impl Store for SharedStore {
+    fn get(&mut self, ns: Ns, key: &Key) -> core::result::Result<Option<Vec<u8>>, StoreError> {
+        self.0.lock().unwrap().get(ns, key)
+    }
+    fn set(&mut self, ns: Ns, key: &Key, bytes: &[u8]) -> core::result::Result<(), StoreError> {
+        self.0.lock().unwrap().set(ns, key, bytes)
+    }
+    fn erase(&mut self, ns: Ns, key: &Key) -> core::result::Result<(), StoreError> {
+        self.0.lock().unwrap().erase(ns, key)
+    }
+    fn for_each(
+        &mut self,
+        ns: Ns,
+        visit: &mut crate::store::Visitor<'_>,
+    ) -> core::result::Result<(), StoreError> {
+        self.0.lock().unwrap().for_each(ns, visit)
+    }
+    fn stats(&mut self) -> core::result::Result<crate::store::StoreStats, StoreError> {
+        self.0.lock().unwrap().stats()
+    }
+}
 
 const T0: u64 = 1_750_000_000_000;
 const MINUTE: u64 = 60_000;
@@ -53,6 +79,155 @@ fn unprovisioned_store_boots_empty() {
     let svc = Service::open(MemStore::default(), config()).unwrap();
     assert!(!svc.state.provisioned);
     assert_eq!(svc.state.active_accounts().count(), 0);
+}
+
+#[test]
+fn failed_upgrade_does_not_advance_the_schema_marker() {
+    let mut image = household(MemStore::default()).into_store();
+    let previous = codec::encode(Kind::Schema, &(SCHEMA - 1)).unwrap();
+    image.set(Ns::Cfg, &keys::schema(), &previous).unwrap();
+    image.set(Ns::App, &keys::app(123), b"corrupt").unwrap();
+    let shared = SharedStore(Arc::new(Mutex::new(image)));
+    assert!(matches!(
+        Service::open(shared.clone(), config()),
+        Err(StoreError::Corrupt(_))
+    ));
+    assert_eq!(
+        shared
+            .0
+            .lock()
+            .unwrap()
+            .get(Ns::Cfg, &keys::schema())
+            .unwrap(),
+        Some(previous)
+    );
+}
+
+#[test]
+fn app_tokens_cannot_exceed_registered_scopes() {
+    let mut svc = household(MemStore::default());
+    let (app, secret) = svc
+        .register_app("read only", None, &[OOB.into()], "read:statuses", T0)
+        .unwrap();
+    for scopes in ["read", "write", "read:accounts", "admin:write"] {
+        assert!(
+            svc.app_token(&app.client_id, &secret, scopes).is_err(),
+            "{scopes}"
+        );
+    }
+    let (token, scopes) = svc
+        .app_token(&app.client_id, &secret, "read:statuses")
+        .unwrap();
+    assert_eq!(scopes, ["read:statuses"]);
+    assert_eq!(svc.principal(&token, T0).unwrap().slot, None);
+}
+
+#[test]
+fn password_change_preserves_the_dm_key_at_every_failure_boundary() {
+    let mut base = household(MemStore::default());
+    let secret = base.unlock(1, "pass").unwrap();
+    let (app, _) = base
+        .register_app("app", None, &[OOB.into()], "read", T0)
+        .unwrap();
+    let old_token = base
+        .issue_token(1, app.id, vec!["read".into()], T0)
+        .unwrap();
+    let snapshot = base.into_store();
+    for failure in [Failure::Write, Failure::PersistThenError, Failure::Full] {
+        for at in 0..20 {
+            let mut svc = Service::open(FaultStore::new(snapshot.clone()), config()).unwrap();
+            svc.store().fail_after(failure, at);
+            let result = svc.change_password(1, "pass", "new-pass", T0 + 1);
+            if failure == Failure::Full && at == 1 {
+                // Full is transient in the harness. A profile write would
+                // discard the only recovery copy unless this service latched.
+                assert!(matches!(
+                    svc.update_profile(
+                        1,
+                        ProfileUpdate {
+                            display_name: Some("changed after Full".into()),
+                            ..ProfileUpdate::default()
+                        },
+                        T0 + 2
+                    ),
+                    Err(Error::Unavailable(_))
+                ));
+            }
+            let mut reboot = Service::open(svc.into_store().inner, config()).unwrap();
+            let changed = reboot.check_password("bob", "new-pass", T0 + 2).is_ok();
+            let password = if changed { "new-pass" } else { "pass" };
+            let recovered = reboot.unlock(1, password).unwrap_or_else(|e| {
+                panic!("{failure:?} at {at}: accepted password cannot unlock: {e}")
+            });
+            assert_eq!(*recovered, *secret, "{failure:?} at {at}: DM key changed");
+            assert_eq!(reboot.principal(&old_token, T0 + 2).is_some(), !changed);
+            let second = reopen(reboot);
+            assert_eq!(second.state.repairs, 0, "repair must converge");
+            if result.is_ok() {
+                assert!(changed);
+                break;
+            }
+            assert!(at < 19, "never completed");
+        }
+    }
+}
+
+#[test]
+fn interrupted_boot_repair_preserves_password_keys_and_revocations() {
+    let mut base = household(FaultStore::new(MemStore::default()));
+    let secret = base.unlock(1, "pass").unwrap();
+    let (app, _) = base
+        .register_app("app", None, &[OOB.into()], "read", T0)
+        .unwrap();
+    let token = base
+        .issue_token(1, app.id, vec!["read".into()], T0)
+        .unwrap();
+    base.store().fail_after(Failure::Write, 1);
+    assert!(base.change_password(1, "pass", "new-pass", T0 + 1).is_err());
+    let image = base.into_store().inner;
+    for failure in [
+        Failure::Write,
+        Failure::PersistThenError,
+        Failure::Full,
+        Failure::Read,
+        Failure::Enumerate,
+        Failure::Visit,
+    ] {
+        for at in 0..256 {
+            let shared = SharedStore(Arc::new(Mutex::new(image.clone())));
+            let mut faulty = FaultStore::new(shared.clone());
+            faulty.fail_after(failure, at);
+            let first = Service::open(faulty, config());
+            let completed = first.is_ok();
+            drop(first);
+            let mut repaired = Service::open(shared, config())
+                .unwrap_or_else(|e| panic!("{failure:?} at {at}: second boot failed: {e}"));
+            assert!(repaired.check_password("bob", "new-pass", T0 + 2).is_ok());
+            assert_eq!(
+                *repaired.unlock(1, "new-pass").unwrap(),
+                *secret,
+                "{failure:?} at {at}"
+            );
+            assert!(repaired.principal(&token, T0 + 2).is_none());
+            assert_eq!(reopen(repaired).state.repairs, 0);
+            if completed {
+                break;
+            }
+            assert!(at < 255, "repair never completed");
+        }
+    }
+}
+
+#[test]
+fn exhausted_ids_return_errors_without_overwriting_records() {
+    let mut svc = household(MemStore::default());
+    let image = svc.store().keys(Ns::Stat);
+    svc.ids.observe(u64::MAX);
+    assert!(matches!(
+        svc.post_status(0, post("last"), T0),
+        Err(Error::Unavailable(_))
+    ));
+    assert_eq!(svc.store().keys(Ns::Stat), image);
 }
 
 #[test]
@@ -155,26 +330,28 @@ fn power_cut_every_write(
     setup: impl Fn(&mut Service<FaultStore<MemStore>>) -> u64,
     op: impl Fn(&mut Service<FaultStore<MemStore>>, u64) -> Result<()>,
 ) {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        let target = setup(&mut svc);
-        svc.store().cut_after(writes);
-        let result = op(&mut svc, target);
-        let completed = !svc.store().is_cut();
-        let svc = Service::open(svc.into_store().inner, config())
-            .unwrap_or_else(|e| panic!("boot after cut at {writes}: {e}"));
-        svc.check_invariants().unwrap();
-        for boost in svc.state.boosts.values() {
-            assert!(svc.state.statuses.contains_key(&boost.target));
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            let target = setup(&mut svc);
+            svc.store().fail_after(failure, writes);
+            let result = op(&mut svc, target);
+            let completed = !svc.store().is_cut();
+            let svc = Service::open(svc.into_store().inner, config())
+                .unwrap_or_else(|e| panic!("boot after cut at {writes}: {e}"));
+            svc.check_invariants().unwrap();
+            for boost in svc.state.boosts.values() {
+                assert!(svc.state.statuses.contains_key(&boost.target));
+            }
+            for reaction in svc.state.reactions.values() {
+                assert!(svc.state.statuses.contains_key(&reaction.status));
+            }
+            if completed {
+                result.unwrap();
+                break;
+            }
+            assert!(writes < 50, "operation never completed");
         }
-        for reaction in svc.state.reactions.values() {
-            assert!(svc.state.statuses.contains_key(&reaction.status));
-        }
-        if completed {
-            result.unwrap();
-            break;
-        }
-        assert!(writes < 50, "operation never completed");
     }
 }
 
@@ -199,34 +376,36 @@ fn power_cut_during_delete() {
 
 #[test]
 fn power_cut_during_password_change_never_keeps_old_sessions() {
-    for writes in 0.. {
-        let mut svc = household(FaultStore::new(MemStore::default()));
-        let oob = vec![OOB.to_string()];
-        let (app, _) = svc.register_app("app", None, &oob, "read", T0).unwrap();
-        let old: Vec<String> = (0..2)
-            .map(|_| svc.issue_token(1, app.id, vec!["read".into()], T0).unwrap())
-            .collect();
-        svc.store().cut_after(writes);
-        let result = svc.change_password(1, "pass", "new-pass", T0 + 1);
-        let completed = !svc.store().is_cut();
-        let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
-        svc.check_invariants().unwrap();
-        let changed = svc.check_password("bob", "new-pass", T0 + 2).is_ok();
-        for token in &old {
-            // Either the change never committed (old password, old sessions)
-            // or it did and every old session is dead.
-            assert_eq!(
-                svc.principal(token, T0 + 2).is_some(),
-                !changed,
-                "cut at {writes}"
-            );
+    for failure in [Failure::Write, Failure::PersistThenError] {
+        for writes in 0.. {
+            let mut svc = household(FaultStore::new(MemStore::default()));
+            let oob = vec![OOB.to_string()];
+            let (app, _) = svc.register_app("app", None, &oob, "read", T0).unwrap();
+            let old: Vec<String> = (0..2)
+                .map(|_| svc.issue_token(1, app.id, vec!["read".into()], T0).unwrap())
+                .collect();
+            svc.store().fail_after(failure, writes);
+            let result = svc.change_password(1, "pass", "new-pass", T0 + 1);
+            let completed = !svc.store().is_cut();
+            let mut svc = Service::open(svc.into_store().inner, config()).unwrap();
+            svc.check_invariants().unwrap();
+            let changed = svc.check_password("bob", "new-pass", T0 + 2).is_ok();
+            for token in &old {
+                // Either the change never committed (old password, old sessions)
+                // or it did and every old session is dead.
+                assert_eq!(
+                    svc.principal(token, T0 + 2).is_some(),
+                    !changed,
+                    "cut at {writes}"
+                );
+            }
+            if completed {
+                result.unwrap();
+                assert!(changed);
+                break;
+            }
+            assert!(writes < 20, "operation never completed");
         }
-        if completed {
-            result.unwrap();
-            assert!(changed);
-            break;
-        }
-        assert!(writes < 20, "operation never completed");
     }
 }
 

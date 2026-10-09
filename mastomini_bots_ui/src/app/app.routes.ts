@@ -7,6 +7,7 @@ const signedIn: CanActivateFn = () =>
   inject(Session).signedIn() || inject(Router).parseUrl('/signin');
 
 export const routes: Routes = [
+  { path: 'nanacoin-setup', canActivate: [signedIn], loadComponent: () => import('./pages/nanacoin-setup').then(m => m.NanaCoinSetupPage), title: 'Set up NanaCoin bots — mastomini-bots' },
   {
     path: 'signin',
     loadComponent: () => import('./pages/signin').then((m) => m.SigninPage),

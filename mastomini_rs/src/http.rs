@@ -277,8 +277,10 @@ impl Params {
             let boundary = req
                 .header("Content-Type")
                 .and_then(|ct| {
-                    ct.split(';')
-                        .find_map(|p| p.trim().strip_prefix("boundary="))
+                    ct.split(';').find_map(|p| {
+                        let (name, value) = p.trim().split_once('=')?;
+                        name.eq_ignore_ascii_case("boundary").then_some(value)
+                    })
                 })
                 .map(|b| b.trim_matches('"').to_string())
                 .ok_or("Missing multipart boundary")?;
@@ -325,10 +327,19 @@ impl Params {
     }
 
     fn add_multipart(&mut self, body: &[u8], boundary: &str) -> Result<(), String> {
+        if boundary.is_empty()
+            || boundary.len() > 70
+            || boundary.ends_with(' ')
+            || !boundary
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"'()+_,-./:=? ".contains(&b))
+        {
+            return Err("Invalid multipart boundary".into());
+        }
         let delimiter = format!("--{boundary}");
         let delimiter = delimiter.as_bytes();
         let mut rest = body;
-        let start = find(rest, delimiter).ok_or("Malformed multipart body")?;
+        let start = multipart_boundary(rest, delimiter).ok_or("Malformed multipart body")?;
         rest = &rest[start + delimiter.len()..];
         loop {
             if rest.starts_with(b"--") {
@@ -340,7 +351,7 @@ impl Params {
             let header_end = find(rest, b"\r\n\r\n").ok_or("Malformed multipart headers")?;
             let headers = String::from_utf8_lossy(&rest[..header_end]).to_string();
             rest = &rest[header_end + 4..];
-            let end = find(rest, delimiter).ok_or("Unterminated multipart part")?;
+            let end = multipart_boundary(rest, delimiter).ok_or("Unterminated multipart part")?;
             let data = rest[..end].strip_suffix(b"\r\n").unwrap_or(&rest[..end]);
             rest = &rest[end + delimiter.len()..];
 
@@ -420,6 +431,23 @@ impl Params {
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Boundary text in a binary upload is data unless it forms a delimiter line.
+fn multipart_boundary(bytes: &[u8], delimiter: &[u8]) -> Option<usize> {
+    bytes
+        .windows(delimiter.len())
+        .enumerate()
+        .find_map(|(at, candidate)| {
+            if candidate != delimiter || (at != 0 && !bytes[..at].ends_with(b"\r\n")) {
+                return None;
+            }
+            let suffix = &bytes[at + delimiter.len()..];
+            let closing = suffix
+                .strip_prefix(b"--")
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(b"\r\n"));
+            (suffix.starts_with(b"\r\n") || closing).then_some(at)
+        })
 }
 
 fn disposition_value(line: &str, key: &str) -> Option<String> {
@@ -516,6 +544,25 @@ mod tests {
         assert_eq!(p.files.len(), 1);
         assert_eq!(p.files[0].data, b"\x89PNG");
         assert_eq!(p.files[0].content_type, "image/png");
+    }
+
+    #[test]
+    fn multipart_delimiters_must_be_complete_lines() {
+        for data in [
+            b"abc--Bdef".as_slice(),
+            b"abc\r\n--Bdef",
+            b"abc\r\n--B--not-a-close",
+        ] {
+            let mut body =
+                b"--B\r\nContent-Disposition: form-data; name=\"avatar\"; filename=\"x\"\r\n\r\n"
+                    .to_vec();
+            body.extend_from_slice(data);
+            body.extend_from_slice(b"\r\n--B--\r\n");
+            let req =
+                Request::new("PATCH", "/x").with_body("multipart/form-data; boundary=\"B\"", body);
+            let parsed = Params::parse(&req).unwrap();
+            assert_eq!(parsed.files[0].data, data);
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import httpx2 as httpx
+import httpx2 as httpx2
 import pytest
 from mastodon import Mastodon
 from mastodon.errors import MastodonAPIError
@@ -60,7 +60,7 @@ def test_quote_policy_is_enforced(alice: Mastodon, bob: Mastodon) -> None:
 def test_suggestion_dismissal_persists(live_server: str, alice: Mastodon) -> None:
     suggestions = alice.suggestions_v2()
     target = next(item.account for item in suggestions if item.account.username == "carol")
-    response = httpx.delete(
+    response = httpx2.delete(
         f"{live_server}/api/v1/suggestions/{target.id}",
         headers={"Authorization": "Bearer alice_token"},
     )
@@ -106,7 +106,7 @@ def test_admin_suspend_blocks_login_and_hides_existing_status(live_server: str, 
 
     with pytest.raises(MastodonAPIError):
         bob.status_post("blocked")
-    public = httpx.get(f"{live_server}/api/v1/timelines/public").json()
+    public = httpx2.get(f"{live_server}/api/v1/timelines/public").json()
     assert existing.id not in {int(status["id"]) for status in public}
 
     alice.admin_account_unsuspend(bob_id)
@@ -120,7 +120,7 @@ def test_admin_sensitive_and_silence_have_public_effects(live_server: str, alice
     assert bob.status(sensitive.id).sensitive is True
 
     alice.admin_account_moderate(bob_id, action="silence")
-    anonymous = httpx.get(f"{live_server}/api/v1/timelines/public").json()
+    anonymous = httpx2.get(f"{live_server}/api/v1/timelines/public").json()
     assert sensitive.id not in {int(status["id"]) for status in anonymous}
     # Alice follows Bob, so the limited account remains visible to her.
     assert sensitive.id in {status.id for status in alice.timeline_home()}
@@ -141,14 +141,14 @@ def test_rejecting_trend_removes_it_from_public_results(alice: Mastodon, bob: Ma
 def test_scheduled_announcement_visibility(live_server: str) -> None:
     headers = {"Authorization": "Bearer alice_token"}
     future = datetime.now(timezone.utc) + timedelta(days=1)
-    response = httpx.post(
+    response = httpx2.post(
         f"{live_server}/api/v1/admin/announcements",
         headers=headers,
         json={"text": "Tomorrow", "starts_at": future.isoformat()},
     )
     response.raise_for_status()
     announcement_id = response.json()["id"]
-    public = httpx.get(f"{live_server}/api/v1/announcements", headers=headers).json()
+    public = httpx2.get(f"{live_server}/api/v1/announcements", headers=headers).json()
     assert announcement_id not in {item["id"] for item in public}
 
 
@@ -161,7 +161,7 @@ def test_domain_block_can_reject_reports(alice: Mastodon) -> None:
 
 def test_signup_email_block_is_enforced(live_server: str, alice: Mastodon) -> None:
     alice.admin_create_email_domain_block("blocked.example")
-    response = httpx.post(
+    response = httpx2.post(
         f"{live_server}/api/v1/accounts",
         headers={"Authorization": "Bearer alice_token"},
         data={
@@ -177,7 +177,7 @@ def test_signup_email_block_is_enforced(live_server: str, alice: Mastodon) -> No
 def test_admin_status_filter_is_applied_before_pagination(live_server: str, alice: Mastodon, bob: Mastodon) -> None:
     bob_id = bob.account_verify_credentials().id
     alice.admin_account_moderate(bob_id, action="suspend")
-    response = httpx.get(
+    response = httpx2.get(
         f"{live_server}/api/v2/admin/accounts",
         headers={"Authorization": "Bearer alice_token"},
         params={"status": "suspended", "limit": 1},

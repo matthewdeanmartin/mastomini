@@ -63,7 +63,7 @@ def test_explicit_model_check_reaches_openrouter(mastomini, bots):
 def test_the_bot_answers_a_mention_in_the_thread(mastomini, bots):
     alice = sign_in(mastomini.base, "alice", "alicepw")
     key = bot_account(mastomini, alice.access_token)
-    setup(bots, mastomini, "llm_reply", key, {"run": "manual", "max_tokens": "200"})
+    setup(bots, mastomini, "llm_reply", key, {"run": "manual", "max_tokens": "200", "daily_post": "no"})
 
     # The first run starts from now: older mentions are not answered.
     old = alice.status_post("@helper this is from before the bot started")

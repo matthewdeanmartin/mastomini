@@ -9,6 +9,7 @@ use std::{
 };
 
 const TOKEN: &str = "test-admin-token-12345678";
+
 thread_local! { static NOW: std::cell::Cell<u64> = const { std::cell::Cell::new(1_700_000_000) }; }
 fn now() -> u64 {
     NOW.with(std::cell::Cell::get)

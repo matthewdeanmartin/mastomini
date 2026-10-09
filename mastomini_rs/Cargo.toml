@@ -22,9 +22,13 @@ path = "src/bin/esp32.rs"
 required-features = ["esp32"]
 
 [features]
-default = ["desktop"]
-desktop = ["dep:tiny_http", "dep:fs2", "dep:ureq", "dep:rustls", "dep:rustls-pemfile", "dep:webpki-roots"]
-esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
+default = ["desktop", "http2"]
+# The desktop server: miniframework's connection loop with HTTPS (rustls).
+desktop = ["miniframework/desktop-tls", "dep:fs2", "dep:ureq", "dep:rustls", "dep:rustls-pemfile", "dep:webpki-roots"]
+esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "bundled-web"]
+# Transports (miniframework): HTTP and HTTPS are always built; `http2` adds
+# HTTP/2, which browsers choose by ALPN (scripts/build-esp32.sh: HTTP2=1).
+http2 = ["miniframework/http2"]
 # Embed the household app (mastomini_ui); needs `make web` first.
 bundled-web = []
 
@@ -44,13 +48,11 @@ crc32fast = "1.4"
 unicode-segmentation = "1.12"
 form_urlencoded = "1.2"
 percent-encoding = "2.3"
-httparse = "1.10.1"
-# Desktop development server only (the board uses esp-tls). tiny_http 0.12
-# pins rustls 0.20, which gets no more fixes: fine for local development, not
-# for exposing the desktop server to a network you don't trust.
-tiny_http = { version = "0.12", optional = true, features = ["ssl-rustls"] }
+# The HTTP(S) server, connection loop, board runner (Wi-Fi, setup network,
+# SNTP, mDNS) and /metrics. gzip off: the app's assets are pre-compressed.
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls"] }
 fs2 = { version = "0.4", optional = true }
-log = { version = "0.4", optional = true }
+log = "0.4"
 x25519-dalek = { version = "2", default-features = false, features = ["static_secrets", "zeroize"] }
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 hkdf = "0.12"
@@ -63,6 +65,11 @@ esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"
 embuild = { version = "0.33", optional = true, features = ["espidf"] }
 # The build fingerprint (build.rs, scripts/firmware-version.py).
 sha2 = "0.10"
+
+# Property generators are host test tooling, never firmware dependencies.
+[target.'cfg(not(target_os = "espidf"))'.dev-dependencies]
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+tempfile = "3"
 
 [profile.release]
 opt-level = "s"

@@ -7,3 +7,7 @@
 /components_esp32c6.lock
 
 /.env
+
+# HTTPS certificates (make certs): the key is private; the CA is the household's
+/certs/
+.local

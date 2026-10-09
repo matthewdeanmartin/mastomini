@@ -32,3 +32,5 @@ label { display:flex;flex-direction:column;gap:8px;font-size:12px;color:#b8cac7;
 @container (max-width:355px) { .device { zoom:.85; } }
 @container (max-width:302px) { .device { zoom:.75; } }
 @container (max-width:267px) { .device { zoom:.65; } }
+
+.file-toolbar { flex-wrap:wrap;gap:16px;margin-bottom:20px; }.file-toolbar input { max-width:240px; }.result p { overflow-wrap:anywhere; }
