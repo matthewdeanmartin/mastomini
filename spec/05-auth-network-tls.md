@@ -98,8 +98,8 @@ Inherited from nanacoin's `CONNECTION_SECURITY.md`, with the same two modes:
 - Generated on the build PC by `scripts/certs.sh` (`make certs`, `make
   reissue-cert`), `scripts/certs-check.sh` and `scripts/rotate-certs.sh`,
   ported from nanacoin's `dev-certs.sh`, `test-certs.sh` and
-  `rotate-certs.sh`. RSA-3072 CA for 100 years; RSA-2048 leaf for **820
-  days**, not nanacoin's 100 years, because Apple refuses server certificates
+  `rotate-certs.sh`. RSA-3072 CA for 100 years; ECDSA P-256 leaf
+  (RSA-2048 with `MASTOMINI_CERT_KEY=rsa`) for **820 days**, not nanacoin's 100 years, because Apple refuses server certificates
   valid for more than 825 days even under a user-installed CA. Renewal
   reissues the leaf from the same CA, so devices keep their trust. Both
   certificates start a day early (signed with `openssl ca -startdate`, the
@@ -137,9 +137,11 @@ Inherited from nanacoin's `CONNECTION_SECURITY.md`, with the same two modes:
   `POST /api/mastomini/v1/tls` with an owner token over HTTPS. The board validates
   the key/cert match, SAN and expiry, stores them in `mm_cfg` (full chain ≤ 8 KiB),
   and restarts its TLS listener.
-- Request an RSA-2048 key unless ECDSA P-256 has been verified on the board's
-  mbedTLS/esp-tls configuration. nanacoin switched to RSA after ECDSA trouble with
-  its own certificate, and acme.sh now defaults to ECDSA.
+- ECDSA P-256 is verified on the board's mbedTLS/esp-tls configuration
+  (October 2026: full handshake ~300 ms vs ~1050 ms for RSA-2048; Firefox and
+  Chromium trust it). nanacoin's earlier ECDSA trouble was probably an
+  RSA-only `keyEncipherment` usage on an EC key; request digitalSignature only.
+  acme.sh also defaults to ECDSA.
 - Let's Encrypt certificates are short-lived (90 days today, shrinking in the next
   few years). The household app shows the expiry date and warns 21 days ahead. If
   the uploaded certificate expires, the board falls back to Model A so the household

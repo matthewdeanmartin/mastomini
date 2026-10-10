@@ -23,6 +23,7 @@ pub mod scheduled;
 mod server;
 pub mod social;
 mod statuses;
+pub mod transfer;
 
 use crate::codec::{self, Kind};
 use crate::ids::{self, IdGen};
@@ -585,7 +586,47 @@ fn corrupt(key: &Key, what: impl fmt::Display) -> StoreError {
 impl<S: Store> Service<S> {
     /// Boot: enumerate the store, rebuild RAM state, repair interrupted
     /// multi-key operations, then check invariants. Never formats.
-    pub fn open(mut store: S, config: Config) -> core::result::Result<Self, StoreError> {
+    pub fn open(store: S, config: Config) -> core::result::Result<Self, StoreError> {
+        let mut service = Service {
+            led_phrase: String::new(),
+            scheduling: Default::default(),
+            store,
+            state: State::default(),
+            ids: IdGen::default(),
+            config,
+            latched: None,
+        };
+        service.reload()?;
+        Ok(service)
+    }
+
+    /// Rebuild everything in RAM from the store, as at boot (schema upgrade,
+    /// repairs, invariants). `open` uses it; so does a restore, which writes
+    /// a whole household into the store and then reloads it in place.
+    pub fn reload(&mut self) -> core::result::Result<(), StoreError> {
+        let (state, idgen, led_phrase, upgrade_schema) = Self::build(&mut self.store)?;
+        self.state = state;
+        self.ids = idgen;
+        self.led_phrase = led_phrase;
+        self.scheduling = Default::default();
+        self.latched = None;
+        self.load_social()?;
+        self.load_scheduled()?;
+        self.check_invariants()?;
+        if upgrade_schema {
+            self.store.set(
+                Ns::Cfg,
+                &keys::schema(),
+                &codec::encode(Kind::Schema, &SCHEMA)?,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// The boot-time load: state, id generator, LED phrase and whether the
+    /// schema marker needs upgrading.
+    #[allow(clippy::type_complexity)]
+    fn build(store: &mut S) -> core::result::Result<(State, IdGen, String, bool), StoreError> {
         let mut state = State::default();
         let mut idgen = IdGen::default();
         let mut upgrade_schema = false;
@@ -607,12 +648,12 @@ impl<S: Store> Service<S> {
                 // Without the schema marker the only legitimate leftovers are
                 // from an interrupted `provision`: server settings and the
                 // owner. Roll those back. Anything else is not ours to erase.
-                let cfg = load(&mut store, Ns::Cfg)?;
-                let accounts = load(&mut store, Ns::Acct)?;
+                let cfg = load(store, Ns::Cfg)?;
+                let accounts = load(store, Ns::Acct)?;
                 let others = Ns::ALL
                     .iter()
                     .filter(|ns| !matches!(ns, Ns::Cfg | Ns::Acct | Ns::Key))
-                    .try_fold(0, |n, ns| load(&mut store, *ns).map(|v| n + v.len()))?;
+                    .try_fold(0, |n, ns| load(store, *ns).map(|v| n + v.len()))?;
                 let only_owner = accounts.len() <= 1
                     && accounts.iter().all(|(_, bytes)| {
                         codec::decode::<AccountRec>(Kind::Account, bytes)
@@ -627,7 +668,7 @@ impl<S: Store> Service<S> {
                     store.erase(Ns::Acct, &key)?;
                     state.repairs += 1;
                 }
-                for (key, _) in load(&mut store, Ns::Key)? {
+                for (key, _) in load(store, Ns::Key)? {
                     store.erase(Ns::Key, &key)?;
                     state.repairs += 1;
                 }
@@ -644,7 +685,7 @@ impl<S: Store> Service<S> {
             state.terms = Some(codec::decode(Kind::Terms, &bytes)?);
         }
 
-        for (key, bytes) in load(&mut store, Ns::Acct)? {
+        for (key, bytes) in load(store, Ns::Acct)? {
             let (rec, sealed) = if bytes.get(1) == Some(&(Kind::AccountWithKey as u8)) {
                 let record: dm::AccountWithKey = codec::decode(Kind::AccountWithKey, &bytes)?;
                 if record.key.account_id != record.account.id {
@@ -671,7 +712,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::App)? {
+        for (key, bytes) in load(store, Ns::App)? {
             let rec: AppRec = codec::decode(Kind::App, &bytes)?;
             if keys::app(rec.id) != key {
                 return Err(corrupt(&key, "id does not match key"));
@@ -683,7 +724,7 @@ impl<S: Store> Service<S> {
         let mut repairs: Vec<(Ns, Key)> = Vec::new();
 
         let mut local = Vec::new();
-        for (key, bytes) in load(&mut store, Ns::Tok)? {
+        for (key, bytes) in load(store, Ns::Tok)? {
             if key.as_str().starts_with('k') {
                 let rec: LocalTokenRec = codec::decode(Kind::LocalToken, &bytes)?;
                 if keys::local_token(rec.token_id) != key {
@@ -731,7 +772,7 @@ impl<S: Store> Service<S> {
 
         let mut envelopes = Vec::new();
         let mut polls = Vec::new();
-        for (key, bytes) in load(&mut store, Ns::Stat)? {
+        for (key, bytes) in load(store, Ns::Stat)? {
             match key.as_str().as_bytes().first() {
                 Some(b's') => {
                     let rec: StatusRec = codec::decode(Kind::Status, &bytes)?;
@@ -802,7 +843,7 @@ impl<S: Store> Service<S> {
         // History: a revision is written before the status it came from is
         // overwritten, so one that is not older than the current version is
         // from an interrupted edit (spec/02 "Crash consistency").
-        for (key, bytes) in load(&mut store, Ns::Hist)? {
+        for (key, bytes) in load(store, Ns::Hist)? {
             let rec: RevisionRec = codec::decode(Kind::Revision, &bytes)?;
             let k = key.as_str();
             let parsed = (|| {
@@ -857,7 +898,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::Rx)? {
+        for (key, bytes) in load(store, Ns::Rx)? {
             let rec: ReactionRec = codec::decode(Kind::Reaction, &bytes)?;
             let k = key.as_str();
             let parsed = (|| {
@@ -887,7 +928,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::Rel)? {
+        for (key, bytes) in load(store, Ns::Rel)? {
             let k = key.as_str().as_bytes();
             let (kind, src, dst) = match k {
                 [kind @ (b'F' | b'B' | b'M' | b'Q'), s, d] => (
@@ -957,7 +998,7 @@ impl<S: Store> Service<S> {
             repairs.push((Ns::Rel, keys::follow_request(pair.0, pair.1)));
         }
 
-        for (key, bytes) in load(&mut store, Ns::Mod)? {
+        for (key, bytes) in load(store, Ns::Mod)? {
             match key.as_str().as_bytes() {
                 [b'm', h] => {
                     let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
@@ -986,7 +1027,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::Coll)? {
+        for (key, bytes) in load(store, Ns::Coll)? {
             let mut rec: CollectionRec = codec::decode(Kind::Collection, &bytes)?;
             if keys::collection(rec.id) != key {
                 return Err(corrupt(&key, "id does not match key"));
@@ -1007,7 +1048,7 @@ impl<S: Store> Service<S> {
         }
 
         for (ns, kind) in [(Ns::List, Kind::List), (Ns::Filt, Kind::Filter)] {
-            for (key, bytes) in load(&mut store, ns)? {
+            for (key, bytes) in load(store, ns)? {
                 let (slot, n) = match key.as_str().as_bytes() {
                     [b'l' | b'x', s, n] => (
                         unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
@@ -1037,7 +1078,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::Key)? {
+        for (key, bytes) in load(store, Ns::Key)? {
             match key.as_str().as_bytes() {
                 [b'k', h] => {
                     let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
@@ -1064,7 +1105,7 @@ impl<S: Store> Service<S> {
             }
         }
 
-        for (key, bytes) in load(&mut store, Ns::Inv)? {
+        for (key, bytes) in load(store, Ns::Inv)? {
             let rec: CodeRec = codec::decode(Kind::Code, &bytes)?;
             if keys::code(rec.id) != key {
                 return Err(corrupt(&key, "id does not match key"));
@@ -1129,26 +1170,7 @@ impl<S: Store> Service<S> {
         if !crate::board_status::valid_phrase(&led_phrase) {
             return Err(StoreError::Corrupt("invalid LED phrase".into()));
         }
-        let mut service = Service {
-            led_phrase,
-            scheduling: Default::default(),
-            store,
-            state,
-            ids: idgen,
-            config,
-            latched: None,
-        };
-        service.load_social()?;
-        service.load_scheduled()?;
-        service.check_invariants()?;
-        if upgrade_schema {
-            service.store.set(
-                Ns::Cfg,
-                &keys::schema(),
-                &codec::encode(Kind::Schema, &SCHEMA)?,
-            )?;
-        }
-        Ok(service)
+        Ok((state, idgen, led_phrase, upgrade_schema))
     }
 
     /// Fail closed if RAM state breaks a bound or an internal link.

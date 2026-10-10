@@ -1,6 +1,15 @@
-"""Shared board helpers for deploy.py and install.py (esptool 4.x)."""
+"""Shared board helpers for deploy.py and install.py (esptool 4.x).
+
+MASTOMINI_BOARD picks the board profile: s3 (default, the household's
+ESP32-S3) or p4 (an ESP32-P4 with an ESP32-C6 Wi-Fi companion). The profile
+decides the chip, Rust target, flash size, bootloader offset, build and
+certificate directories and hostname, so one board's image or certificate
+is never used for the other. Shell scripts read fields with
+`python scripts/board.py <field>`.
+"""
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 import struct
@@ -17,16 +26,31 @@ MASTOMINI_LAYOUT = {
     'media': (1, 0x82, 0xC10000, 0x300000),
     'coredump': (1, 0x03, 0xF10000, 0x10000),
 }
-FLASH_SIZE = 0x1000000
+PROFILES = {
+    # `after`: on the S3's native USB-Serial/JTAG, esptool's default hard reset
+    # leaves the chip latched in download mode; an RTC watchdog reset boots it.
+    # The P4-WIFI6 is flashed through a CH343 bridge, whose DTR/RTS reset works.
+    's3': dict(chip='esp32s3', target='xtensa-esp32s3-espidf', flash_size='16MB',
+               flash_bytes=0x1000000, bootloader=0x0, after='watchdog_reset',
+               target_dir='C:/mmr', cert_dir='certs', hostname='mastomini',
+               sdkconfig='sdkconfig.defaults', features='esp32', led='', toolchain='xtensa'),
+    'p4': dict(chip='esp32p4', target='riscv32imafc-esp-espidf', flash_size='32MB',
+               flash_bytes=0x2000000, bootloader=0x2000, after='hard_reset',
+               target_dir='C:/mmr-p4', cert_dir='certs-p4', hostname='mastomini-p4',
+               sdkconfig='boards/p4/sdkconfig.defaults', features='esp32,board-p4', led='off',
+               toolchain='riscv'),
+}
+BOARD_ID = os.environ.get('MASTOMINI_BOARD', 's3')
+if BOARD_ID not in PROFILES:
+    raise SystemExit(f'MASTOMINI_BOARD must be one of {", ".join(PROFILES)}, not {BOARD_ID!r}')
+PROFILE = PROFILES[BOARD_ID]
+FLASH_SIZE = PROFILE['flash_bytes']
 APP_LIMIT = 0x400000
 
 
 def esptool(port: str) -> list[str]:
-    # `--after watchdog_reset`: on this board esptool's default USB-Serial/JTAG
-    # hard reset leaves the chip latched in download mode, so the firmware
-    # never starts. An RTC watchdog reset clears the latch and boots the app.
-    return [sys.executable, '-m', 'esptool', '--chip', 'esp32s3', '--port', port,
-            '--after', 'watchdog_reset']
+    return [sys.executable, '-m', 'esptool', '--chip', PROFILE['chip'], '--port', port,
+            '--after', PROFILE['after']]
 
 
 def parse_table(data: bytes) -> dict[str, tuple[int, int, int, int]]:
@@ -69,3 +93,10 @@ def read_mac(port: str) -> str:
 def check_image(path: pathlib.Path, limit: int) -> None:
     if not path.is_file() or not 0 < path.stat().st_size <= limit:
         raise SystemExit(f'Missing or oversized image: {path}. Build firmware first.')
+
+
+if __name__ == '__main__':
+    # Shell helper: python scripts/board.py <field>, for the MASTOMINI_BOARD profile.
+    if len(sys.argv) != 2 or sys.argv[1] not in PROFILE:
+        raise SystemExit(f'Usage: python scripts/board.py <{"|".join(PROFILE)}>')
+    print(PROFILE[sys.argv[1]])

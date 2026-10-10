@@ -15,6 +15,8 @@ setting up third-party clients.
 | [api-audit.md](api-audit.md) | Current REST gaps, priorities, and how to maintain the checked endpoint ledger |
 | [api-coverage.md](api-coverage.md) | Generated per-endpoint implementation / partial / stub / missing / excluded inventory |
 | [08-performance.md](08-performance.md) | Latency findings, burst benchmark, caching and transport tuning options |
+| [performance/memory_improvement_plan.md](performance/memory_improvement_plan.md) | Internal RAM headroom on the ESP32-S3: what holds it, ordered steps, how to measure |
+| [board_migration_plan.md](board_migration_plan.md) | Moving a household to another board: what must move, raw partition copy, export/import features |
 | [roadmap.md](roadmap.md) | Sprint plan, quality gates, exit criteria, risks |
 | [federation_roadmap.md](federation_roadmap.md) | Proposed second-board federation gateway, private/public APIs, SD storage, traffic estimates and staged validation |
 | [sprints.md](sprints.md) | What each finished sprint delivered, evidence, known gaps |

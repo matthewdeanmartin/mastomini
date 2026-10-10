@@ -72,6 +72,12 @@ export const routes: Routes = [
     title: 'Security — mastomini',
     canActivate: [ownerOnly],
   },
+  {
+    path: 'admin/move',
+    loadComponent: () => import('./pages/move').then((m) => m.MovePage),
+    title: 'Move to another board — mastomini',
+    canActivate: [ownerOnly],
+  },
   { path: '', pathMatch: 'full', redirectTo: 'me' },
   { path: '**', redirectTo: 'me' },
 ];

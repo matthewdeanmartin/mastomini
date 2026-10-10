@@ -9,7 +9,7 @@ import argparse
 import pathlib
 import subprocess
 
-from board import APP_LIMIT, MASTOMINI_LAYOUT, check_image, describe, esptool, read_table
+from board import APP_LIMIT, MASTOMINI_LAYOUT, PROFILE, check_image, describe, esptool, read_table
 
 
 def main():
@@ -31,7 +31,7 @@ def main():
         raise SystemExit('REFUSED: the board does not have the mastomini partition layout.\n'
                          f'Found:\n{describe(table)}\n'
                          'Use the first-install procedure (DEPLOY.md) only for a board that has never run mastomini.')
-    subprocess.run([*esptool(args.port), 'write_flash', '--flash_mode', 'dio', '--flash_size', '16MB',
+    subprocess.run([*esptool(args.port), 'write_flash', '--flash_mode', 'dio', '--flash_size', PROFILE['flash_size'],
                     '0x10000', str(image)], check=True)
     print('Application updated. The board restarts; household data was not touched.')
 

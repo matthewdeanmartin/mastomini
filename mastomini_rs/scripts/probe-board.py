@@ -55,7 +55,11 @@ def presented_certificate(address: str, name: str, ca: pathlib.Path) -> bytes:
 
 
 def probe_https(address: str, name: str, check) -> None:  # type: ignore[no-untyped-def]
-    certs = CRATE / 'certs'
+    # The board's own certificate directory (MASTOMINI_BOARD, scripts/board.py).
+    sys.path.insert(0, str(CRATE / 'scripts'))
+    from board import PROFILE  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    certs = CRATE / os.environ.get('MASTOMINI_CERT_DIR', PROFILE['cert_dir'])
     ca = certs / 'household-ca.crt'
     if not ca.exists():
         check(False, f'{ca} exists (run make certs)')
@@ -94,9 +98,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--address', required=True, help='board IP or hostname, e.g. mastomini.local')
     parser.add_argument('--wait', type=int, default=90, help='seconds to wait for boot')
-    parser.add_argument('--name', default='mastomini.local',
-                        help='name the HTTPS certificate must be valid for (default mastomini.local)')
+    parser.add_argument('--name', default=None,
+                        help="name the HTTPS certificate must be valid for (default: the board profile's, "
+                             "mastomini.local on the S3)")
     args = parser.parse_args()
+    if args.name is None:
+        sys.path.insert(0, str(CRATE / 'scripts'))
+        from board import PROFILE  # noqa: PLC0415
+        args.name = f"{PROFILE['hostname']}.local"
     base = f'http://{args.address}'
     failures: list[str] = []
 

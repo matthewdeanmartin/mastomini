@@ -71,6 +71,15 @@ export class Household {
 
   // Admin
 
+  /**
+   * The owner's encrypted copy of the whole household, to restore on another
+   * board (spec/board_migration_plan.md). The password confirms it is the
+   * owner; the passphrase encrypts the file.
+   */
+  exportHousehold(password: string, passphrase: string): Promise<{ blob: Blob; filename: string }> {
+    return this.api.download(`${V1}/admin/export`, { password, passphrase });
+  }
+
   members(): Promise<Member[]> {
     return this.api.get(`${V1}/admin/members`);
   }

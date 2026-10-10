@@ -30,6 +30,7 @@ import { Auth } from './api/auth';
           }
           @if (auth.isOwner()) {
             <a routerLink="/admin/security" routerLinkActive="on">Security</a>
+            <a routerLink="/admin/move" routerLinkActive="on">Move board</a>
           }
         }
       </nav>

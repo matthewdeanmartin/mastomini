@@ -31,6 +31,8 @@ esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "bundled-web"]
 http2 = ["miniframework/http2"]
 # Embed the household app (mastomini_ui); needs `make web` first.
 bundled-web = []
+# ESP32-P4 with an ESP32-C6 Wi-Fi companion (MASTOMINI_BOARD=p4).
+board-p4 = []
 
 [dependencies]
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls"] }
@@ -84,3 +86,9 @@ esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "1.8.2" }
 bindings_header = "src/mdns_bindings.h"
+
+# The ESP32-P4's Wi-Fi lives on an ESP32-C6 reached over SDIO (ESP-Hosted).
+# Its dependencies only apply when the IDF target is esp32p4 (as nanacoin).
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["components/p4-network"]
+bindings_header = "src/p4_bindings.h"

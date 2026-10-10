@@ -20,6 +20,8 @@
 #   MASTOMINI_HOSTNAME   mDNS name, default mastomini (-> mastomini.local)
 #   MASTOMINI_CERT_NAMES extra DNS names, comma separated (mastomini.lan,...)
 #   MASTOMINI_CERT_IPS   extra IP addresses, comma separated (192.168.1.161)
+#   MASTOMINI_CERT_KEY   server key: ec (default, ECDSA P-256) or rsa
+#                        (RSA-2048, about three times slower to handshake)
 #
 # Nothing is installed in this computer's trust store, and existing files are
 # never replaced silently: see scripts/rotate-certs.sh for a new CA.
@@ -63,6 +65,15 @@ root_cert="$ca_dir/rootCA.pem"
 root_key="$ca_dir/rootCA-key.pem"
 leaf="$out/mastomini.crt"
 key="$out/mastomini.key"
+key_kind="$(setting MASTOMINI_CERT_KEY)"
+key_kind="${key_kind:-ec}"
+case $key_kind in
+  rsa) newkey=(-newkey rsa:2048); usage=digitalSignature,keyEncipherment ;;
+  # keyEncipherment is RSA-only: an ECDSA certificate that claims it is
+  # rejected by strict clients (Firefox's NSS), so EC gets digitalSignature.
+  ec) newkey=(-newkey ec -pkeyopt ec_paramgen_curve:prime256v1); usage=digitalSignature ;;
+  *) echo "MASTOMINI_CERT_KEY must be rsa or ec, not $key_kind" >&2; exit 2 ;;
+esac
 
 # Subject alternative names: the board's name first, then localhost for the
 # desktop server, then anything the household asked for.
@@ -152,18 +163,21 @@ else
   for n in "${ips[@]}"; do san+=",IP:$n"; done
   cat >"$work/leaf.ext" <<EOF
 basicConstraints=critical,CA:FALSE
-keyUsage=critical,digitalSignature,keyEncipherment
+keyUsage=critical,$usage
 extendedKeyUsage=serverAuth
 subjectAltName=$san
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid,issuer
 EOF
-  # RSA-2048: what the board's mbedTLS and every client handle well (nanacoin
-  # saw Firefox reject an ECDSA appliance certificate). 820 days in all,
+  # ECDSA P-256 by default: a full TLS handshake on the board fell from about
+  # 1050 ms (RSA-2048) to about 300 ms, and Firefox and Chromium accept it
+  # (October 2026, DEPLOY.md). nanacoin once saw Firefox reject an ECDSA
+  # certificate, probably for the RSA-only keyEncipherment it claimed, which
+  # EC no longer gets. MASTOMINI_CERT_KEY=rsa issues RSA-2048. 820 days in all,
   # counting the day of backdating: Apple rejects server certificates valid
   # for more than 825 days, even from a CA the user installed. Renew with
   # make reissue-cert; devices keep trusting the same CA.
-  openssl req -quiet -new -newkey rsa:2048 -sha256 -nodes -keyout "$key" -out "$work/leaf.csr" \
+  openssl req -quiet -new "${newkey[@]}" -sha256 -nodes -keyout "$key" -out "$work/leaf.csr" \
     -subj "/O=mastomini household/CN=$host"
   sign "$work/leaf.csr" "$leaf" 820 "$work/leaf.ext" -cert "$root_cert" -keyfile "$root_key"
   echo "Issued a server certificate for: ${names[*]} ${ips[*]}"

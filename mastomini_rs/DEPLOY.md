@@ -429,9 +429,35 @@ Report, without credentials or household content:
 |---|---|---|---|---|
 | `ac:a7:04:2c:29:9c` (ESP32-S3 N16R8, COM11 on the build PC). Provisioned 2026-09-23 through the setup page with the owner from the repo-root `.env`; Wi-Fi saved on the board | 2026-09-23, procedure B | MicroPython 1.19.1 with an LED demo `main.py`; no household data | `.local/board-backups/aca7042c299c-20260923-081302-full16MB.bin`, sha256 `d73b6dd5…6fb15` | 192.168.1.161 (DHCP; may change) |
 
+| `e8:f6:0a:e3:6f:a2` (Meshnology/Waveshare ESP32-P4-WIFI6, ESP32-C6 Wi-Fi over SDIO, CH343 COM19). Test board, `MASTOMINI_BOARD=p4`, `mastomini-p4.local`, certificates in `certs-p4/`; seeded with `loadtests/seed_board.py` | 2026-10-09, manual esptool install (owner declined the backup) | nanacoin P4 test deploy (owner: not needed; nanacoin can be redeployed) | none | 192.168.1.164 (DHCP) |
+
 Add a row after every first install. Update the address when it changes.
 
 ## Deployment comments
+
+- **2026-10-09 — mastomini on the ESP32-P4 test board.** New board profile
+  (`MASTOMINI_BOARD=p4`: `scripts/board.py`, `boards/p4/sdkconfig.defaults`,
+  `components/p4-network`, feature `board-p4`, target
+  `riscv32imafc-esp-espidf`, build dir `C:/mmr-p4`). Identified read-only on
+  COM19 (ESP32-P4 v1.3, MAC above, nanacoin layout). The owner cancelled the
+  32 MiB backup ("a test deploy, it isn't gold"), so instead of
+  `install.py` the same steps ran directly with esptool: erase nvs, store,
+  media, coredump; write bootloader 0x2000, table 0x8000, app 0x10000; layout
+  verified. First seeding failed on the 140-character limit and left accounts
+  without saved passwords; store and media erased, then seeded (owner +
+  alice, bob, carol, 48 posts). Strict probe passed, version matched. Quick
+  suite (`loadtests/quick_perf.sh`, 198 s, RSSI -60): handshake 242/47 ms,
+  cold page h1 1557 / h2 557 ms, timeline handler ~195 ms (S3 ~380),
+  internal low-water 61 KB; but sweep failures from 4 users and 21
+  `admission_rejected`, not yet explained.
+- P4 moved downstairs (RSSI -50, no RST needed, same address). Quick suite on
+  both boards back to back, identical settings: P4 vs S3 — handshake 211/32
+  vs 321/47 ms; cold page h1 1391 vs 2472 ms, h2 437 vs 767 ms; warm @6 h1
+  67.5 vs 41.1 req/s, h2 80.4 vs 46.9 req/s (p95 126 vs 573 ms); sweep
+  1/4/8 users 45.6/89.0/102.9 vs 23.5/65.5/77.9 req/s, no failures up to 8
+  on either; 12 users 35% vs 15% failed (8 TLS slots); 87 KB HTTPS p50 0.09
+  vs 0.22 s; internal low-water 296 KB vs 2.8 KB. The desk-side failures were
+  placement (RSSI -60). Reports `loadtests/reports/transport-quick-{p4,s3}-downstairs-20261009-*.json`.
 
 - **2026-10-08 — Wi-Fi/lwIP buffers in PSRAM and framework incidents
   deployed; same-day before/after benchmark.** Revision `10863d6f648c`, dirty
@@ -531,6 +557,34 @@ Add a row after every first install. Update the address when it changes.
   hid it (one request per connection). Fix on the owner's Firefox:
   `network.lna.skip-domains = mastomini.local`; afterwards requests ran
   50–250 ms instead of 1–2 s, with no failures.
+- **TLS 1.3 and an ECDSA P-256 server certificate.** `idle_close.py
+  --handshakes` (median of 10–15, downstairs, RSSI -59): RSA + TLS 1.2 full
+  1047 ms / resumed 47 ms; RSA + TLS 1.3 953 / 250; ECDSA + TLS 1.2 328 / 47;
+  ECDSA + TLS 1.3 297 / 250. TLS 1.3 resumption repeats the key exchange
+  (browsers offer only psk_dhe_ke), so it is ~200 ms slower than TLS 1.2
+  tickets; internal low-water ~3.5 KB with it. Certificate reissued with
+  `MASTOMINI_CERT_KEY=ec MASTOMINI_CERT_IPS=192.168.1.161 make reissue-cert`
+  (same household CA, same names; previous certificates in
+  `.local/cert-backups/`). MAC read on COM11, Procedure A, boot 7/51/0, strict
+  probe passed, version matched; Firefox (OS roots) and Chromium trust it
+  (`browser_session.py --trust`; negative control rejected with
+  SEC_ERROR_UNKNOWN_ISSUER); h2 burst 32/32, Firefox session 0 failures.
+- Final for this round: **ECDSA P-256 + TLS 1.2 only** (TLS 1.3 disabled again
+  for its slower resumption). MAC read on COM11, Procedure A, boot 7/51/0,
+  strict probe passed, version matched; TLSv1.2 ECDHE-ECDSA-AES256-GCM-SHA384,
+  full handshake p50 422 ms (8 runs, fresh boot), resumed p50 70 ms; Firefox
+  and Chromium trust it; h2 burst 32/32. Board then moved downstairs.
+- Downstairs perf run (`63bcb3c208dc`, RSSI -44..-47, came up without RST).
+  Transport defaults: cold page view h1 2481 ms / h2 792 ms (previous best
+  7006 / 1403), 0/6 failed; warm 13.1/32.1/48.3 (h1) and 15.2/34.4/50.1 (h2)
+  req/s, p95 @6 136 / 552 ms, no connection failures, heap low-water 2819.
+  Sweep: clean to 8 users at 75.0 req/s (Oct 8: 71.5; Sep 26 old firmware
+  86.6), first failures at 10 users (8/2096). Handshakes: full p50 312 ms,
+  resumed 47 ms. 87 KB transfers: HTTP p50 0.14 s, no stalls; HTTPS p50
+  0.25 s but p90 2.16 s with 4 stalls in 15 (run straight after the sweep).
+  Reports: `loadtests/baselines/transport-ecdsa-tls12-20261009.json`,
+  repo-root `.local/perf-*-20261009.*`; compare with
+  `loadtests/compare_reports.py`.
 
 - **2026-10-04 — miniframework and HTTP/2 deployed; upstairs baseline.**
   Revision `10863d6f648c`, dirty working tree. Both USB sockets attached:

@@ -14,6 +14,10 @@ request into a dead connection.
 (a ticket), each answering one HTTP/2 request: resumed handshakes take tens
 of milliseconds instead of about one second of ECDHE.
 
+--handshakes N: N full handshakes (no resumption), then N resumed ones,
+with p50/p90, the negotiated TLS version and cipher, and the board
+certificate's key. --tls 1.2 or 1.3 pins the version (default: best offered).
+
 Safe: one public GET or OPTIONS per connection.
 """
 import argparse
@@ -101,15 +105,61 @@ def resume(args):
         time.sleep(0.5)
 
 
+def handshakes(args):
+    import statistics
+    ctx = tls_context(args, alpn=("h2",))
+    if args.tls:
+        version = {"1.2": ssl.TLSVersion.TLSv1_2, "1.3": ssl.TLSVersion.TLSv1_3}[args.tls]
+        ctx.minimum_version = ctx.maximum_version = version
+    full, resumed, session, info = [], [], None, None
+    for n in range(2 * args.handshakes):
+        resume = n >= args.handshakes and session is not None
+        started = time.monotonic()
+        sock = connect(args, ctx, session=session if resume else None)
+        ms = (time.monotonic() - started) * 1000
+        if info is None:
+            der = sock.getpeercert(binary_form=True)
+            info = f"{sock.version()} {sock.cipher()[0]}, board key {key_kind(der)}"
+        if resume and not sock.session_reused:
+            print(f"  #{n}: resumption refused, full handshake {ms:.0f} ms")
+        (resumed if resume and sock.session_reused else full).append(ms)
+        _, result = h2_request(sock, args.host)
+        if not result.startswith("answered"):
+            print(f"  #{n}: {result}")
+        session = sock.session
+        sock.close()
+        time.sleep(0.3)
+    print(info)
+    for label, values in (("full", full), ("resumed", resumed)):
+        if values:
+            values.sort()
+            print(f"  {label:8} handshakes x{len(values)}: p50 {statistics.median(values):.0f} ms "
+                  f"p90 {values[min(len(values) - 1, int(0.9 * len(values)))]:.0f} ms "
+                  f"min {values[0]:.0f} max {values[-1]:.0f}")
+
+
+def key_kind(der: bytes) -> str:
+    """RSA or EC P-256, read from the certificate's algorithm identifiers."""
+    if bytes.fromhex("2a8648ce3d0201") in der:  # id-ecPublicKey
+        return "EC P-256" if bytes.fromhex("2a8648ce3d030107") in der else "EC (other curve)"
+    if bytes.fromhex("2a864886f70d010101") in der:  # rsaEncryption
+        return "RSA"
+    return "unknown"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     board_args(parser)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--idle", type=float, help="seconds to wait on an idle connection")
     mode.add_argument("--resume", type=int, help="resumed connections to make")
+    mode.add_argument("--handshakes", type=int, help="full, then resumed, handshakes to time")
+    parser.add_argument("--tls", choices=["1.2", "1.3"], help="pin the TLS version (--handshakes)")
     args = parser.parse_args()
     if args.idle is not None:
         watch_idle(args)
+    elif args.handshakes:
+        handshakes(args)
     else:
         resume(args)
 

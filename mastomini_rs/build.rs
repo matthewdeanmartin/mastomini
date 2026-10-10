@@ -212,6 +212,15 @@ fn main() {
     println!("cargo:rerun-if-env-changed=MASTOMINI_TRACE_TIMING");
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
     build_identity(&root);
+    // The board's certificate directory (scripts/board.py: certs for the S3,
+    // certs-p4 for the P4), so one board's certificate never ships on another.
+    println!("cargo:rerun-if-env-changed=MASTOMINI_CERT_DIR");
+    let cert_dir =
+        root.join(std::env::var("MASTOMINI_CERT_DIR").unwrap_or_else(|_| "certs".into()));
+    println!(
+        "cargo:rustc-env=MASTOMINI_CERT_PATH={}",
+        cert_dir.display().to_string().replace('\\', "/")
+    );
     if std::env::var_os("CARGO_FEATURE_ESP32").is_none() {
         return;
     }
@@ -227,7 +236,7 @@ fn main() {
         "household-ca.der",
         "certificate.json",
     ] {
-        let path = root.join("certs").join(name);
+        let path = cert_dir.join(name);
         assert!(
             path.exists(),
             "{} is missing: run make certs (docs/security/https.md)",

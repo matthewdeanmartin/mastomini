@@ -285,6 +285,49 @@ fn code_json<S: Store>(c: &Call<'_, S>, rec: &CodeRec, code: Option<&str>) -> Va
     v
 }
 
+/// `POST /admin/export` with `password` and `passphrase` (owner): the whole
+/// household, encrypted (domain::transfer). A file download, never cached.
+fn export<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let actor = c.user()?;
+    let password = c.params.get("password").unwrap_or("").to_string();
+    let passphrase = c.params.get("passphrase").unwrap_or("").to_string();
+    let archive = match c.svc.export_archive(actor, &password, &passphrase, c.now) {
+        Ok(archive) => archive,
+        Err(Error::Unauthorized) => return Err(Response::error(403, "Wrong password")),
+        Err(e) => return Err(fail(e)),
+    };
+    let day = time::iso(c.now).get(..10).unwrap_or("export").to_string();
+    let name = format!("{}-{day}.mmexport", c.ctx.host().replace(':', "_"));
+    Ok(Response::new(200, "application/octet-stream", archive)
+        .with_header(
+            "Content-Disposition",
+            &format!("attachment; filename=\"{name}\""),
+        )
+        .with_header("Cache-Control", "no-store"))
+}
+
+/// `POST /import` (only before provisioning, like `/provision`): the body is
+/// an export file, the passphrase is in `X-Mastomini-Passphrase` so it never
+/// appears in a URL or a form log.
+fn import<S: Store>(c: &mut Call<'_, S>) -> Reply {
+    let passphrase = c
+        .req
+        .header("X-Mastomini-Passphrase")
+        .unwrap_or("")
+        .to_string();
+    let restored = c
+        .svc
+        .import_archive(&c.req.body, &passphrase)
+        .map_err(fail)?;
+    Ok(Response::ok(json!({
+        "records": restored.records,
+        "accounts": restored.accounts,
+        "statuses": restored.statuses,
+        "schema": restored.schema,
+        "exported_at": time::iso(restored.created_ms),
+    })))
+}
+
 /// `POST /admin/invites` -> a one-time code and the URL to open.
 fn create_invite<S: Store>(c: &mut Call<'_, S>) -> Reply {
     let actor = c.user()?;
@@ -461,6 +504,8 @@ pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -
         ("POST", ["admin", "bots"]) => create_bot(c),
         ("POST", ["admin", "bots", id, "api_keys"]) => bot_api_key(c, id),
         ("POST", ["provision"]) => provision(c),
+        ("POST", ["import"]) => import(c),
+        ("POST", ["admin", "export"]) => export(c),
         ("POST", ["codes", "redeem"]) => redeem(c),
         ("POST", ["me", "password"]) => change_password(c),
         ("POST", ["me", "sign_out_everywhere"]) => sign_out_everywhere(c),

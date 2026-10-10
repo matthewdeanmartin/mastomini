@@ -102,6 +102,11 @@ scripts-check:
 api-coverage:
 	$(UV) run --project clienttests python scripts/api-coverage.py
 
+.PHONY: perf-quick
+# ~5 minutes: handshakes, HTTP/2 burst, short transport and sweep, transfers.
+perf-quick:
+	bash loadtests/quick_perf.sh "$(ADDRESS)" "$(or $(HOST),mastomini.local)" "$(or $(CA),certs/household-ca.crt)" $(LABEL)
+
 .PHONY: diag-h2-burst diag-transfer diag-browser diag-firefox-log diag-har
 # Connection diagnostics (loadtests/; README "Connection diagnostics"). Read
 # requests only; a token is optional (loadtests/oauth_token.py).

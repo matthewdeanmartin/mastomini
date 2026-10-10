@@ -11,6 +11,7 @@ __pycache__/
 /mastomini_rs/.embuild/
 # HTTPS certificates and the household CA (make certs): never committed
 /mastomini_rs/certs/
+/mastomini_rs/certs-p4/
 /mastomini_rs/.local/
 .idea
 

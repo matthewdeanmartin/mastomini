@@ -53,7 +53,8 @@ fn setup_form<S: Store>(c: &Call<'_, S>, status: u16, error: Option<&str>) -> Re
 Create the household and your own account. You will be its owner.</p>{}\
 <form method=\"post\" action=\"/setup\">\
 {}{}{}{}\
-<div class=\"buttons\"><button class=\"approve\">Create household</button></div></form>",
+<div class=\"buttons\"><button class=\"approve\">Create household</button></div></form>\
+<p class=\"hint\">Moving from another board? <a href=\"/setup/restore\">Restore a household from an export</a>.</p>",
         html::error(error),
         field(
             "Household name",
@@ -90,6 +91,64 @@ Create the household and your own account. You will be its owner.</p>{}\
     );
     page(status, "Set up mastomini", &body)
 }
+
+/// `GET /setup/restore` (only before setup): restore a household exported
+/// from another board (Household app → Settings → Move to another board).
+/// The file goes to `POST /api/mastomini/v1/import` as it is, with the
+/// passphrase in a header, so a few lines of script do the upload.
+fn restore_page<S: Store>(c: &Call<'_, S>) -> Response {
+    let body = format!(
+        "<p>Restore a household exported from another mastomini board: every member, \
+password, post and signed-in device moves here.</p>\
+<p class=\"hint\">Same name as the old board ({host})? Signed-in phones and apps keep \
+working, as long as the old board is switched off or renamed. A new name? Everything \
+moves, but each device signs in again at the new address.</p>\
+<form id=\"restore\">\
+<label>Export file<input type=\"file\" id=\"file\" accept=\".mmexport\" required></label>\
+<label>Passphrase<input type=\"password\" id=\"passphrase\" autocomplete=\"off\" required minlength=\"12\"></label>\
+<p class=\"hint\">The passphrase chosen when the export was made.</p>\
+<div class=\"buttons\"><button class=\"approve\" id=\"go\">Restore household</button></div>\
+<p id=\"result\" role=\"status\"></p></form>\
+<p class=\"hint\"><a href=\"/setup\">Set up a new household instead</a></p>{script}",
+        host = escape(c.ctx.host()),
+        script = RESTORE_SCRIPT,
+    );
+    page(200, "Restore a household", &body)
+}
+
+const RESTORE_SCRIPT: &str = r#"<script>
+document.getElementById('restore').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const result = document.getElementById('result');
+  const go = document.getElementById('go');
+  const file = document.getElementById('file').files[0];
+  if (!file) return;
+  go.disabled = true;
+  result.textContent = 'Restoring… this can take a minute.';
+  try {
+    const response = await fetch('/api/mastomini/v1/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Mastomini-Passphrase': document.getElementById('passphrase').value,
+      },
+      body: file,
+    });
+    const reply = await response.json().catch(() => ({}));
+    if (response.ok) {
+      result.textContent = `Restored ${reply.accounts} members and ${reply.statuses} posts (exported ${reply.exported_at}).`;
+      document.getElementById('restore').insertAdjacentHTML('afterend',
+        '<div class="buttons"><a class="button" href="/">Continue</a></div>');
+    } else {
+      result.textContent = reply.error || `The restore failed (HTTP ${response.status}).`;
+      go.disabled = false;
+    }
+  } catch (error) {
+    result.textContent = 'The board did not answer. Check the connection and try again.';
+    go.disabled = false;
+  }
+});
+</script>"#;
 
 /// The address to type into an app: the one this browser used (an IP works
 /// on every phone), plus the configured name when it differs.
@@ -390,6 +449,8 @@ pub(crate) fn clock_not_set() -> Response {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", [] | ["setup"]) if !c.svc.state.provisioned => Ok(setup_form(c, 200, None)),
+        ("GET", ["setup", "restore"]) if !c.svc.state.provisioned => Ok(restore_page(c)),
+        ("GET", ["setup", "restore"]) => Ok(Response::redirect("/")),
         ("GET", []) => Ok(landing(c)),
         ("GET", ["setup"]) => Ok(Response::redirect("/")),
         ("POST", ["setup"]) => create_household(c),

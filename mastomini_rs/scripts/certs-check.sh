@@ -45,8 +45,16 @@ der_file=$(openssl dgst -sha256 <"$out/household-ca.der")
 
 leaf_text=$(openssl x509 -in "$leaf" -noout -text)
 ca_text=$(openssl x509 -in "$ca" -noout -text)
-grep -q 'Public Key Algorithm: rsaEncryption' <<<"$leaf_text" \
-  || fail 'The server certificate must use RSA (browser and board compatibility).' 'Run: make reissue-cert'
+if grep -q 'Public Key Algorithm: rsaEncryption' <<<"$leaf_text"; then
+  key_kind=RSA
+elif grep -q 'Public Key Algorithm: id-ecPublicKey' <<<"$leaf_text" && grep -q 'prime256v1' <<<"$leaf_text"; then
+  key_kind='ECDSA P-256'
+  # keyEncipherment is RSA-only; strict clients reject an EC certificate claiming it.
+  ! grep -q 'Key Encipherment' <<<"$leaf_text" \
+    || fail 'The ECDSA server certificate claims Key Encipherment (RSA-only).' 'Run: make reissue-cert'
+else
+  fail 'The server certificate must use RSA or ECDSA P-256 (browser and board compatibility).' 'Run: make reissue-cert'
+fi
 grep -q 'TLS Web Server Authentication' <<<"$leaf_text" || fail 'The server certificate lacks TLS server usage.' 'Run: make reissue-cert'
 grep -q 'CA:TRUE' <<<"$ca_text" || fail 'The household certificate is not a CA.'
 
@@ -59,4 +67,4 @@ days_left=$(( (end - $(date -u +%s)) / 86400 ))
 if (( days_left < 60 )); then
   echo "WARNING: the server certificate expires in $days_left days. Run make reissue-cert, then deploy." >&2
 fi
-echo "Certificate checks passed: $host, RSA, TLS server usage, key matches, $days_left days left."
+echo "Certificate checks passed: $host, $key_kind, TLS server usage, key matches, $days_left days left."

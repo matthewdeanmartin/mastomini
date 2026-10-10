@@ -124,6 +124,20 @@ export class Api {
     return this.request<T>('DELETE', path, body);
   }
 
+  /**
+   * A POST whose answer is a file (the household export), not JSON: the
+   * same origin, `/api/` and token rules as every other request. Errors are
+   * JSON and become an {@link ApiError} as usual.
+   */
+  async download(path: string, body: Body): Promise<{ blob: Blob; filename: string }> {
+    const authed = this.token() !== null;
+    const response = await this.send('POST', path, body);
+    if (!response.ok) return this.parse<never>(response, authed);
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'mastomini.mmexport';
+    return { blob: await response.blob(), filename };
+  }
+
   /** `application/x-www-form-urlencoded`, as OAuth endpoints expect. */
   async form<T>(path: string, fields: Record<string, string>): Promise<T> {
     const response = await fetch(path, {

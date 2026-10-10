@@ -20,9 +20,8 @@ import serial
 
 
 def restart(port: str) -> None:
-    subprocess.run([sys.executable, '-m', 'esptool', '--chip', 'esp32s3', '--port', port,
-                    '--after', 'watchdog_reset', 'read_mac'],
-                   check=True, stdout=subprocess.DEVNULL)
+    from board import esptool  # MASTOMINI_BOARD's chip and reset method
+    subprocess.run([*esptool(port), 'read_mac'], check=True, stdout=subprocess.DEVNULL)
 
 
 def open_port(name: str) -> serial.Serial:

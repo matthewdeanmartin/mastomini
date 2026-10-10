@@ -19,6 +19,9 @@ no usable response (reset or refused connection, aborted stream).
              board must evict the browser's idle connection
   --moz-log  Firefox only: write Firefox's networking log there, for
              firefox_log.py (it names why each connection closed)
+  --trust    only check that the browser trusts the board's certificate:
+             no certificate errors ignored, the OS trust store in use
+             (where the household CA is installed), https://<host>/
 
 Note: Playwright's browsers are not your everyday profile. Firefox's Local
 Network Access prompts and prefs (network.lna.*) do not apply here, so this
@@ -102,6 +105,27 @@ def squatters(args, n: int) -> list:
     return held
 
 
+def trust(args, sync_playwright) -> int:
+    """Load the board by name with certificate checking on: does this browser
+    accept the board's certificate (key type, usages, chain to the household CA)?"""
+    url = f"https://{args.host}/api/mastomini/v1/version"
+    with sync_playwright() as pw:
+        engine = getattr(pw, args.browser)
+        # Firefox reads the OS trust store only when asked; Chromium always does.
+        options = {"firefox_user_prefs": {"security.enterprise_roots.enabled": True}}             if args.browser == "firefox" else {}
+        browser = engine.launch(**options)
+        page = browser.new_context().new_page()
+        try:
+            response = page.goto(url, timeout=30_000)
+            print(f"{args.browser}: trusted, HTTP {response.status} from {url}")
+            return 0
+        except Exception as e:  # Playwright reports TLS failures as errors
+            print(f"{args.browser}: NOT trusted or unreachable: {str(e).splitlines()[0]}")
+            return 1
+        finally:
+            browser.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     board_args(parser)
@@ -114,9 +138,13 @@ def main():
     parser.add_argument("--squat", type=int, default=0, help="other TLS clients during each gap")
     parser.add_argument("--moz-log", type=Path, help="Firefox networking log file (Firefox only)")
     parser.add_argument("--report", type=Path, help="JSON report (default: loadtests/reports/)")
+    parser.add_argument("--trust", action="store_true", help="only check certificate trust (see above)")
     args = parser.parse_args()
 
     from playwright.sync_api import sync_playwright
+
+    if args.trust:
+        sys.exit(trust(args, sync_playwright))
 
     board = args.board or f"https://{args.address}"
     token = read_token(args.token_file) if args.token_file else "not-a-real-token"

@@ -71,21 +71,31 @@ fn trace_timing() -> bool {
 /// avatar and header images) stream up to this; everything else is
 /// refused by the framework above [`http::BODY_LIMIT`].
 const UPLOAD_ROUTE: &str = "/api/v1/accounts/update_credentials";
+const IMPORT_ROUTE: &str = "/api/mastomini/v1/import";
+
+/// Routes whose body streams in above [`http::BODY_LIMIT`], and their limit:
+/// profile uploads, and restoring a household export onto a new board.
+fn streamed_limit(method: &str, path: &str) -> Option<usize> {
+    if !matches!(method, "PATCH" | "POST" | "PUT") {
+        return None;
+    }
+    match path {
+        UPLOAD_ROUTE => Some(http::UPLOAD_BODY_LIMIT),
+        IMPORT_ROUTE => Some(crate::domain::transfer::ARCHIVE_MAX),
+        _ => None,
+    }
+}
 
 impl<S: Store + Send + 'static> Household<S> {
     fn request(req: &miniframework::Request<'_>) -> Result<Request, u16> {
-        let limit = if matches!(req.method, "PATCH" | "POST" | "PUT") && req.path == UPLOAD_ROUTE {
-            http::UPLOAD_BODY_LIMIT
-        } else {
-            http::BODY_LIMIT
-        };
+        let limit = streamed_limit(req.method, req.path).unwrap_or(http::BODY_LIMIT);
         if req.length > limit {
             return Err(413);
         }
         let mut body = Vec::new();
         if req.length > req.body.len() {
             // A streamed upload: read it whole (it is at most
-            // UPLOAD_BODY_LIMIT; the multipart parser needs all of it).
+            // its route's limit; the parsers need all of it).
             body.try_reserve_exact(req.length).map_err(|_| 400u16)?;
             req.body_reader()
                 .take(req.length as u64)
@@ -185,8 +195,7 @@ impl<S: Store + Send + 'static> miniframework::Service for Household<S> {
     }
 
     fn streamed_body(&self, method: &str, path: &str) -> Option<usize> {
-        (matches!(method, "PATCH" | "POST" | "PUT") && path == UPLOAD_ROUTE)
-            .then_some(http::UPLOAD_BODY_LIMIT)
+        streamed_limit(method, path)
     }
 
     fn cors(&self, path: &str) -> Cors {

@@ -72,7 +72,9 @@ step names the failure it rules in or out. All of them only read.
    Firefox's networking log (`--moz-log`). Install the browsers once:
    `uv run --project loadtests playwright install firefox chromium`.
    `idle_close.py --idle 330` shows how the board closes an idle connection;
-   `--resume 8` checks TLS session resumption.
+   `--handshakes 10 [--tls 1.2|1.3]` times full and resumed TLS handshakes
+   (and shows the certificate's key type); `browser_session.py --trust`
+   checks that Firefox and Chromium trust the board's certificate.
 5. **The user's own browser.** Playwright's browsers do not have the user's
    prefs or permission prompts, so capture from the real one:
    - a HAR (devtools Network → Save All As HAR) → `make diag-har HAR=<file>`;

@@ -1,4 +1,4 @@
-//! ESP32-S3 firmware: the same API as the desktop build, persisted in NVS,
+//! ESP32-S3 (or, with `board-p4`, ESP32-P4) firmware: the same API as the desktop build, persisted in NVS,
 //! on miniframework's board runner.
 //!
 //! The framework brings up Wi-Fi (the saved network, else the setup network
@@ -65,10 +65,24 @@ const HOSTNAME: &str = match option_env!("MASTOMINI_HOSTNAME") {
 /// `scripts/certs.sh` output. build.rs refuses to build without it, and
 /// `scripts/certs-check.sh` has vetted it. The server key is necessarily in
 /// the firmware; the CA's key is not.
-const SERVER_CERT: &str = concat!(include_str!("../../certs/mastomini.crt"), "\0");
-const SERVER_KEY: &str = concat!(include_str!("../../certs/mastomini.key"), "\0");
-const CA_DER: &[u8] = include_bytes!("../../certs/household-ca.der");
-const CERT_INFO: &str = include_str!("../../certs/certificate.json");
+/// The directory is the board's (build.rs: `MASTOMINI_CERT_DIR`, default `certs`).
+const SERVER_CERT: &str = concat!(
+    include_str!(concat!(env!("MASTOMINI_CERT_PATH"), "/mastomini.crt")),
+    "\0"
+);
+const SERVER_KEY: &str = concat!(
+    include_str!(concat!(env!("MASTOMINI_CERT_PATH"), "/mastomini.key")),
+    "\0"
+);
+const CA_DER: &[u8] = include_bytes!(concat!(env!("MASTOMINI_CERT_PATH"), "/household-ca.der"));
+const CERT_INFO: &str = include_str!(concat!(env!("MASTOMINI_CERT_PATH"), "/certificate.json"));
+
+/// The chip, for `/diag` and the metrics tags.
+const TARGET: &str = if cfg!(feature = "board-p4") {
+    "esp32p4"
+} else {
+    "esp32s3"
+};
 
 /// Before this instant the RTC has not been set by SNTP (2024-01-01).
 const CLOCK_VALID_AFTER_MS: u128 = 1_704_067_200_000;
@@ -118,7 +132,7 @@ fn platform() -> Platform {
         let mut ap = wifi_ap_record_t::default();
         let rssi = (esp_wifi_sta_get_ap_info(&mut ap) == ESP_OK).then_some(i32::from(ap.rssi));
         Platform {
-            target: "esp32s3",
+            target: TARGET,
             uptime_ms: uptime_ms(),
             heap_internal_free: Some(heap_caps_get_free_size(internal) as u64),
             heap_internal_min_free: Some(heap_caps_get_minimum_free_size(internal) as u64),
@@ -134,7 +148,13 @@ fn platform() -> Platform {
 fn board_config() -> BoardConfig {
     // Built-in credentials are optional (developers' .env): a board joins
     // the network saved on it, else opens the setup network.
-    let mut config = BoardConfig::s3(
+    // The P4 profile is the S3's plus a remote (ESP-Hosted) Wi-Fi companion,
+    // configured in boards/p4/sdkconfig.defaults.
+    #[cfg(not(feature = "board-p4"))]
+    let new = BoardConfig::s3;
+    #[cfg(feature = "board-p4")]
+    let new = BoardConfig::p4;
+    let mut config = new(
         option_env!("MASTOMINI_WIFI_SSID").unwrap_or(""),
         option_env!("MASTOMINI_WIFI_PASSWORD").unwrap_or(""),
         HOSTNAME,
@@ -214,7 +234,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         household = household.with_setup(Box::new(SharedSetup(Arc::clone(setup))));
     }
     let site = Site::new(
-        server::config(&ctx, "esp32s3"),
+        server::config(&ctx, TARGET),
         household,
         board.platform(peripherals.temp_sensor),
     );

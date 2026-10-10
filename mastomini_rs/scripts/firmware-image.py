@@ -12,7 +12,9 @@ import shutil
 import subprocess
 import sys
 
-APP_LIMIT = 0x400000
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from board import APP_LIMIT, PROFILE  # noqa: E402  (MASTOMINI_BOARD's chip and flash)
+
 CRATE = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -20,8 +22,8 @@ def main():
     elf = pathlib.Path(sys.argv[1]).resolve()
     out = elf.parent
     image = elf.with_suffix('.bin')
-    subprocess.run([sys.executable, '-m', 'esptool', '--chip', 'esp32s3',
-                    'elf2image', '--flash_mode', 'dio', '--flash_size', '16MB',
+    subprocess.run([sys.executable, '-m', 'esptool', '--chip', PROFILE['chip'],
+                    'elf2image', '--flash_mode', 'dio', '--flash_size', PROFILE['flash_size'],
                     '--output', str(image), str(elf)], check=True)
     size = image.stat().st_size
     if not 0 < size <= APP_LIMIT:
@@ -30,7 +32,7 @@ def main():
     idf = pathlib.Path(os.environ.get('IDF_PATH', 'C:/Espressif/frameworks/esp-idf-v5.5.3'))
     table = out / 'mastomini-partitions.bin'
     subprocess.run([sys.executable, str(idf / 'components/partition_table/gen_esp32part.py'),
-                    '--flash-size', '16MB', str(CRATE / 'partitions.csv'), str(table)], check=True)
+                    '--flash-size', PROFILE['flash_size'], str(CRATE / 'partitions.csv'), str(table)], check=True)
 
     # esp-idf-sys builds the bootloader inside its CMake output directory.
     candidates = sorted(out.glob('build/esp-idf-sys-*/out/build/bootloader/bootloader.bin'),

@@ -73,7 +73,7 @@ pub fn route_label(path: &str) -> String {
 /// Request headers the board passes to [`crate::api::handle`]. The desktop
 /// server passes every header, so a name missing here only breaks on the
 /// board; a test checks that every header the code reads is listed.
-pub const FORWARDED_HEADERS: [&str; 9] = [
+pub const FORWARDED_HEADERS: [&str; 10] = [
     "Host",
     "Authorization",
     "Content-Type",
@@ -85,6 +85,9 @@ pub const FORWARDED_HEADERS: [&str; 9] = [
     "If-None-Match",
     // The post and profile pages' sign-in session (api/pages.rs).
     "Cookie",
+    // Restoring a household export (api/household.rs `import`); same-origin
+    // only, so it is deliberately not in the CORS allow-list.
+    "X-Mastomini-Passphrase",
 ];
 
 #[derive(Debug, Clone, Default)]

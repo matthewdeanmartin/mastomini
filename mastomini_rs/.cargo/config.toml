@@ -6,7 +6,13 @@ linker = "ldproxy"
 # 64-bit time_t, required for SystemTime and snowflake ids past 2038.
 rustflags = ["--cfg", "espidf_time64"]
 
+# The ESP32-P4 (MASTOMINI_BOARD=p4): RISC-V, same linker and time settings.
+[target.riscv32imafc-esp-espidf]
+linker = "ldproxy"
+rustflags = ["--cfg", "espidf_time64"]
+
 [env]
+# scripts/build-esp32.sh sets MCU from the board profile; this is the default.
 MCU = "esp32s3"
 # esp-idf-sys finds this crate's [package.metadata.esp-idf-sys] (the mDNS
 # component) through this; the short CARGO_TARGET_DIR would mislead it.

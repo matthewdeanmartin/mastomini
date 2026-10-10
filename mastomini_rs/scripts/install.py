@@ -5,11 +5,12 @@ Destroys whatever the board holds. Safety rails:
     household; use deploy.py to upgrade instead);
   * requires --confirm-mac with the MAC of the attached board, so the operator
     has identified the physical board;
-  * always reads a full 16 MiB backup first and verifies its size before any
-    write.
+  * always reads a full backup of the flash (16 MiB on the S3, 32 MiB on
+    the P4) first and verifies its size before any write.
 
 Then it erases nvs, store, media and coredump and writes the bootloader
-(0x0), partition table (0x8000) and application (0x10000).
+(0x0 on the S3, 0x2000 on the P4), partition table (0x8000) and application
+(0x10000). MASTOMINI_BOARD picks the board profile (scripts/board.py).
 """
 import argparse
 import datetime
@@ -17,7 +18,7 @@ import hashlib
 import pathlib
 import subprocess
 
-from board import (APP_LIMIT, FLASH_SIZE, MASTOMINI_LAYOUT, check_image, describe, esptool,
+from board import (APP_LIMIT, FLASH_SIZE, MASTOMINI_LAYOUT, PROFILE, check_image, describe, esptool,
                    read_mac, read_table)
 
 ERASE = ['nvs', 'store', 'media', 'coredump']
@@ -38,7 +39,7 @@ def main():
     boot = args.images / 'mastomini-bootloader.bin'
     check_image(app, APP_LIMIT)
     check_image(table_bin, 0x1000)
-    check_image(boot, 0x8000 - 0x0)
+    check_image(boot, 0x8000 - PROFILE['bootloader'])
 
     mac = read_mac(args.port)
     table = read_table(args.port)
@@ -56,8 +57,8 @@ def main():
 
     args.backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    backup = args.backup_dir / f'{mac.replace(":", "")}-{stamp}-full16MB.bin'
-    print(f'Backing up the whole flash to {backup} (about 4 minutes)...')
+    backup = args.backup_dir / f'{mac.replace(":", "")}-{stamp}-full{PROFILE["flash_size"]}.bin'
+    print(f'Backing up the whole flash to {backup} (about {FLASH_SIZE // 0x400000} minutes)...')
     subprocess.run([*esptool(args.port), '-b', '921600', 'read_flash', '0', hex(FLASH_SIZE), str(backup)],
                    check=True)
     data = backup.read_bytes()
@@ -69,8 +70,9 @@ def main():
     for name in ERASE:
         _, _, offset, size = MASTOMINI_LAYOUT[name]
         subprocess.run([*tool, 'erase_region', hex(offset), hex(size)], check=True)
-    subprocess.run([*tool, 'write_flash', '--flash_mode', 'dio', '--flash_size', '16MB',
-                    '0x0', str(boot), '0x8000', str(table_bin), '0x10000', str(app)], check=True)
+    subprocess.run([*tool, 'write_flash', '--flash_mode', 'dio', '--flash_size', PROFILE['flash_size'],
+                    hex(PROFILE['bootloader']), str(boot), '0x8000', str(table_bin), '0x10000', str(app)],
+                   check=True)
     if read_table(args.port) != MASTOMINI_LAYOUT:
         raise SystemExit('Partition table did not verify after writing. Restore from the backup.')
     print('Installed. The board restarts unprovisioned.')

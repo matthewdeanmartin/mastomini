@@ -803,6 +803,7 @@ mod edits_polls;
 mod lists_filters;
 mod moderation;
 mod pages;
+mod transfer;
 mod trust;
 
 #[test]
