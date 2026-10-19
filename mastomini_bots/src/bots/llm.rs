@@ -428,7 +428,13 @@ fn answer(
         }
     }
     let body = defuse_mentions(body, &allowed);
-    let text = fit(&format!("{author} {body}"), vars.max_characters);
+    let text = crate::text::addressed_reply(
+        &status.account.acct,
+        &body,
+        vars.max_characters
+            .saturating_sub(status.spoiler_text.chars().count()),
+    )
+    .map_err(RunError::permanent)?;
     let visibility = Visibility::parse(&status.visibility)
         .at_most(Visibility::parse(run.settings.get("visibility")));
     let posted = run.post_keyed(

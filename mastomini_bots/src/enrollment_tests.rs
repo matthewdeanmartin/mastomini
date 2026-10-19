@@ -328,7 +328,9 @@ fn unrelated_username_collision_is_refused_before_any_account_is_created() {
 fn account_capacity_is_checked_before_remote_mutations() {
     let shared = house();
     let mut servers = Servers::new(shared.clone());
-    for n in 0..10 {
+    // Leave one slot: insufficient for the seven-bot setup, regardless of
+    // changes to Mastomini's configured household capacity.
+    for n in 0..mastomini::domain::MAX_ACCOUNTS - 2 {
         servers
             .mm
             .create_member(
@@ -351,7 +353,10 @@ fn account_capacity_is_checked_before_remote_mutations() {
         .unwrap()
         .contains("capacity"));
     assert_eq!(servers.nc.state().members.len(), 1);
-    assert_eq!(servers.mm.state.active_accounts().count(), 11);
+    assert_eq!(
+        servers.mm.state.active_accounts().count(),
+        mastomini::domain::MAX_ACCOUNTS - 1
+    );
 }
 
 #[test]

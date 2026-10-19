@@ -15,6 +15,7 @@ mod follow_requests;
 mod lists;
 mod local_tokens;
 mod moderation;
+mod notifications;
 mod oauth;
 mod polls;
 pub mod query;
@@ -49,7 +50,10 @@ pub use polls::NewPoll;
 pub use server::ServerUpdate;
 pub use statuses::NewStatus;
 
-pub const MAX_ACCOUNTS: usize = 16;
+/// One bit per household account; persisted poll integers use postcard varints.
+pub type AccountMask = u32;
+
+pub const MAX_ACCOUNTS: usize = 32;
 pub const MAX_STATUSES: usize = 4096;
 pub const MAX_BOOSTS: usize = 2048;
 pub const MAX_REACTIONS: usize = 16_384;
@@ -79,7 +83,10 @@ const HOUR_MS: u64 = 60 * 60 * 1000;
 /// so older firmware refuses the store instead of misreading new records.
 /// 5: local tag preferences, notes, suggestion dismissals and announcements.
 /// 6: durable scheduled drafts and the bots scheduler integration.
-pub const SCHEMA: u16 = 7;
+/// 7: atomic password verifier and sealed DM key.
+/// 8: 32 account slots, u32 poll masks, extended slot-key alphabet.
+/// 9: bounded durable notifications (`mm_notif`); existing records unchanged.
+pub const SCHEMA: u16 = 9;
 /// Previous versions kept per edited status, and in all (spec/03).
 pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
 pub const MAX_REVISIONS: usize = 1024;
@@ -149,15 +156,15 @@ pub struct Account {
 pub struct Status {
     pub rec: StatusRec,
     /// Slots of mentioned accounts.
-    pub mentions: u16,
+    pub mentions: AccountMask,
     pub tags: Vec<String>,
-    pub favourited: u16,
-    pub bookmarked: u16,
-    pub pinned: u16,
-    pub boosted: u16,
+    pub favourited: AccountMask,
+    pub bookmarked: AccountMask,
+    pub pinned: AccountMask,
+    pub boosted: AccountMask,
     /// Accounts that muted the conversation, recorded on the status they
     /// muted (the thread root when it was still there).
-    pub muted: u16,
+    pub muted: AccountMask,
     pub replies: u32,
 }
 
@@ -198,7 +205,7 @@ pub struct Reaction {
     pub slot: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NotificationKind {
     Mention,
     Favourite,
@@ -232,8 +239,8 @@ impl NotificationKind {
     }
 }
 
-/// Ephemeral: lives only in the RAM ring (spec/02 "Notifications are ephemeral").
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Durable event, cached in the bounded RAM ring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Notification {
     pub id: u64,
     pub kind: NotificationKind,
@@ -296,6 +303,35 @@ struct Governor {
     per_account: [u32; MAX_ACCOUNTS],
 }
 
+/// Fixed-size account table allocated directly on the heap. Building the
+/// household must not materialize several large account arrays on the ESP32
+/// startup stack. A boxed slice also prevents callers from growing the table.
+#[derive(Debug)]
+pub struct AccountSlots<T>(Box<[T]>);
+
+impl<T: Default> Default for AccountSlots<T> {
+    fn default() -> Self {
+        Self(
+            std::iter::repeat_with(T::default)
+                .take(MAX_ACCOUNTS)
+                .collect(),
+        )
+    }
+}
+
+impl<T> std::ops::Deref for AccountSlots<T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> std::ops::DerefMut for AccountSlots<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// Everything the server knows, in RAM.
 #[derive(Debug, Default)]
 pub struct State {
@@ -310,7 +346,7 @@ pub struct State {
     pub server: ServerRec,
     pub terms: Option<TermsRec>,
     pub provisioned: bool,
-    pub accounts: [Option<Account>; MAX_ACCOUNTS],
+    pub accounts: AccountSlots<Option<Account>>,
     pub apps: BTreeMap<u64, AppRec>,
     pub tokens: Vec<Token>,
     app_tokens: VecDeque<AppToken>,
@@ -324,7 +360,7 @@ pub struct State {
     pub blocks: BTreeMap<(u8, u8), BlockRec>,
     /// (muter, muted)
     pub mutes: BTreeMap<(u8, u8), MuteRec>,
-    pub moderation: [Option<AccountModRec>; MAX_ACCOUNTS],
+    pub moderation: AccountSlots<Option<AccountModRec>>,
     pub reports: BTreeMap<u64, ReportRec>,
     pub collections: BTreeMap<u64, CollectionRec>,
     /// Invite and password-reset codes, by id.
@@ -351,7 +387,7 @@ pub struct State {
     pub clock_anchor: Option<(u64, u64)>,
     /// Wall clock of the request being handled, for mute expiry.
     pub now_ms: u64,
-    pub user_keys: [Option<UserKeyRec>; MAX_ACCOUNTS],
+    pub user_keys: AccountSlots<Option<UserKeyRec>>,
     /// Device seals by their `mm_key` key (`w` + token key suffix).
     pub token_seals: BTreeMap<Key, crate::crypto::Sealed>,
     /// API keys and browser sessions, by token id (local_tokens.rs).
@@ -362,7 +398,7 @@ pub struct State {
     pub session: Option<dm::Session>,
     pub notifications: VecDeque<Notification>,
     /// Per account: [home, notifications].
-    pub markers: [[Option<Marker>; 2]; MAX_ACCOUNTS],
+    pub markers: AccountSlots<[Option<Marker>; 2]>,
     codes: Vec<AuthCode>,
     lockouts: Vec<(String, u32, u64)>,
     idempotency: VecDeque<(u8, String, u64, u64)>,
@@ -443,21 +479,34 @@ impl State {
     }
 
     /// Mask of accounts `viewer` blocks, is blocked by, or mutes.
-    pub fn hidden_mask(&self, viewer: u8) -> u16 {
+    pub fn hidden_mask(&self, viewer: u8) -> AccountMask {
         (0..MAX_ACCOUNTS as u8)
             .filter(|s| self.hides(viewer, *s))
             .fold(0, |m, s| m | bit(s))
     }
 
-    fn mention_mask(&self, ids: &[u64]) -> u16 {
+    fn mention_mask(&self, ids: &[u64]) -> AccountMask {
         ids.iter()
             .filter_map(|id| self.slot_of(*id))
             .fold(0, |mask, slot| mask | bit(slot))
     }
 }
 
-pub fn bit(slot: u8) -> u16 {
+pub fn bit(slot: u8) -> AccountMask {
     1 << slot
+}
+
+// Preserve schema 7's 0-f keys; g-v extends slots without exceeding NVS's
+// 15-byte key limit (reaction keys already use all 15 bytes).
+fn slot_digit(slot: u8) -> u8 {
+    b"0123456789abcdefghijklmnopqrstuv"[slot as usize]
+}
+
+fn parse_slot(byte: u8) -> Option<u8> {
+    b"0123456789abcdefghijklmnopqrstuv"
+        .iter()
+        .position(|b| *b == byte)
+        .map(|n| n as u8)
 }
 
 fn hex(slot: u8) -> u8 {
@@ -484,7 +533,7 @@ pub(crate) mod keys {
         Key::new("terms").expect("static key")
     }
     pub fn account(slot: u8) -> Key {
-        Key::from_parts(&[b"a", &[hex(slot)]]).expect("static key")
+        Key::from_parts(&[b"a", &[slot_digit(slot)]]).expect("static key")
     }
     pub fn app(id: u64) -> Key {
         Key::from_parts(&[b"p", &ids::b32(id)]).expect("fits")
@@ -504,19 +553,19 @@ pub(crate) mod keys {
         Key::from_parts(&[b"r", &ids::b32(id)]).expect("fits")
     }
     pub fn reaction(kind: ReactionKind, status: u64, slot: u8) -> Key {
-        Key::from_parts(&[&[kind.prefix()], &ids::b32(status), &[hex(slot)]]).expect("fits")
+        Key::from_parts(&[&[kind.prefix()], &ids::b32(status), &[slot_digit(slot)]]).expect("fits")
     }
     pub fn follow(src: u8, dst: u8) -> Key {
-        Key::from_parts(&[b"F", &[hex(src)], &[hex(dst)]]).expect("fits")
+        Key::from_parts(&[b"F", &[slot_digit(src)], &[slot_digit(dst)]]).expect("fits")
     }
     pub fn block(src: u8, dst: u8) -> Key {
-        Key::from_parts(&[b"B", &[hex(src)], &[hex(dst)]]).expect("fits")
+        Key::from_parts(&[b"B", &[slot_digit(src)], &[slot_digit(dst)]]).expect("fits")
     }
     pub fn mute(src: u8, dst: u8) -> Key {
-        Key::from_parts(&[b"M", &[hex(src)], &[hex(dst)]]).expect("fits")
+        Key::from_parts(&[b"M", &[slot_digit(src)], &[slot_digit(dst)]]).expect("fits")
     }
     pub fn account_mod(slot: u8) -> Key {
-        Key::from_parts(&[b"m", &[hex(slot)]]).expect("fits")
+        Key::from_parts(&[b"m", &[slot_digit(slot)]]).expect("fits")
     }
     pub fn report(id: u64) -> Key {
         Key::from_parts(&[b"R", &ids::b32(id)]).expect("fits")
@@ -525,7 +574,7 @@ pub(crate) mod keys {
         Key::from_parts(&[b"c", &ids::b32(id)]).expect("fits")
     }
     pub fn user_key(slot: u8) -> Key {
-        Key::from_parts(&[b"k", &[hex(slot)]]).expect("fits")
+        Key::from_parts(&[b"k", &[slot_digit(slot)]]).expect("fits")
     }
     /// What kind of local token (API key, browser session) a token is, in
     /// the token namespace beside it.
@@ -550,13 +599,13 @@ pub(crate) mod keys {
         Key::from_parts(&[b"o", &ids::b32(status)]).expect("fits")
     }
     pub fn follow_request(src: u8, dst: u8) -> Key {
-        Key::from_parts(&[b"Q", &[hex(src)], &[hex(dst)]]).expect("fits")
+        Key::from_parts(&[b"Q", &[slot_digit(src)], &[slot_digit(dst)]]).expect("fits")
     }
     pub fn list(slot: u8, n: u8) -> Key {
-        Key::from_parts(&[b"l", &[hex(slot)], &[hex(n)]]).expect("fits")
+        Key::from_parts(&[b"l", &[slot_digit(slot)], &[hex(n)]]).expect("fits")
     }
     pub fn filter(slot: u8, n: u8) -> Key {
-        Key::from_parts(&[b"x", &[hex(slot)], &[hex(n)]]).expect("fits")
+        Key::from_parts(&[b"x", &[slot_digit(slot)], &[hex(n)]]).expect("fits")
     }
 }
 
@@ -612,6 +661,7 @@ impl<S: Store> Service<S> {
         self.latched = None;
         self.load_social()?;
         self.load_scheduled()?;
+        self.load_notifications()?;
         self.check_invariants()?;
         if upgrade_schema {
             self.store.set(
@@ -697,7 +747,7 @@ impl<S: Store> Service<S> {
             };
             let k = key.as_str().as_bytes();
             let slot = match k {
-                [b'a', h] => unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?,
+                [b'a', h] => parse_slot(*h).ok_or_else(|| corrupt(&key, "bad slot"))?,
                 _ => return Err(corrupt(&key, "unexpected key")),
             };
             idgen.observe(rec.id);
@@ -865,7 +915,7 @@ impl<S: Store> Service<S> {
             }
         }
         // Derived fields need every status loaded first.
-        let masks: Vec<(u64, u16, Option<u64>)> = state
+        let masks: Vec<(u64, AccountMask, Option<u64>)> = state
             .statuses
             .values()
             .map(|s| {
@@ -904,7 +954,7 @@ impl<S: Store> Service<S> {
             let parsed = (|| {
                 let kind = ReactionKind::from_prefix(*k.as_bytes().first()?)?;
                 let status = ids::from_b32(k.get(1..14)?)?;
-                let slot = unhex(*k.as_bytes().get(14)?)?;
+                let slot = parse_slot(*k.as_bytes().get(14)?)?;
                 (k.len() == 15).then_some(Reaction { kind, status, slot })
             })()
             .ok_or_else(|| corrupt(&key, "unparsable reaction key"))?;
@@ -933,8 +983,8 @@ impl<S: Store> Service<S> {
             let (kind, src, dst) = match k {
                 [kind @ (b'F' | b'B' | b'M' | b'Q'), s, d] => (
                     *kind,
-                    unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
-                    unhex(*d).ok_or_else(|| corrupt(&key, "bad slot"))?,
+                    parse_slot(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
+                    parse_slot(*d).ok_or_else(|| corrupt(&key, "bad slot"))?,
                 ),
                 _ => return Err(corrupt(&key, "unexpected key")),
             };
@@ -1001,7 +1051,7 @@ impl<S: Store> Service<S> {
         for (key, bytes) in load(store, Ns::Mod)? {
             match key.as_str().as_bytes() {
                 [b'm', h] => {
-                    let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let slot = parse_slot(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
                     let rec: AccountModRec = codec::decode(Kind::AccountMod, &bytes)?;
                     let owner = state.account(slot).map(|a| a.rec.id);
                     if owner == Some(rec.account_id) {
@@ -1051,7 +1101,7 @@ impl<S: Store> Service<S> {
             for (key, bytes) in load(store, ns)? {
                 let (slot, n) = match key.as_str().as_bytes() {
                     [b'l' | b'x', s, n] => (
-                        unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
+                        parse_slot(*s).ok_or_else(|| corrupt(&key, "bad slot"))?,
                         unhex(*n).ok_or_else(|| corrupt(&key, "bad index"))?,
                     ),
                     _ => return Err(corrupt(&key, "unexpected key")),
@@ -1081,7 +1131,7 @@ impl<S: Store> Service<S> {
         for (key, bytes) in load(store, Ns::Key)? {
             match key.as_str().as_bytes() {
                 [b'k', h] => {
-                    let slot = unhex(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let slot = parse_slot(*h).ok_or_else(|| corrupt(&key, "bad slot"))?;
                     let rec: UserKeyRec = codec::decode(Kind::UserKey, &bytes)?;
                     if state.account(slot).map(|a| a.rec.id) == Some(rec.account_id) {
                         state.user_keys[slot as usize] = Some(rec);
@@ -1185,6 +1235,7 @@ impl<S: Store> Service<S> {
             || s.apps.len() > MAX_APPS
             || s.tokens.len() > MAX_TOKENS + MAX_API_KEYS
             || s.invites.len() > MAX_CODES_LIVE
+            || s.notifications.len() > MAX_NOTIFICATIONS
             || s.history.len() > MAX_REVISIONS
         {
             return fail("capacity exceeded");
@@ -1440,17 +1491,21 @@ impl<S: Store> Service<S> {
         let Some(id) = self.ids.next(now_ms) else {
             return;
         };
-        if self.state.notifications.len() >= MAX_NOTIFICATIONS {
-            self.state.notifications.pop_front();
-        }
-        self.state.notifications.push_back(Notification {
+        let notification = Notification {
             id,
             kind,
             to,
             from,
             status,
             object,
-        });
+        };
+        // The parent action has already committed. Do not report it as failed
+        // (clients may retry it); latch subsequent writes on any delivery error.
+        if let Err(error) = self.persist_notification(notification) {
+            self.latched = Some(format!(
+                "Notification storage failure, restart required: {error}"
+            ));
+        }
     }
 }
 

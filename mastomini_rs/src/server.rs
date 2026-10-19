@@ -10,6 +10,7 @@ use crate::api::{self, Ctx};
 use crate::domain::Service;
 use crate::http::{self, Request, Response};
 use crate::store::Store;
+use miniframework::ops::{Check, Status as CheckStatus};
 use miniframework::{Config, Cors, Reply};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
@@ -214,6 +215,25 @@ impl<S: Store + Send + 'static> miniframework::Service for Household<S> {
                 ("store_entries_total", s.total_entries as f64),
             ]
         })
+    }
+
+    fn checks(&self) -> Vec<Check> {
+        let check = match self.lock().store().stats() {
+            Ok(s) => Check::usage(
+                "store.entries",
+                "Store entries",
+                s.used_entries as f64,
+                s.total_entries as f64,
+                80.0,
+                95.0,
+            ),
+            Err(_) => Check::new(
+                "store.entries",
+                CheckStatus::Fail,
+                "Store statistics unreadable",
+            ),
+        };
+        vec![check.runbook("storage")]
     }
 }
 

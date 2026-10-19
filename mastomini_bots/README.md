@@ -22,6 +22,7 @@ Bots in this build:
 | `fishtank` | A daily emoji aquarium at 10:00. Reconstructs moving fish from seed `42` and start date `2026-10-08`; no model, saved board or old-post reads. |
 | `mars_rover` | Mars Expedition: a seeded rover exploring an 8×8 Mars map. Polls commands every 5 minutes; daily mission log at noon. Its game state lives in checkpoints in the mission thread. No model calls. |
 | `nana_news` | NanaCoin news: twice a day (08:00, 20:00) posts what happened in the economy — lottos, listings, loan requests… One checkbox per category; crowded categories roll up into one line. Needs a NanaCoin read key. |
+| `sre` | SRE digest: at 07:30 reads every board's `/.well-known/ops/health` (miniframework `ops` feature) and posts a followers-only headline with what is wrong and what changed since yesterday, plus one reply per unhealthy board. Read-only; a model may optionally write the headline. Design: [`spec/OPS.md`](../../microcontroller/miniframework/spec/OPS.md). |
 | `trader_1` … `trader_6` | NanaCoin traders: each a bot member with its own money, key and strategy (forex band, lotto, borrower, bot bank, steady buyer, rebalancer, mean reversion). Dry run until turned off; posts its trades when it has a Mastodon key. |
 
 `llm_reply` and `llm_post` are one bot type (`src/bots/llm.rs`) listed twice
@@ -77,9 +78,10 @@ the rover does not create separate game threads for each command.
 
 | Command | Result |
 |---|---|
-| `help` | Commands and the local-map legend |
+| `help` | A short introduction, current rover state, first commands and links to detailed help |
+| `help moves`, `help energy`, `help samples` | Coordinates, terrain and movement; daily exploration and charging; collecting and naming discoveries |
 | `status` | Sol, location, battery, sample count and weather |
-| `map` | A 3×3 window around the rover; unknown squares stay hidden until scanned or visited |
+| `map` | Nearby directions, coordinates and terrain in words, including map edges and blocked cliffs; unknown squares stay hidden until scanned or visited |
 | `move north/east/south/west` | Move one square; `n/e/s/w` also work. Costs 10 battery, or 15 entering a crater. Cliffs and map edges block movement. |
 | `scan` | Reveal the surrounding 3×3 area and report the site's terrain; costs 8 battery |
 | `sample` or `sample rock` | Collect the current site's material; costs 15 battery. A site can only be sampled once. |
@@ -95,12 +97,21 @@ daily tick on the first poll at or after **Daily mission log time**. Missed
 days replay those ticks in order, up to 100,000 days. Commands before the
 daily tick act on the preceding sol's checkpoint.
 
-Every committed update contains a complete `MR1:` checkpoint in the thread:
+Everyone controls one shared rover; the aim is to explore and collect samples,
+with no fixed ending. Posts spell out battery and sample counts. Daily logs
+explain automatic movement and report how many missed days were replayed.
+
+Every committed update ends with a separate `MR2:` checkpoint in the thread,
+collapsed behind the content warning **Game save (ignore)**. Players do not
+need to read or copy this data. It contains:
 seed, epoch, last tick day, position, battery, scanned/sample bitmaps,
 processed notification cursor, mission root, last manual charge and latest
 named site. Numeric fields use base36 to fit Mastomini's 140-character limit.
-Long help or map responses continue across posts, followed by the complete
-checkpoint; state is never truncated. The bot reads its own account history,
+Long responses use numbered continuations, preserving lines and word boundaries,
+followed by the complete checkpoint; state is never truncated. The first
+landing narrative anchors the mission, so players can reply to readable posts
+as well as saves. This version starts a fresh mission and ignores old `MR1`
+saves; its posting keys are also versioned. The bot reads its own account history,
 including replies, newest first to recover. It does not store game state or
 the command cursor on the board, and never treats another account's copied
 checkpoint as authoritative.
@@ -110,7 +121,7 @@ Each command and daily tick has a stable posting key, so retries do not
 spend battery twice. Quiet polls make no posts. Old pre-landing mentions,
 bot accounts, direct messages, mentions outside this mission and commands
 with a different visibility are ignored; their cursor may be recorded in a
-small “comms filtered” checkpoint. Keep visibility and zone fixed during a
+collapsed save post. Keep visibility and zone fixed during a
 mission. Changing seed or start date selects a different mission thread.
 
 Keep the mission checkpoints in Mastodon: they are the save game. A malformed
@@ -426,3 +437,118 @@ returning to health starts the phrase again. Playback uses the existing LED
 task without acquiring the service lock. GPIO selection remains a build setting.
 The session-protected `GET/PUT /api/v1/device/light` API uses `{ "phrase": "..." }`
 and `Cache-Control: no-store`; no API keys or bot settings are changed.
+
+## Public status pages
+
+Bookmark `https://mastomini-bots.local/status` for mastomini outages. Both
+services serve `/status` without a login or bundled Angular build. The mastomini
+page links to the independent bots page; both apps include a Status link.
+
+The bots device probes `https://mastomini.local/api/mastomini/v1/public-status`
+every 30 minutes using its existing household TLS trust and resolver. Install the
+updated mastomini build too: older builds lack this endpoint and fail checks.
+The observer currently targets the standard household hostname, not arbitrary
+bot destinations. It reuses the existing timer worker and HTTP client with a
+five-second HTTP timeout, and defers checks when a scheduled post is due within
+ten seconds. It never holds the service mutex during network I/O. No extra task,
+stack, or TLS client is allocated. Desktop and ESP32 both run it.
+
+The page shows current availability, 90 UTC days of successful/total probe
+counts, and the last 24 observed availability transitions. Gray days have no
+data. Percentages describe observed checks, not continuous measured uptime.
+History is saved at UTC day rollover and on transitions; an abrupt power loss
+can lose up to a day of unchanged-state observations. After restart or 61 minutes without
+a fresh observation, current state is unknown. Monitoring requires a set clock.
+The local page checks storage availability and clock readiness; it does not
+exercise posting, media, or all APIs. No credentials or admin diagnostics are
+published. Automated transitions are observations, not operator-written notices.
+
+Keep the bots device on separate power where possible. A shared router, network,
+or power outage can still take both pages offline. These `.local` pages are
+reachable on the household network; this change does not publish an internet
+status service. No firmware is flashed by this change.
+
+Resource budget: at most 48 scheduled probes per day during steady operation
+(one initial probe after startup), with no retries between checks. An open status
+page refreshes every 30 minutes and skips automatic refresh while hidden; manual
+refresh only reads cached observations on bots. Mastomini's probe endpoint reads
+the clock and storage latch directly, bypassing maintenance and authentication.
+History uses 90 compact `(u32, u16, u16)` day records (720 bytes) and 24 timestamp/
+boolean transitions (384 bytes on current targets), plus small struct/vector
+metadata. Capacities are reserved exactly to avoid vector doubling. JSON is
+bounded by a test to 2.5 KiB, excluding NVS overhead; no per-probe logs are kept.
+Normal unchanged status costs one history write per UTC day, with additional
+writes on observed transitions (at most one per probe). The shared standalone
+HTML is about 5.6 KiB of firmware flash per service; no Angular bundle is required.
+These are data-layout budgets, not measured ESP32 peak TLS/HTTP heap usage.
+
+## Civilization in a Shoebox and Bureau of Lost Things
+
+Two additional bots appear in the admin catalogue, disabled until configured.
+Both use the Device page's OpenRouter model (Gemma by default), and each should
+have its own Mastodon bot account and API key.
+
+- **Civilization in a Shoebox** (`shoebox`) runs daily at noon Eastern by default.
+  It starts with three inhabitants and publishes a single-choice poll. Polls
+  close after 23 hours; a run waits if the previous poll is still open. Highest
+  vote count wins, with random ties; an empty vote chooses randomly among all
+  options. Gemma follows `src/bots/shoebox_rules.txt`, carrying a bounded summary
+  of the current game. Victory or extinction starts a new game on the following
+  day. Malformed model output is rejected. Generated turns survive ordinary
+  failed-run retries, and posting uses a stable game/turn idempotency key.
+- **Bureau of Lost Things** (`lost_things`) checks every five minutes and posts
+  one discovery after noon Eastern. Reply directly to an item post to claim it.
+  The latest seven items accept claims. Gemma judges the fictional claim;
+  accepted items cannot be awarded again. Bot accounts, direct messages and
+  replies outside the catalogue are ignored. Item numbers persist across runs.
+
+Both bots store bounded state on the bot device; preserve its storage when
+upgrading firmware. Clearing bot state loses the game/catalogue. Historical
+posts remain on Mastomini, subject to its normal ring eviction. A hard power
+loss before the scheduler saves a run can lose that run's state; API idempotency
+protects duplicate submissions only while the server retains its key.
+
+### Capacity checked on 2026-10-17
+
+The live `mastomini.local` provisioning endpoint reported **7 available account
+slots** and **12 available API-key slots**. Diagnostics showed 9/16 active
+accounts, 93/4096 retained statuses, and 1,251/258,048 storage entries used
+(about 0.5%). Two new accounts fit, leaving five account slots. No new accounts
+were provisioned by this check.
+
+The server expansion raises capacity to 32 accounts and 64 API keys after
+flashing schema-8 firmware, widening account masks and extending slot keys. Deleted accounts retain their slots.
+Deleting old posts does not create account capacity. Status storage already
+uses ring eviction. There is currently no per-bot age-based deletion setting.
+Leave deletion off at this usage; any future opt-in cleanup must protect live
+polls, open Bureau items, and checkpoint history used by bots such as Mars.
+
+## Public instructions and account profiles
+
+Browse `/bots` on the bot board without signing in. Every bot has an instruction
+page at `/bots/<id>`, with its purpose, participation rules and current schedule.
+No API keys, prompts, game memory or private settings appear on these pages.
+
+Every account connected with a Mastodon API key automatically publishes a short
+bio, marks itself as a bot, and puts **Instructions** first in its profile fields.
+This also runs when scheduled posting is off; it does not publish a timeline
+status or advance a game. The remaining three fields are preserved, excluding
+an old Instructions field. Give each bot its own account.
+
+On **Device → Public bot pages**, set the address followers use to reach the
+board (default `https://mastomini-bots.local`). An address change triggers new
+profile links. Use **Publish profile** on a bot card to republish manually.
+The key needs `read:accounts` and `write:accounts` (Mastomini's normal `read write`
+bot keys include both). Errors appear on the card and in Activity; temporary
+failures retry after 30 minutes, while rejected credentials/scopes require a
+configuration change or manual retry. Successful publication is remembered in
+separate `p.<id>` records, preserving the game's storage budget. A new account,
+key, bio or board address triggers publication again.
+
+Instruction pages link back to the bot account with `rel="me"`. Mastomini now
+renders URL profile fields as links with `rel="me"`, both in account API responses
+and the public profile page. Editable source fields remain plain text. This does
+not claim a verified checkmark: Mastomini does not perform external verification.
+These are public pages on your network; Internet access requires an externally
+reachable board address. Deploy both the bots firmware and Mastomini firmware
+to get the complete reciprocal-link behavior.

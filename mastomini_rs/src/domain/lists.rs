@@ -167,7 +167,7 @@ impl<S: Store> Service<S> {
     }
 
     /// Slots of a list's members that still exist.
-    pub fn list_members(&self, list: &ListRec) -> u16 {
+    pub fn list_members(&self, list: &ListRec) -> AccountMask {
         list.members
             .iter()
             .filter_map(|id| self.state.slot_of(*id))
@@ -175,7 +175,7 @@ impl<S: Store> Service<S> {
     }
 
     /// Members of the viewer's exclusive lists: kept off home.
-    pub fn exclusive_mask(&self, viewer: u8) -> u16 {
+    pub fn exclusive_mask(&self, viewer: u8) -> AccountMask {
         self.lists_of(viewer)
             .filter(|l| l.exclusive)
             .fold(0, |m, l| m | self.list_members(l))

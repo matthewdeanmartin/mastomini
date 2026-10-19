@@ -14,6 +14,7 @@ import { Auth } from './api/auth';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <header class="top">
+      <a href="/status">Status</a>
       <a class="brand" href="/">mastomini</a>
       <nav>
         <a routerLink="/connect" routerLinkActive="on">Set up a device</a>

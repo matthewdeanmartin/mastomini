@@ -253,7 +253,7 @@ impl<'a> Mastodon<'a> {
         &self.instance
     }
 
-    fn call(
+    pub(crate) fn call(
         &mut self,
         method: &'static str,
         path: &str,

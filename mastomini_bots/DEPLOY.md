@@ -1,5 +1,87 @@
 # Deploy mastomini-bots to its ESP32-S3 board
 
+### 2026-10-19: Mars instructions and reply mentions deployed
+
+- Procedure A upgraded only COM15, MAC `ac:a7:04:2c:38:b8`. Initially Windows
+  detected only NanaCoin on COM9, MAC `ac:a7:04:2c:2c:04`; its port was never
+  opened. After the owner reconnected the bots board, Windows parent-device
+  mapping and the serial MAC/partition read independently confirmed the target.
+- `make check` passed: formatting, Clippy, script checks, 141 Rust tests,
+  15 UI tests and 12 end-to-end tests (three live-model skips). Refreshed the
+  dependency lockfile offline for the current local framework. Updated the
+  enrollment-capacity test to use `MAX_ACCOUNTS` instead of assuming the old
+  household size. Existing certificate checks passed without replacement.
+- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+  2,098,528 / 4,194,304 bytes. SHA-256:
+  `b6ab3a6bacaaeab091f0d3e48819ce02530f6045fe1f7919a29cb773981e33ee`.
+  Esptool verified the written hash. Only the application at `0x10000` was
+  written; settings, API keys, bootloader and partition table were preserved.
+- Firmware: dirty revision `6a3f7f5142d9`, built `2026-10-19T13:26:18.886Z`.
+  The sibling miniframework checkout was dirty at `4b10110` and was used for
+  both desktop validation and firmware compilation.
+- Before and after: 14 bots, admin password set, ready at `192.168.1.162`.
+  Strict IP and hostname probes passed, including firmware identity, bundled
+  app, authentication enforcement, synchronized clock and exact TLS/CA matches.
+  No settings or manual bot jobs were changed to verify the deployment.
+- Includes readable Mars instructions/maps, collapsed MR2 saves, numbered
+  replies with a player mention on every continuation, and explicit recipient
+  mentions for Bureau claims and bounded LLM replies. Mars starts a fresh MR2
+  mission rather than resuming MR1 saves.
+- Logs: `mastomini_bots/.local/deploy-*-20261019.log`.
+
+### 2026-10-17: Shoebox, Bureau and public bot profiles deployed
+
+- Procedure A upgraded only COM15, chip MAC `ac:a7:04:2c:38:b8`.
+  Windows parent-device mapping identified the other attached board as COM20,
+  MAC `28:84:85:88:ce:28`; its port was never opened. The serial read confirmed
+  the exact bots partition layout before the guarded app-only flash at `0x10000`.
+- `make check` passed: formatting, Clippy, script checks, 137 Rust tests,
+  15 UI tests and 12 end-to-end tests (three live-model skips). Fixed module
+  ordering and two boolean assertions caught by these gates before building.
+- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+  2,090,352 / 4,194,304 bytes. SHA-256:
+  `3a5bbf6774f8d761ca594c55020da1b4214163c534fd43ef50515b76870c9eb4`.
+  Esptool verified the written hash. Firmware identifies dirty revision
+  `6a3f7f5142d9`, built `2026-10-18T00:33:56.891Z` (UTC).
+  Sibling miniframework was dirty at `4b10110`; its current checkout was used
+  for both desktop validation and firmware compilation.
+- Pre-upgrade: 12 bots, admin password set. Post-upgrade: 14 bots, admin
+  password still set, ready at `192.168.1.162`. Settings, keys, game memory,
+  bootloader and partition table were preserved.
+- Strict read-only IP and hostname probes passed, including the household CA,
+  exact server certificate, bundled app, authentication and synchronized clock.
+  Verified HTTPS GETs for `/bots`, `/bots/shoebox`, `/bots/lost_things` and
+  `/bots/good_morning` all passed. Good Morning's instruction page already
+  contains its automatically published reciprocal `rel="me"` account link.
+  The two new bots remain unprovisioned; no settings or manual jobs were
+  changed to verify deployment. Mastomini firmware was not flashed.
+- Logs: `mastomini_bots/.local/deploy-*-20261017-profiles.log`.
+
+
+### 2026-10-17: Lightweight public status page deployed
+
+- Procedure A upgraded COM15, MAC `ac:a7:04:2c:38:b8`. The read-only
+  identification confirmed the existing bots partition layout. Only the app
+  at `0x10000` was flashed; settings, keys, bootloader and partitions were preserved.
+- `make check` passed: 128 Rust tests, 15 UI tests, 12 end-to-end tests,
+  three live-model skips, formatting, Clippy and script checks. Existing
+  certificate checks passed. The status source now lives in `shared/status.html`
+  outside generated MkDocs output; final build and gates ran after that move.
+- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+  2,047,424 bytes of the 4,194,304-byte app partition. Verified flash SHA-256:
+  `c6272cd761ef21503f7e5a903c52bbce22b445d77d95adfc276ea8245a54153e`.
+  Firmware: dirty revision `6a3f7f5142d9`, built `2026-10-17T14:48:02.872Z`.
+  Sibling miniframework was clean at `4b10110`.
+- Before and after boot: 12 bots, admin password set, 8 MB PSRAM found,
+  ready at `192.168.1.162`. Strict IP and hostname probes passed including CA/certificate,
+  bundled app and authentication enforcement. `/status` matched the source
+  byte-for-byte over verified HTTPS. Public status returned one failed probe
+  of mastomini; the mastomini board was not upgraded in this deployment and
+  also needs the new public-status endpoint. No manual bot jobs were run.
+- Monitoring runs every 30 minutes using the existing timer worker/client;
+  no additional worker stack. History is compact and written daily or on
+  transitions. Logs are under `mastomini_bots/.local/deploy-*.log`.
+
 ### 2026-10-09: Reply Guy, Fishtank and Mars Expedition deployed
 
 - Procedure A upgraded COM15, confirmed chip MAC `ac:a7:04:2c:38:b8`.

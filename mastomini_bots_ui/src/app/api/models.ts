@@ -55,6 +55,9 @@ export interface SettingField {
 }
 
 export interface Bot {
+  instructions_url?: string;
+  profile_error?: string | null;
+  profile_published?: boolean;
   id: string;
   name: string;
   description: string;

@@ -39,6 +39,7 @@ INPUTS = [
     'mastomini_rs/components_esp32s3.lock',
     'mastomini_rs/src',
     'mastomini_rs/assets',
+    'shared/status.html',
     'mastomini_rs/scripts/bundle-web.mjs',
     'mastomini_rs/certs/mastomini.crt',
     'mastomini_rs/certs/household-ca.der',

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 /// generator and are never 0.
 pub const LOCAL_APP: u64 = 0;
 pub const MAX_API_KEYS_PER_ACCOUNT: usize = 4;
-pub const MAX_API_KEYS: usize = 16;
+pub const MAX_API_KEYS: usize = 64;
 pub const MAX_API_KEY_NAME: usize = 40;
 /// What the pages need: they never write.
 pub const BROWSER_SCOPES: &str = "read";

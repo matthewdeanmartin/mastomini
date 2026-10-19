@@ -270,9 +270,24 @@ fn profile<S: Store>(c: &mut Call<'_, S>, user: &str, tagged: Option<String>) ->
     } else {
         ""
     };
+    let fields = a["fields"]
+        .as_array()
+        .map(|fields| {
+            fields
+                .iter()
+                .map(|f| {
+                    format!(
+                        "<dt>{}</dt><dd>{}</dd>",
+                        escape(str_of(f, "name")),
+                        str_of(f, "value")
+                    )
+                })
+                .collect::<String>()
+        })
+        .unwrap_or_default();
     let header = format!(
         "<div class=\"profile\"><img class=\"avatar\" src=\"/avatars/{id}.png\" alt=\"\"><div><h1>{name}{bot}</h1><div class=\"meta\">@{user}@{host}</div></div></div>\
-         <div class=\"content\">{note}</div><p class=\"meta\">{posts} posts · {following} following · {followers} followers · joined {joined}</p>",
+         <div class=\"content\">{note}</div><dl>{fields}</dl><p class=\"meta\">{posts} posts · {following} following · {followers} followers · joined {joined}</p>",
         id = account.rec.id,
         name = escape(name),
         user = escape(&account.rec.username),

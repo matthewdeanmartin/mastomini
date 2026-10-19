@@ -211,7 +211,7 @@ impl<S: Store> Service<S> {
 
     /// Timeline filter for blocks and mutes: the author, the booster, or
     /// anyone mentioned is in `hidden` (Mastodon's feed filter).
-    fn hidden_entry(&self, entry: Entry, hidden: u16) -> bool {
+    fn hidden_entry(&self, entry: Entry, hidden: AccountMask) -> bool {
         if hidden == 0 {
             return false;
         }
@@ -225,7 +225,7 @@ impl<S: Store> Service<S> {
         (bit(s.rec.author) | booster | s.mentions) & hidden != 0
     }
 
-    fn in_home_masked(&self, viewer: u8, entry: Entry, hidden: u16) -> bool {
+    fn in_home_masked(&self, viewer: u8, entry: Entry, hidden: AccountMask) -> bool {
         if !self.entry_visible(viewer, entry) {
             return false;
         }
@@ -299,7 +299,7 @@ impl<S: Store> Service<S> {
 
     /// Public and tag timelines leave out the viewer's blocks and mutes,
     /// and silenced ("limited") accounts the viewer doesn't follow.
-    fn on_public(&self, viewer: u8, s: &Status, hidden: u16) -> bool {
+    fn on_public(&self, viewer: u8, s: &Status, hidden: AccountMask) -> bool {
         let author = s.rec.author;
         s.rec.visibility == Visibility::Public
             && self.can_see(Some(viewer), s)
@@ -411,7 +411,7 @@ impl<S: Store> Service<S> {
     }
 
     /// Accounts that reacted (or boosted), in slot order.
-    pub fn reactors(&self, mask: u16) -> Vec<u8> {
+    pub fn reactors(&self, mask: AccountMask) -> Vec<u8> {
         (0..MAX_ACCOUNTS as u8)
             .filter(|s| mask & bit(*s) != 0 && self.state.account(*s).is_some())
             .collect()

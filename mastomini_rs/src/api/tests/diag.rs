@@ -37,7 +37,7 @@ fn diag_is_for_admins() {
     assert!(d["incidents"]["events"].is_array());
     assert!(d["incidents"]["samples"].is_array());
     assert_eq!(d["clock"]["source"], "synced");
-    assert_eq!(d["records"]["accounts"], json!([2, 16]));
+    assert_eq!(d["records"]["accounts"], json!([2, 32]));
     assert_eq!(d["store"]["available"], true);
     assert!(d["store"]["entries_used"].as_u64().unwrap() > 0);
 
@@ -136,4 +136,15 @@ fn version_is_public_and_identifies_the_build() {
     for key in ["accounts", "records", "store", "platform"] {
         assert!(v.get(key).is_none(), "{key}");
     }
+}
+
+#[test]
+fn public_status_needs_no_login() {
+    let mut s = Server::provisioned();
+    assert_eq!(s.get("/status", None).status, 200);
+    let r = s.get("/api/mastomini/v1/public-status", None);
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json_body()["mode"], "local");
+    assert_eq!(r.json_body()["state"], "operational");
+    assert_eq!(r.header("Cache-Control"), Some("no-store"));
 }

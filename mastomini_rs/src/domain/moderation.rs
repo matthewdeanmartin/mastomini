@@ -90,9 +90,9 @@ impl<S: Store> Service<S> {
             }
             self.drop_follow_request(a, b)?;
         }
-        self.state
-            .notifications
-            .retain(|n| !((n.to == src && n.from == dst) || (n.to == dst && n.from == src)));
+        self.retain_notifications(|n| {
+            !((n.to == src && n.from == dst) || (n.to == dst && n.from == src))
+        })?;
         Ok(())
     }
 
@@ -757,9 +757,7 @@ impl<S: Store> Service<S> {
             self.erase(Ns::Inv, &keys::code(id))?;
             self.state.invites.remove(&id);
         }
-        self.state
-            .notifications
-            .retain(|n| n.to != slot && n.from != slot);
+        self.retain_notifications(|n| n.to != slot && n.from != slot)?;
         self.state.markers[slot as usize] = [None, None];
         self.erase(Ns::Acct, &keys::account(slot))?;
         self.state.accounts[slot as usize] = None;

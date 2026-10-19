@@ -288,3 +288,42 @@ fn account_status_queries_apply_flags_tags_pins_and_cursors() {
         root
     );
 }
+
+#[test]
+fn profile_fields_link_urls_with_rel_me_and_keep_source_plain() {
+    let mut s = Server::provisioned();
+    let token = s.login("alice", "alicepw", "read write");
+    let r = s.send_json(
+        "PATCH",
+        "/api/v1/accounts/update_credentials",
+        Some(&token),
+        &json!({
+            "note":"A helpful bot.", "bot":true,
+            "fields_attributes":[
+                {"name":"Instructions","value":"https://bots.local/bots/shoebox"},
+                {"name":"Unsafe","value":"javascript:alert(1)"},
+                {"name":"Markup","value":"<script>bad()</script>"}
+            ]
+        }),
+    );
+    assert_eq!(r.status, 200);
+    let account = r.json_body();
+    let value = account["fields"][0]["value"].as_str().unwrap();
+    assert!(value.contains("href=\"https://bots.local/bots/shoebox\""));
+    assert!(value.contains("rel=\"me noopener noreferrer\""));
+    assert_eq!(account["fields"][0]["verified_at"], serde_json::Value::Null);
+    assert_eq!(
+        account["source"]["fields"][0]["value"],
+        "https://bots.local/bots/shoebox"
+    );
+    assert_eq!(account["fields"][1]["value"], "javascript:alert(1)");
+    assert!(!account["fields"][2]["value"]
+        .as_str()
+        .unwrap()
+        .contains("<script>"));
+    let page = s.get("/@alice", None);
+    let html = String::from_utf8_lossy(&page.body);
+    assert!(html.contains(value));
+    assert!(html.contains("A helpful bot."));
+    assert!(!html.contains("<script>bad()"));
+}

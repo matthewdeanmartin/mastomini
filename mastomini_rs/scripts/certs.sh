@@ -132,13 +132,17 @@ else
   # private addresses, so a device that trusts it cannot be fooled about
   # public sites even if this key leaked. MASTOMINI_CA_NAME_CONSTRAINTS=0
   # leaves them out (a CA that must also sign public-looking names).
+  # NOT marked critical: mbedTLS (every ESP32 board's TLS client) rejects a
+  # CA with any critical extension it does not implement, and it does not
+  # implement name constraints. Browsers and OSes enforce them either way.
+  # See docs/security/https.md, "Why the name constraints are not critical".
   cat >"$work/ca.ext" <<'EOF'
 basicConstraints=critical,CA:TRUE,pathlen:0
 keyUsage=critical,keyCertSign,cRLSign
 subjectKeyIdentifier=hash
 EOF
   if [[ "${MASTOMINI_CA_NAME_CONSTRAINTS:-1}" != 0 ]]; then
-    echo 'nameConstraints=critical,permitted;DNS:local,permitted;DNS:localhost,permitted;DNS:lan,permitted;DNS:home.arpa,permitted;DNS:internal,permitted;IP:10.0.0.0/255.0.0.0,permitted;IP:172.16.0.0/255.240.0.0,permitted;IP:192.168.0.0/255.255.0.0,permitted;IP:127.0.0.0/255.0.0.0' >>"$work/ca.ext"
+    echo 'nameConstraints=permitted;DNS:local,permitted;DNS:localhost,permitted;DNS:lan,permitted;DNS:home.arpa,permitted;DNS:internal,permitted;IP:10.0.0.0/255.0.0.0,permitted;IP:172.16.0.0/255.240.0.0,permitted;IP:192.168.0.0/255.255.0.0,permitted;IP:127.0.0.0/255.0.0.0' >>"$work/ca.ext"
   fi
   # Named with this computer's date, the day the household made it.
   openssl req -quiet -new -newkey rsa:3072 -sha256 -nodes -keyout "$root_key" -out "$work/ca.csr" \

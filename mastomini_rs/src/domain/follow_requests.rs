@@ -47,9 +47,9 @@ impl<S: Store> Service<S> {
         if self.state.follow_requests.remove(&(src, dst)).is_some() {
             self.erase(Ns::Rel, &keys::follow_request(src, dst))?;
         }
-        self.state.notifications.retain(|n| {
+        self.retain_notifications(|n| {
             !(n.kind == NotificationKind::FollowRequest && n.to == dst && n.from == src)
-        });
+        })?;
         Ok(())
     }
 

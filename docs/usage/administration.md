@@ -55,7 +55,7 @@ curl -X POST "$BOARD/api/mastomini/v1/admin/invites" -H "Authorization: Bearer $
 ```
 
 Usernames are 1–20 characters of `a-z`, `0-9` and `_`, and can't be changed
-later. A household holds up to 16 accounts.
+later. A household holds up to 32 accounts.
 
 You can also create an account with a password you choose (**Members** → "Or
 add someone with a password you choose", or
@@ -128,7 +128,7 @@ the key while signed in as that member; tick **bot** in its profile from any
 Mastodon app so others can tell.
 
 Keys are separate from signed-in devices: signing in on new phones never
-pushes a key out. Each member can have 4, the household 16. A key stops
+pushes a key out. Each member can have 4, the household 64. A key stops
 working when you revoke it, change your password or sign out everywhere, or
 when the account is deleted. A key can send direct messages but not read
 them: those stay sealed to devices you signed in on with your password.

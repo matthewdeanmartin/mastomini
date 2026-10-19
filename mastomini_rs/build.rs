@@ -60,7 +60,7 @@ fn parse(text: &str, want: &str) -> Option<String> {
 /// `scripts/firmware-version.py` has the same list and rules; a client test
 /// checks that both agree. Test-only files are left out so that editing a
 /// test does not make the board look out of date.
-const FINGERPRINT_INPUTS: [&str; 24] = [
+const FINGERPRINT_INPUTS: [&str; 25] = [
     "mastomini_bots/src/household_trust.rs",
     "mastomini_bots/src/bin/esp32/household_tls.rs",
     "mastomini_rs/Cargo.toml",
@@ -71,6 +71,7 @@ const FINGERPRINT_INPUTS: [&str; 24] = [
     "mastomini_rs/components_esp32s3.lock",
     "mastomini_rs/src",
     "mastomini_rs/assets",
+    "shared/status.html",
     "mastomini_rs/scripts/bundle-web.mjs",
     "mastomini_rs/certs/mastomini.crt",
     "mastomini_rs/certs/household-ca.der",

@@ -7,7 +7,7 @@ Mastodon app at the board, sign in, and post short messages to each other.
 - **Private.** It does not federate: nothing is sent to, or fetched from, other
   Mastodon servers. New accounts are created by a household admin; there is no
   public sign-up.
-- **Small.** Up to 16 accounts, 140-character posts (counted the way Mastodon
+- **Small.** Up to 32 accounts, 140-character posts (counted the way Mastodon
   counts them), text only: no pictures or video. When storage fills up, the
   oldest posts are deleted automatically; pinned posts are kept.
 - **Mastodon-shaped.** It speaks the Mastodon REST API, so existing apps and

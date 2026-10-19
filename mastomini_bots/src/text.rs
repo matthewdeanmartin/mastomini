@@ -155,6 +155,20 @@ pub fn defuse_mentions(text: &str, allowed: &[String]) -> String {
     out
 }
 
+/// Address a reply explicitly, reserving the mention before fitting its body.
+/// A reply-to ID alone does not notify the recipient on Mastomini.
+pub fn addressed_reply(acct: &str, body: &str, limit: usize) -> Result<String, String> {
+    if acct.is_empty() || acct.starts_with('@') || acct.chars().any(char::is_whitespace) {
+        return Err("Reply recipient has no valid account handle".into());
+    }
+    let prefix = format!("@{acct} ");
+    let remaining = limit
+        .checked_sub(prefix.chars().count())
+        .filter(|n| *n > 0)
+        .ok_or_else(|| "Reply recipient does not fit the server character limit".to_string())?;
+    Ok(format!("{prefix}{}", fit(body, remaining)))
+}
+
 /// At most `limit` characters, cut at a word boundary with an ellipsis.
 pub fn fit(text: &str, limit: usize) -> String {
     if text.chars().count() <= limit {
@@ -221,5 +235,17 @@ mod tests {
         let out = fit(&long, 30);
         assert!(out.chars().count() <= 30, "{out}");
         assert!(out.ends_with("word…"), "{out}");
+    }
+
+    #[test]
+    fn replies_preserve_local_and_remote_mentions_when_truncated() {
+        for acct in ["alice", "alice@remote.example"] {
+            let text = addressed_reply(acct, &"word ".repeat(60), 140).unwrap();
+            assert!(text.starts_with(&format!("@{acct} ")));
+            assert!(text.chars().count() <= 140);
+            assert!(text.ends_with('…'));
+        }
+        assert!(addressed_reply("", "hello", 140).is_err());
+        assert!(addressed_reply("alice", "hello", 5).is_err());
     }
 }

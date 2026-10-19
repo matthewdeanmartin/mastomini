@@ -93,7 +93,7 @@ impl<S: Store> Service<S> {
         {
             return;
         }
-        let ended: Vec<(u64, u16)> = self
+        let ended: Vec<(u64, AccountMask)> = self
             .state
             .polls
             .iter()

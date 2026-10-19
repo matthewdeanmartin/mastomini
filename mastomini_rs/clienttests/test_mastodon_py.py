@@ -2,7 +2,7 @@
 
 Two clients signed in through the real OAuth flow follow each other, post,
 reply, favourite and boost, see each other on home, get notifications, and
-everything except notifications survives a server restart.
+everything, including notification IDs, survives a server restart.
 """
 
 from __future__ import annotations
@@ -47,7 +47,8 @@ def test_household_conversation(household: Household) -> None:
     context = alice.status_context(post.id)
     assert [s.id for s in context.descendants] == [reply.id]
 
-    kinds = sorted(n.type for n in alice.notifications())
+    notifications = [(n.id, n.type) for n in alice.notifications()]
+    kinds = sorted(kind for _, kind in notifications)
     assert kinds == ["favourite", "follow", "mention", "reblog"]
     assert [n.type for n in bob.notifications()] == ["follow"]
 
@@ -59,7 +60,8 @@ def test_household_conversation(household: Household) -> None:
     assert again.favourited and again.reblogged and again.replies_count == 1
     assert alice.account_relationships(bob_id)[0].following
     assert reply.id in [s.id for s in alice.timeline_home()]
-    assert list(alice.notifications()) == [], "notifications are RAM only"
+    assert [(n.id, n.type) for n in alice.notifications()] == notifications
+    assert [n.type for n in bob.notifications()] == ["follow"]
 
 
 def test_pagination_follows_link_headers(household: Household) -> None:

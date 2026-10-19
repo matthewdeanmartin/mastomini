@@ -29,12 +29,12 @@
 
 | Quantity | Expected | Designed for |
 |---|---|---|
-| Accounts | 5–10 | 16 |
+| Accounts | 5–10 | 32 |
 | New posts | 100s per year | 4,096 retained, ring-evicted |
 | Favourites/bookmarks | a few per post | 16,384 retained |
 | Concurrent clients | 2–4 phones open at once | 4 TLS sockets, requests beyond that queue |
 | Signed-in devices | 2–4 per person | 8 per person, 64 total |
-| API keys (bots) | 0–2 per household | 4 per person, 16 total, never evicted by sign-ins |
+| API keys (bots) | 0–2 per household | 4 per person, 64 total, never evicted by sign-ins |
 
 ## Architecture
 

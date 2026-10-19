@@ -9,6 +9,10 @@
 //!
 //! A type can be listed more than once with different ids: each is a
 //! separate bot with its own settings, schedule and memory.
+//!
+//! Every user-facing reply must start with `@recipient `, including each
+//! continuation. `in_reply_to_id` alone does not send a mention notification.
+//! Use `crate::text::addressed_reply` to reserve room before fitting text.
 
 use crate::bot::Bot;
 
@@ -16,8 +20,12 @@ mod daily_prompt;
 pub mod fishtank;
 pub mod good_morning;
 pub mod llm;
+pub mod lost_things;
 pub mod mars_rover;
 pub mod nana_news;
+pub mod shoebox;
+pub mod sre;
+mod story;
 pub mod trader;
 
 pub fn all() -> Vec<Box<dyn Bot>> {
@@ -25,6 +33,8 @@ pub fn all() -> Vec<Box<dyn Bot>> {
         Box::new(good_morning::GoodMorning),
         Box::new(fishtank::FishTank),
         Box::new(mars_rover::MarsRover),
+        Box::new(shoebox::Shoebox),
+        Box::new(lost_things::LostThings),
         // One bot type, two configured instances with their own settings.
         Box::new(llm::LlmBot {
             id: "llm_reply",
@@ -37,6 +47,7 @@ pub fn all() -> Vec<Box<dyn Bot>> {
             mode: "post",
         }),
         Box::new(nana_news::NanaNews),
+        Box::new(sre::Sre),
         // Six traders: each its own NanaCoin bot member, key and strategy.
         Box::new(trader::Trader {
             id: "trader_1",

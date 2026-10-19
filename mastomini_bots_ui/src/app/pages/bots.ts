@@ -53,6 +53,12 @@ interface Draft {
           }
         </h2>
         <p class="muted small">{{ bot.description }}</p>
+        <p><a [href]="bot.instructions_url || '/bots/' + bot.id">Public instructions</a></p>
+        <p class="small">Profile: {{ bot.profile_published ? 'published' : 'waiting for publication' }}.
+          <button class="btn btn--quiet" type="button" (click)="act(bot, 'profile')"
+                  [disabled]="!bot.key_set || bot.running">Publish profile</button>
+        </p>
+        @if (bot.profile_error) { <p class="error small">{{ bot.profile_error }}</p> }
         @if (bot.uses_llm && openRouter() && !openRouter()!.key_set) {
           <p class="error small">
             This bot writes with a language model: add an OpenRouter API key on the
@@ -237,7 +243,7 @@ export class BotsPage implements OnInit, OnDestroy {
     }
   }
 
-  protected async act(bot: Bot, action: 'run' | 'check' | 'check-model'): Promise<void> {
+  protected async act(bot: Bot, action: 'run' | 'check' | 'check-model' | 'profile'): Promise<void> {
     this.error.set('');
     try {
       await this.session.request(bot.id, action);

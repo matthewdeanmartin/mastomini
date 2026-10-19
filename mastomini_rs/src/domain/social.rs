@@ -67,10 +67,10 @@ pub fn tag_name(text: &str) -> Result<String> {
 }
 
 fn pref_key(slot: u8) -> Key {
-    Key::new(&format!("p{slot:x}")).unwrap()
+    Key::from_parts(&[b"p", &[slot_digit(slot)]]).unwrap()
 }
 fn note_key(src: u8, dst: u8) -> Key {
-    Key::new(&format!("n{src:x}{dst:x}")).unwrap()
+    Key::from_parts(&[b"n", &[slot_digit(src)], &[slot_digit(dst)]]).unwrap()
 }
 fn ann_key(id: u64) -> Key {
     Key::new(&format!("a{}", ids::b32_str(id))).unwrap()
@@ -365,7 +365,7 @@ impl<S: Store> Service<S> {
             let k = key.as_str().as_bytes();
             let valid = match k {
                 [b'p', s] => {
-                    let slot = unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let slot = parse_slot(*s).ok_or_else(|| corrupt(&key, "bad slot"))?;
                     let mut rec: SocialRec = codec::decode(Kind::Social, &bytes)?;
                     if rec.followed.len() > MAX_FOLLOWED_TAGS
                         || rec.featured.len() > MAX_FEATURED_TAGS
@@ -401,8 +401,8 @@ impl<S: Store> Service<S> {
                     }
                 }
                 [b'n', s, d] => {
-                    let a = unhex(*s).ok_or_else(|| corrupt(&key, "bad slot"))?;
-                    let b = unhex(*d).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let a = parse_slot(*s).ok_or_else(|| corrupt(&key, "bad slot"))?;
+                    let b = parse_slot(*d).ok_or_else(|| corrupt(&key, "bad slot"))?;
                     let rec: NoteRec = codec::decode(Kind::AccountNote, &bytes)?;
                     if rec.comment.len() > MAX_NOTE_BYTES {
                         return Err(corrupt(&key, "note bound"));

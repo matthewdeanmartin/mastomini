@@ -48,7 +48,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Accounts | `GET /api/v1/accounts/:id`, `/:id/statuses` (with `pinned`, `exclude_replies`, `exclude_reblogs`, `only_media`, `tagged`), `/:id/followers`, `/:id/following`, `GET /api/v1/accounts/relationships`, `GET /api/v1/accounts/lookup`, `GET /api/v1/accounts/search` |
 | Statuses | `POST /api/v1/statuses`, `GET/DELETE /api/v1/statuses/:id`, `GET /:id/context`, `POST /:id/favourite`, `/unfavourite`, `/reblog`, `/unreblog`, `/bookmark`, `/unbookmark`, `/pin`, `/unpin`, `GET /:id/favourited_by`, `/reblogged_by` |
 | Timelines | `GET /api/v1/timelines/home`, `/public` (`local` is implied), `/tag/:hashtag` |
-| Notifications (RAM only, see 02) | `GET /api/v1/notifications` (types/exclude_types/account_id), `GET /:id`, `POST /clear`, `POST /:id/dismiss`, `GET /api/v1/notifications/unread_count` |
+| Notifications (persistent, see 02) | `GET /api/v1/notifications` (types/exclude_types/account_id), `GET /:id`, `POST /clear`, `POST /:id/dismiss`, `GET /api/v1/notifications/unread_count` |
 | Markers | `GET/POST /api/v1/markers` (RAM only, reset on reboot) |
 | Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (published local notices), `GET /api/v1/followed_tags` (persistent) |
 | Search | `GET /api/v2/search` (accounts, hashtags, statuses: linear scan over RAM), `resolve=true` never goes off-box |
@@ -64,7 +64,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Favourites / bookmarks | `GET /api/v1/favourites`, `/bookmarks` (paginated by reaction record id, as Mastodon does) |
 | Conversations | **Done.** `GET /api/v1/conversations`, `POST /:id/read`, `DELETE /:id`. Derived from `direct` statuses: a conversation is a thread of direct messages, named by its first message. Read and hidden state are RAM only, like markers (a restart shows everything as read); a hidden conversation comes back when a new message arrives |
 | Tags | **Implemented.** Follow/unfollow, feature/unfeature, featured CRUD/suggestions and account featured tags; 32 followed/10 featured per member, persisted. Followed public tags enter home; counts/history respect visibility. |
-| Grouped notifications | **Implemented locally.** Favourite/reblog groups by status, follows grouped together, other types individual; filtered group pagination, fetch/accounts/dismiss, unread counts and `ungroup_types`. Bounded RAM ring; no time-window grouping. |
+| Grouped notifications | **Implemented locally.** Favourite/reblog groups by status, follows grouped together, other types individual; filtered group pagination, fetch/accounts/dismiss, unread counts and `ungroup_types`. Bounded persistent history with a RAM cache; no time-window grouping. |
 | Trends | `GET /api/v1/trends/tags`, `/trends/statuses`, `/trends/links` all return `[]`. No feed algorithms |
 | Suggestions / directory | `GET /api/v2/suggestions` (household members you don't follow), `GET /api/v1/directory` |
 
@@ -73,7 +73,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Endpoint | Plan |
 |---|---|
 | Streaming (`/api/v1/streaming`, WebSocket + SSE) | **Later.** `configuration.urls.streaming` (v2) and `urls.streaming_api` (v1) are `null`, the standard "no streaming" signal: clients such as Elk then open no WebSockets. `/api/v1/streaming/health` is 404, never `OK`. A client that ignores the signal and connects anyway is refused by ESP-IDF's HTTP server itself (400, about 30 ms, before any app code: WebSocket support is not compiled in). Measured on the board (2026-09-23): refused attempts mixed with API calls stay at median 40–75 ms up to 4 simultaneous connections; at 8 simultaneous connects a few requests wait 1 or 3 s (TCP SYN retries after the listen backlog of 5 overflows). Raising the HTTP sockets from 6 to 10 changed nothing, so it stays 6. When implemented: 2 concurrent streams max, user + public only; it holds a socket (a TLS session once HTTPS exists), so revisit the socket budget |
-| Polls | **Done** (moved up). `poll[options][]` (2–4, ≤ 50 characters, distinct), `poll[expires_in]` (5 minutes to 7 days), `multiple`, `hide_totals`; `GET /api/v1/polls/:id`, `POST /:id/votes`. Votes are a `u16` bitmask per option, so one write per vote. No voting on your own poll, once only. Not allowed in direct messages (the options would be unencrypted). When a poll ends, author and voters get a `poll` notification (RAM, checked on each request). Editing the options resets the votes |
+| Polls | **Done** (moved up). `poll[options][]` (2–4, ≤ 50 characters, distinct), `poll[expires_in]` (5 minutes to 7 days), `multiple`, `hide_totals`; `GET /api/v1/polls/:id`, `POST /:id/votes`. Votes are a `u32` bitmask per option, so one write per vote. No voting on your own poll, once only. Not allowed in direct messages (the options would be unencrypted). When a poll ends, author and voters get a `poll` notification (RAM, checked on each request). Editing the options resets the votes |
 | Scheduled statuses | Supported through the trusted bots board: durable drafts, list/read/reschedule/cancel, 16-job bound, no lateness cutoff. See [scheduled posts](../docs/usage/scheduled-posts.md). Requires integration configuration and a valid clock; direct messages are excluded. |
 | Media (`/api/v1/media`, `/api/v2/media`) | `422` "media attachments are not supported"; `configuration.media_attachments` advertises `max_media_attachments: 0` if clients tolerate it (check in the client matrix) |
 | Push (`/api/v1/push/subscription`) | `404` in v1. Later maybe, if the board has internet access |
@@ -86,7 +86,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 ## Moderation
 
 Everything here persists (spec/02 `mm_rel`, `mm_rx`, `mm_mod`) and survives a
-reboot. Notifications stay RAM only.
+reboot. Notifications persist across reboot (schema 9).
 
 **Blocks** (`POST /api/v1/accounts/:id/block`, `/unblock`, `GET /api/v1/blocks`).
 Blocking ends follows in both directions and drops the notifications the two

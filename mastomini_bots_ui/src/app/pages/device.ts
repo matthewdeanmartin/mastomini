@@ -57,6 +57,15 @@ import { bytes, duration, when } from './format';
         can <a href="/ca">download the household CA</a>.
       </p>
     }
+    <h2>Public bot pages</h2>
+    <form class="panel" (ngSubmit)="savePublicOrigin()">
+      <label for="public-origin">Bot board address</label>
+      <input id="public-origin" name="publicOrigin" [(ngModel)]="publicOrigin" required />
+      <p class="muted small">The address followers use to reach this board. Each connected bot automatically publishes its bio and puts its instruction page first in its profile links, even when scheduled posting is off. Changing this address updates those links.</p>
+      <p><a href="/bots">Browse public instructions</a></p>
+      <button class="btn" type="submit" [disabled]="busy()">Save board address</button>
+      @if (originSaved()) { <p class="ok">Board address saved.</p> }
+    </form>
     <h2>Healthy light message</h2>
     @if (lightLoaded()) {
       <form class="panel" (ngSubmit)="saveLight()">
@@ -158,6 +167,19 @@ import { bytes, duration, when } from './format';
 export class DevicePage implements OnInit {
   protected readonly session = inject(Session);
   private readonly router = inject(Router);
+  protected publicOrigin = 'https://mastomini-bots.local';
+  protected readonly originSaved = signal(false);
+  protected async savePublicOrigin(): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.originSaved.set(false);
+    try {
+      this.publicOrigin = (await this.session.setPublicOrigin(this.publicOrigin)).origin;
+      this.originSaved.set(true);
+    } catch (e) { this.error.set(describe(e)); }
+    finally { this.busy.set(false); }
+  }
   protected ledPhrase = "Robots have feelings too!";
   protected readonly lightLoaded = signal(false);
   protected readonly lightSaved = signal(false);
@@ -196,6 +218,7 @@ export class DevicePage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
+      this.publicOrigin = (await this.session.publicOrigin()).origin;
       this.ledPhrase = (await this.session.light()).phrase;
       this.lightLoaded.set(true);
       this.diag.set(await this.session.diag());

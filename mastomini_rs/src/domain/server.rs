@@ -150,7 +150,8 @@ impl<S: Store> Service<S> {
              can read them, with their password or a device they signed in on. \
              The household admins cannot read them. Who wrote to whom, and when, \
              is not encrypted.\n\n\
-             Not stored: notifications and read positions are kept in memory only \
+             Notifications are stored until dismissed or the history limit is reached. \
+             Read positions are kept in memory only \
              and are forgotten when the device restarts. IP addresses and e-mail \
              addresses are not collected.",
             title = self.state.server.title

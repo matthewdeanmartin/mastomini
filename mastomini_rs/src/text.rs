@@ -447,3 +447,42 @@ mod tests {
         assert!(html.contains("<span class=\"ellipsis\">example.com/012345678901234567</span>"));
     }
 }
+
+/// Link a whole HTTP(S) URL in profile metadata; never accept supplied HTML.
+pub fn render_profile_field(value: &str) -> String {
+    let value = value.trim();
+    let rest = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"));
+    if rest.is_some_and(|r| {
+        !r.is_empty() && !r.starts_with('/') && !r.starts_with('?') && !r.starts_with('#')
+    }) && !value.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        let url = escape(value);
+        format!("<a href=\"{url}\" rel=\"me noopener noreferrer\" target=\"_blank\">{url}</a>")
+    } else {
+        escape(value)
+    }
+}
+
+#[cfg(test)]
+mod profile_field_tests {
+    use super::*;
+    #[test]
+    fn profile_links_escape_attributes_and_reject_other_schemes() {
+        for plain in [
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "//evil.test",
+            "https://",
+            "https:///bad",
+            "https://x.test\nfoo",
+        ] {
+            assert!(!render_profile_field(plain).contains("<a "));
+        }
+        let rendered = render_profile_field("https://x.test/\"<img>\"?a=1&b=2");
+        assert!(!rendered.contains("<img>"));
+        assert!(rendered.contains("&quot;&lt;img&gt;&quot;"));
+        assert!(rendered.contains("&amp;b=2"));
+    }
+}

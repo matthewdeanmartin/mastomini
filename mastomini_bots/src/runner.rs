@@ -28,6 +28,7 @@ pub fn tick<S: KvStore>(
             .unwrap_or_else(|e| e.into_inner())
             .finish(job, started, finished, outcome);
     }
+    crate::profiles::tick(svc, http, now());
     jobs.len()
 }
 

@@ -38,7 +38,7 @@ pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 getrandom = "0.2"
 percent-encoding = "2.3"
 log = "0.4"
-miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls"] }
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls", "ops"] }
 # Desktop only. miniframework serves HTTP (or HTTPS with make certs),
 # the Mastodon client is ureq with the public roots plus the household CA.
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls", "json"] }

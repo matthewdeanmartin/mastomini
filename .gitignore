@@ -7,6 +7,8 @@ mastomini.lock
 __pycache__/
 .pytest_cache/
 /.local/
+# Firefox captures contain browsing/session data; keep them local.
+/Firefox*profile.json.gz
 .env
 /mastomini_rs/.embuild/
 # HTTPS certificates and the household CA (make certs): never committed

@@ -193,9 +193,8 @@ pub(super) fn dismiss<S: Store>(c: &mut Call<'_, S>, key: &str) -> Reply {
     let rows = selected(c, viewer, key)?;
     let ids: BTreeSet<_> = rows.iter().map(|n| n.id).collect();
     c.svc
-        .state
-        .notifications
-        .retain(|n| n.to != viewer || !ids.contains(&n.id));
+        .retain_notifications(|n| n.to != viewer || !ids.contains(&n.id))
+        .map_err(fail)?;
     Ok(Response::ok(json!({})))
 }
 

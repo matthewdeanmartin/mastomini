@@ -81,6 +81,40 @@ vouch for household names (`.local`, `.lan`, `.home.arpa`, `.internal`,
 or any other public site to your devices. `/trust` says whether the CA being
 served has these limits.
 
+### Why the name constraints are not critical
+
+RFC 5280 says a CA *should* mark Name Constraints critical, so that a client
+that doesn't understand them refuses the CA rather than trusting it without
+limits. The household CA did that until October 17, 2026, and it backfired:
+
+- **mbedTLS, the TLS library in every ESP32 board's firmware, doesn't
+  implement name constraints.** With the extension marked critical it refuses
+  to load the CA at all (`mbedtls_x509_crt_parse ... -0x2562`). No board could
+  make an HTTPS request to another household board. Game Matcher's Sprint 0
+  gate found it (local measurements: `C:/github/microcontroller/gamematcher/spec/measurements/c6-gate.md`).
+  mastomini and mastomini_bots had worked around it with an mbedTLS extension
+  callback; every new board app would have needed the same unsafe code.
+- **The clients that matter enforce the constraints anyway.** Chrome, Firefox,
+  Safari/iOS, Android and Windows apply Name Constraints whether or not the
+  extension is critical, so phones and laptops keep the protection: the CA
+  still cannot vouch for `evil.example.com` (OpenSSL: "permitted subtree
+  violation"), only household names and private addresses.
+- **"Critical" protects only against clients that ignore the extension.**
+  Here those are our own boards, which only ever use the CA for household
+  hosts configured at build time.
+
+So the constraints stay, marked non-critical. This is the same trade-off
+corporate PKI teams make for internal CAs with mixed clients.
+
+**Reissued October 17, 2026** with the **same private key and subject**, so
+nothing had to be redeployed: every board certificate already issued still
+chains to it, and devices that trusted the old CA certificate keep working
+without reinstalling anything. Only the CA *certificate* changed (serial
+`46E97B99…`, SHA-256 `5F:27:30:C7:FF:89:34:7D:6A:7D:09:53:B5:06:DA:CA:42:53:BF:15:A0:F3:11:34:DE:14:8F:B4:B2:4B:D3:B7`;
+the old one, SHA-256 `C2:8F:EE:1E:…:54:FD`, is in `.local/ca/backups/`). Boards
+pick up the new copy for `/ca` the next time they're built. Installing either
+copy on a device gives the same trust.
+
 The CA's private key stays on the build computer, in
 `mastomini_rs/.local/ca/rootCA-key.pem`. It is never copied into the firmware,
 the repository, or anything the board serves. **Back it up somewhere private**

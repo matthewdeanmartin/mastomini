@@ -40,10 +40,12 @@ pub enum Ns {
     Filt = 13,
     /// Bounded local social preferences, private notes and announcements.
     Social = 14,
+    /// Bounded durable notification history.
+    Notif = 15,
 }
 
 impl Ns {
-    pub const ALL: [Ns; 15] = [
+    pub const ALL: [Ns; 16] = [
         Ns::Cfg,
         Ns::Acct,
         Ns::App,
@@ -59,6 +61,7 @@ impl Ns {
         Ns::List,
         Ns::Filt,
         Ns::Social,
+        Ns::Notif,
     ];
 
     /// NVS namespace name (at most 15 characters).
@@ -79,6 +82,7 @@ impl Ns {
             Ns::List => "mm_list",
             Ns::Filt => "mm_filt",
             Ns::Social => "mm_social",
+            Ns::Notif => "mm_notif",
         }
     }
 

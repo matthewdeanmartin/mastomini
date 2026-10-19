@@ -23,6 +23,7 @@ pub mod http;
 pub mod mastodon;
 pub mod nanacoin;
 pub mod openrouter;
+pub mod profiles;
 pub mod recovery;
 pub mod runner;
 pub mod schedule;
@@ -36,3 +37,5 @@ pub mod tz;
 pub mod web;
 
 pub mod scheduler;
+
+pub mod status;

@@ -1,4 +1,4 @@
-//! Mars Expedition: all authoritative state lives in bot-authored MR1
+//! Mars Expedition: all authoritative state lives in bot-authored MR2
 //! checkpoints in the mission thread. Board state is never needed.
 use crate::bot::{Bot, BotInfo, Run, RunError};
 use crate::bots::{fishtank::epoch, good_morning::visibility_setting};
@@ -16,7 +16,7 @@ impl Bot for MarsRover {
     fn info(&self) -> BotInfo {
         BotInfo {
             id: "mars_rover", name: "Mars Expedition",
-            description: "A deterministic Mars rover commanded through its mission thread. Game state lives in its posts; no LLM needed.",
+            description: "Explore Mars together: steer one shared rover, reveal terrain and collect samples by replying to its posts.",
             schedule: Schedule::Manual, grace_minutes: 30,
             default_instance: "https://mastomini.local", uses_llm: false, needs_mastodon: true,
         }
@@ -70,7 +70,7 @@ impl Bot for MarsRover {
                 run,
                 &rover,
                 None,
-                "Mars landing! Reply help.",
+                &format!("Mars landing! We share one rover. Explore Mars and collect samples together.\n{}\nReply scan to look around, or help to learn how to play.", rover.status()),
                 &format!("land:{seed}:{start}"),
                 limit,
             )?;
@@ -85,9 +85,10 @@ impl Bot for MarsRover {
         let (h, m) = run.settings.time("daily_time");
         let mut daily = false;
         if rover.day < today && (local.hour, local.minute) >= (h, m) {
-            rover.advance(today);
+            let elapsed = today - rover.day;
+            let movement = rover.advance(today);
             let message = format!(
-                "Sol {}: {}. {}",
+                "Mars • Sol {} (mission day)\n{}\nAuto-exploration: {elapsed} daily recharge/move cycle(s). Latest: {movement}\n{}\nReply scan, sample, map or help.",
                 rover.day - rover.epoch + 1,
                 weather(seed, today),
                 rover.status()
@@ -97,7 +98,7 @@ impl Bot for MarsRover {
                 &rover,
                 Some(&head.id),
                 &message,
-                &format!("sol:{}:{today}", rover.root),
+                &format!("sol:{}:{today}", base36(rover.root)),
                 limit,
             )?;
             daily = true;
@@ -119,18 +120,19 @@ impl Bot for MarsRover {
                 continue;
             }
             // A command must actually be in this mission. Trust only the
-            // account's own checkpoints, never an MR1 line supplied by a user.
+            // account's own checkpoints, never an MR2 line supplied by a user.
             let ancestors = run.mastodon().ancestors(&status.id)?;
             let in_mission = ancestors.iter().any(|p| {
                 if p.account.id != me.id {
                     return false;
                 }
-                Rover::parse(&p.text).ok().is_some_and(|r| {
-                    r.seed == seed
-                        && r.epoch == start
-                        && (r.root == rover.root
-                            || r.root == 0 && id(&p.id).ok() == Some(rover.root))
-                })
+                id(&p.id).ok() == Some(rover.root)
+                    || Rover::parse(&p.text).ok().is_some_and(|r| {
+                        r.seed == seed
+                            && r.epoch == start
+                            && (r.root == rover.root
+                                || r.root == 0 && id(&p.id).ok() == Some(rover.root))
+                    })
             });
             if !in_mission || status.visibility != head_visibility(run) {
                 rover.cursor = notification;
@@ -142,14 +144,14 @@ impl Bot for MarsRover {
             let command = strip_address(&status.text, &me.acct);
             let result = next.command(command);
             let message = format!("@{} {result}", status.account.acct);
-            // The result itself is the checkpoint: one atomic remote write,
-            // chained to the preceding checkpoint and addressed to the player.
+            // The final save commits the result and cursor after all narrative
+            // parts. Every part has a stable key for partial-write retries.
             head = checkpoint(
                 run,
                 &next,
                 Some(&head.id),
                 &message,
-                &format!("cmd:{}:{}", rover.root, status.id),
+                &format!("cmd:{}:{}", base36(rover.root), base36(id(&status.id)?)),
                 limit,
             )?;
             rover = next;
@@ -161,8 +163,8 @@ impl Bot for MarsRover {
                 run,
                 &rover,
                 Some(&head.id),
-                "Mars comms filtered.",
-                &format!("cursor:{}:{}", rover.root, rover.cursor),
+                "",
+                &format!("cursor:{}:{}", base36(rover.root), base36(rover.cursor)),
                 limit,
             )?;
         }
@@ -195,7 +197,7 @@ fn recover(
             .mastodon()
             .account_posts(&me.id, before.as_deref(), PAGE)?;
         for post in &posts {
-            if post.account.id != me.id || !post.text.lines().any(|l| l.starts_with("MR1:")) {
+            if post.account.id != me.id || !post.text.lines().any(|l| l.starts_with("MR2:")) {
                 continue;
             }
             let mut rover = Rover::parse(&post.text).map_err(RunError::permanent)?;
@@ -246,44 +248,103 @@ fn checkpoint(
     key: &str,
     limit: usize,
 ) -> Result<crate::mastodon::Posted, RunError> {
-    let state = rover.encode();
-    if state.len() + 2 > limit {
+    // Narrative posts stay readable; machine state is a separate collapsed post.
+    // The first narrative post anchors the mission, including landing replies.
+    const SAVE_LABEL: &str = "Game save (ignore)";
+    let mut saved = rover.clone();
+    // Reserve the longest possible root ID before writing any narrative.
+    saved.root = u64::MAX;
+    if saved.encode().len() + SAVE_LABEL.len() > limit {
         return Err(RunError::permanent(
             "Server character limit is too small for a Mars checkpoint",
         ));
     }
+    saved.root = rover.root;
     let mut parent = parent.map(str::to_string);
-    let mut final_message = message.to_string();
-    if message.chars().count() > limit - state.len() - 1 {
-        // Narrative can span posts; only the final checkpoint commits the
-        // command cursor. Partial writes retry with the same per-part keys.
-        let chars: Vec<_> = message.chars().collect();
-        for (part, chunk) in chars.chunks(limit).enumerate() {
-            let posted = run.post_keyed(
-                &NewStatus {
-                    text: chunk.iter().collect(),
-                    visibility: Visibility::parse(head_visibility(run)),
-                    spoiler_text: None,
-                    in_reply_to_id: parent.clone(),
-                },
-                &format!("mars:{key}:text:{part}"),
-            )?;
-            id(&posted.id)?;
-            parent = Some(posted.id);
+    for (part, text) in narrative_parts(message, limit)?.into_iter().enumerate() {
+        let posted = run.post_keyed(
+            &NewStatus {
+                text,
+                visibility: Visibility::parse(head_visibility(run)),
+                spoiler_text: None,
+                in_reply_to_id: parent.clone(),
+            },
+            &format!("m2:{key}:t:{part}"),
+        )?;
+        let post_id = id(&posted.id)?;
+        if saved.root == 0 {
+            saved.root = post_id;
         }
-        final_message = crate::text::fit("Mars checkpoint.", limit - state.len() - 1);
+        parent = Some(posted.id);
     }
     let posted = run.post_keyed(
         &NewStatus {
-            text: format!("{final_message}\n{state}"),
+            text: saved.encode(),
             visibility: Visibility::parse(head_visibility(run)),
-            spoiler_text: None,
+            spoiler_text: Some(SAVE_LABEL.into()),
             in_reply_to_id: parent,
         },
-        &format!("mars:{key}"),
+        &format!("m2:{key}"),
     )?;
     id(&posted.id)?;
     Ok(posted)
+}
+
+/// Preserve lines when possible, wrap at words, and number continuations.
+fn narrative_parts(message: &str, limit: usize) -> Result<Vec<String>, RunError> {
+    if message.is_empty() {
+        return Ok(Vec::new());
+    }
+    if message.chars().count() <= limit {
+        return Ok(vec![message.into()]);
+    }
+    // Repeat the player mention before the part number on every continuation.
+    let (prefix, content) = match message.split_once(' ') {
+        Some((mention, body)) if mention.starts_with('@') => (format!("{mention} "), body),
+        _ => (String::new(), message),
+    };
+    let budget = limit
+        .checked_sub(12 + prefix.chars().count())
+        .filter(|n| *n > 0)
+        .ok_or_else(|| RunError::permanent("Mars post limit is too small"))?;
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    for line in content.lines() {
+        if !current.is_empty() && current.chars().count() + 1 + line.chars().count() <= budget {
+            current.push('\n');
+            current.push_str(line);
+            continue;
+        }
+        if !current.is_empty() {
+            parts.push(std::mem::take(&mut current));
+        }
+        for word in line.split_whitespace() {
+            if word.chars().count() > budget {
+                return Err(RunError::permanent(
+                    "A Mars post word exceeds the character limit",
+                ));
+            }
+            if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > budget {
+                parts.push(std::mem::take(&mut current));
+            }
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    let count = parts.len();
+    if count > 9999 {
+        return Err(RunError::permanent("Too many Mars post continuations"));
+    }
+    Ok(parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, text)| format!("{prefix}[{}/{}] {text}", i + 1, count))
+        .collect())
 }
 
 fn strip_address<'a>(text: &'a str, acct: &str) -> &'a str {
@@ -346,13 +407,13 @@ impl Rover {
             self.charged,
             self.named,
         ];
-        format!("MR1:{},{}", fields.map(base36).join(","), self.name)
+        format!("MR2:{},{}", fields.map(base36).join(","), self.name)
     }
     fn parse(text: &str) -> Result<Self, String> {
         let bad = || "Invalid Mars checkpoint; refusing to reset or roll back".to_string();
         let line = text
             .lines()
-            .find_map(|l| l.strip_prefix("MR1:"))
+            .find_map(|l| l.strip_prefix("MR2:"))
             .ok_or_else(bad)?;
         let fields: Vec<_> = line.split(',').collect();
         if fields.len() != 12 {
@@ -397,17 +458,23 @@ impl Rover {
     }
     fn status(&self) -> String {
         let mut status = format!(
-            "{} B{} S{}",
+            "Location {} • Battery {}/100 • Samples {}",
             coordinate(self.pos),
             self.battery,
             self.samples.count_ones()
         );
         if self.named < 64 {
-            status.push_str(&format!("; {}={}", coordinate(self.named), self.name));
+            status.push_str(&format!(
+                "
+Latest named site: {} at {}",
+                self.name,
+                coordinate(self.named)
+            ));
         }
         status
     }
-    fn advance(&mut self, day: u64) {
+    fn advance(&mut self, day: u64) -> String {
+        let mut latest = String::new();
         while self.day < day {
             self.day += 1;
             let recharge = if weather(self.seed, self.day) == "dust storm" {
@@ -418,8 +485,9 @@ impl Rover {
             self.battery = (self.battery + recharge).min(100);
             let direction =
                 ["north", "east", "south", "west"][(mix(self.seed ^ self.day) % 4) as usize];
-            self.movement(direction);
+            latest = format!("{direction}: {}", self.movement(direction));
         }
+        latest
     }
     fn movement(&mut self, direction: &str) -> String {
         let (x, y) = ((self.pos % 8) as i32, (self.pos / 8) as i32);
@@ -449,25 +517,53 @@ impl Rover {
         self.pos = next;
         self.battery -= cost;
         self.scanned |= 1 << next;
-        format!("Moved to {}. B{}", coordinate(next), self.battery)
+        format!(
+            "Moved to {}: {}.
+Battery {}/100 (-{cost}). Reply scan or sample.",
+            coordinate(next),
+            terrain(self.seed, next),
+            self.battery
+        )
     }
     fn command(&mut self, input: &str) -> String {
         let words: Vec<_> = input.split_whitespace().collect();
         let lower: Vec<_> = words.iter().map(|s| s.to_ascii_lowercase()).collect();
         let tokens: Vec<_> = lower.iter().map(String::as_str).collect();
         match tokens.as_slice() {
-            ["help"] => {
-                "move north/east/south/west (or n/e/s/w); scan; sample; charge; name discovery NAME; map; status. Map: R=rover ?=unknown ^=cliff O=crater *=ice +=hematite .=dust/rock."
-                    .into()
-            }
+            ["help"] => format!(
+                "Mars Expedition: everyone here controls ONE shared rover. Explore Mars and collect samples from new sites. There is no finish line.
+You are at {} on {}. Battery: {}/100. Samples: {}.
+Reply to a mission post, mentioning this bot, with one command. Commands run at the next poll.
+Try scan (8 battery), then move north (10) or sample (15). Reply map or status for a free report; charge to recharge.
+A sol is a mission day. Each daily update recharges the rover and tries an automatic move, even without commands.
+More: help moves, help energy, help samples.
+Game save (ignore) posts hold the bot's memory. You never need to read or copy the code inside.",
+                coordinate(self.pos), terrain(self.seed, self.pos), self.battery, self.samples.count_ones()
+            ),
+            ["help", "moves"] => "Exploring Mars
+scan reveals the surrounding 3×3 area for 8 battery. map lists known terrain for free. Unknown means not yet scanned or visited.
+Reply move north, move east, move south or move west (or n/e/s/w). Each move costs 10 battery; entering a crater costs 15.
+Cliffs and map edges block travel. No diagonal moves.
+The map is 8×8: A–H run west to east; 1–8 run north to south. D4 means column D, row 4.".into(),
+            ["help", "energy"] => "Rover energy
+Battery ranges from 0 to 100. Reply charge to add 25 battery (5 in dust storms), once per sol.
+A sol is one local calendar day. Each daily update adds 20 battery (5 in storms), then tries one automatic move.
+Missed daily updates catch up when the bot runs. Reply status to see current battery and weather.".into(),
+            ["help", "samples"] => "Collecting Mars samples
+Reply sample to collect material at your location for 15 battery, once per site. Visit new sites to grow our shared sample collection.
+Find red dust, basalt (volcanic rock), hematite (an iron mineral), water ice and craters. These are fictional discoveries.
+After sampling, reply name discovery Kevin to label the site. Use 1–8 letters, digits, _ or -. Only the latest name is remembered.".into(),
             ["status"] => format!(
-                "Sol {}: {}. {}",
+                "Mars • Sol {} (mission day) • {}
+{}
+Here: {}.
+Reply scan to explore, sample to collect, or help for instructions.",
                 self.day - self.epoch + 1,
-                self.status(),
-                weather(self.seed, self.day)
+                weather(self.seed, self.day), self.status(), terrain(self.seed, self.pos)
             ),
             ["map"] => self.map(),
             ["move", direction] => self.movement(direction),
+            [direction @ ("n" | "e" | "s" | "w")] => self.movement(direction),
             ["scan"] => {
                 if self.battery < 8 {
                     return "Scan needs 8 battery. Try charge.".into();
@@ -483,16 +579,15 @@ impl Rover {
                     }
                 }
                 format!(
-                    "{}: {}. B{}",
-                    coordinate(self.pos),
-                    terrain(self.seed, self.pos),
-                    self.battery
+                    "Scan complete. Battery {}/100 (-8).
+{}",
+                    self.battery, self.map()
                 )
             }
             ["sample"] | ["sample", "rock"] => {
                 let bit = 1 << self.pos;
                 if self.samples & bit != 0 {
-                    return "Already sampled this site.".into();
+                    return "Already sampled this site. Move to a new site to collect another sample.".into();
                 }
                 if self.battery < 15 {
                     return "Sample needs 15 battery. Try charge.".into();
@@ -500,14 +595,16 @@ impl Rover {
                 self.battery -= 15;
                 self.samples |= bit;
                 format!(
-                    "Collected {} at {}.",
+                    "Collected {} at {}!
+Samples: {} • Battery {}/100 (-15).
+Reply name discovery NAME to label this site, or move north/east/south/west to explore.",
                     terrain(self.seed, self.pos),
-                    coordinate(self.pos)
+                    coordinate(self.pos), self.samples.count_ones(), self.battery
                 )
             }
             ["charge"] => {
                 if self.charged == self.day {
-                    return "Already charged this sol.".into();
+                    return "Already charged this sol (mission day). Try again after the next daily update.".into();
                 }
                 if self.battery == 100 {
                     return "Battery already full.".into();
@@ -520,7 +617,7 @@ impl Rover {
                         25
                     })
                 .min(100);
-                format!("Solar charge: B{}.", self.battery)
+                format!("Solar charge complete: battery {}/100. Reply scan or sample.", self.battery)
             }
             ["name", "discovery", _] => {
                 if self.samples & (1 << self.pos) == 0 {
@@ -533,39 +630,49 @@ impl Rover {
                 self.name = words[2].into();
                 format!("{} is now {}.", coordinate(self.pos), self.name)
             }
-            _ => "Unknown command. Reply help.".into(),
+            _ => "I did not recognize that command. You control a shared Mars rover. Reply scan to look around, move north to drive, or help for instructions.".into(),
         }
     }
     fn map(&self) -> String {
-        // A local 3x3 window keeps map + full checkpoint inside 140 chars.
-        let mut text = format!("{} local map\n", coordinate(self.pos));
+        let mut text = format!(
+            "Around {} (you): {}
+",
+            coordinate(self.pos),
+            terrain(self.seed, self.pos)
+        );
         let (x, y) = ((self.pos % 8) as i32, (self.pos / 8) as i32);
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                let (nx, ny) = (x + dx, y + dy);
-                text.push(if dx == 0 && dy == 0 {
-                    'R'
-                } else if !(0..8).contains(&nx) || !(0..8).contains(&ny) {
-                    '#'
+        for (direction, dx, dy) in [
+            ("North", 0, -1),
+            ("East", 1, 0),
+            ("South", 0, 1),
+            ("West", -1, 0),
+            ("Northwest", -1, -1),
+            ("Northeast", 1, -1),
+            ("Southwest", -1, 1),
+            ("Southeast", 1, 1),
+        ] {
+            let (nx, ny) = (x + dx, y + dy);
+            if !(0..8).contains(&nx) || !(0..8).contains(&ny) {
+                text.push_str(&format!(
+                    "{direction}: map edge
+"
+                ));
+            } else {
+                let p = (ny * 8 + nx) as u64;
+                let ground = if self.scanned & (1 << p) == 0 {
+                    "unknown"
                 } else {
-                    let p = (ny * 8 + nx) as u64;
-                    if self.scanned & (1 << p) == 0 {
-                        '?'
-                    } else {
-                        match terrain(self.seed, p) {
-                            "cliff" => '^',
-                            "crater" => 'O',
-                            "water ice" => '*',
-                            "hematite" => '+',
-                            _ => '.',
-                        }
-                    }
-                });
-            }
-            if dy < 1 {
-                text.push('\n');
+                    terrain(self.seed, p)
+                };
+                text.push_str(&format!(
+                    "{direction}: {} — {ground}{}
+",
+                    coordinate(p),
+                    if ground == "cliff" { " (blocked)" } else { "" }
+                ));
             }
         }
+        text.push_str("Reply scan to reveal unknown terrain (8 battery). Move north/east/south/west; no diagonal moves.");
         text
     }
 }
@@ -666,6 +773,29 @@ mod tests {
         serde_json::from_slice(&http.sent.lock().unwrap()[n].body).unwrap()
     }
 
+    fn answer_narrative(http: &Scripted, message: &str, first: u64) -> usize {
+        let count = narrative_parts(message, 140).unwrap().len();
+        for n in 0..count {
+            http.answer(
+                200,
+                json!({"id": (first + n as u64).to_string(), "url":"u"}),
+            );
+        }
+        count
+    }
+    fn posted_bodies(http: &Scripted) -> Vec<Value> {
+        http.sent
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == "POST")
+            .map(|r| serde_json::from_slice(&r.body).unwrap())
+            .collect()
+    }
+    fn last_post(http: &Scripted) -> Value {
+        posted_bodies(http).pop().unwrap()
+    }
+
     #[test]
     fn checkpoint_round_trips_and_bounds_every_field() {
         let mut r = rover();
@@ -680,7 +810,7 @@ mod tests {
         r.charged = r.day;
         assert_eq!(Rover::parse(&r.encode()).unwrap(), r);
         assert!(r.encode().len() + 20 <= 140);
-        assert!(Rover::parse("MR1:garbage").is_err());
+        assert!(Rover::parse("MR2:garbage").is_err());
         r.battery = 101;
         assert!(Rover::parse(&r.encode()).is_err());
         r.battery = 100;
@@ -742,13 +872,15 @@ mod tests {
             200,
             json!([{"id":"50","type":"mention","status":status("90","1","old",None)}]),
         );
-        http.answer(200, json!({"id":"100","url":"u"}));
+        let landing = format!("Mars landing! We share one rover. Explore Mars and collect samples together.{}{}{}Reply scan to look around, or help to learn how to play.", char::from(10), rover().status(), char::from(10));
+        answer_narrative(&http, &landing, 100);
+        http.answer(200, json!({"id":"199","url":"u"}));
         assert!(execute(&mut http, start()).unwrap().contains("landed"));
         let posted = body(&http, 4);
         assert!(posted.get("in_reply_to_id").is_none());
-        let r = Rover::parse(posted["status"].as_str().unwrap()).unwrap();
+        let r = Rover::parse(last_post(&http)["status"].as_str().unwrap()).unwrap();
         assert_eq!(r.cursor, 50);
-        assert_eq!(r.root, 0);
+        assert_eq!(r.root, 100);
         assert_eq!(r.battery, 100);
         assert!(http
             .sent
@@ -767,14 +899,19 @@ mod tests {
             200,
             json!({"ancestors":[status("100","9",&r.encode(),None)]}),
         );
+        answer_narrative(&http, &format!("@alice {}", r.clone().command("scan")), 210);
         http.answer(200, json!({"id":"300","url":"u"}));
         assert_eq!(execute(&mut http, start()).unwrap(), "Mars: 1 commands");
-        let posted = body(&http, 5);
+        let posted = last_post(&http);
         let recovered = Rover::parse(posted["status"].as_str().unwrap()).unwrap();
         assert_eq!(recovered.battery, 92);
         assert_eq!(recovered.cursor, 51);
-        assert_eq!(posted["in_reply_to_id"], "100");
-        assert!(posted["status"].as_str().unwrap().starts_with("@alice"));
+        assert_eq!(body(&http, 5)["in_reply_to_id"], "100");
+        assert!(body(&http, 5)["status"]
+            .as_str()
+            .unwrap()
+            .contains("@alice"));
+        assert_eq!(posted["spoiler_text"], "Game save (ignore)");
         let mut http = Scripted::default();
         basics(
             &http,
@@ -797,6 +934,11 @@ mod tests {
                 200,
                 json!({"ancestors":[status("100","9",&r.encode(),None)]}),
             );
+            let count = answer_narrative(
+                &http,
+                &format!("@alice {}", r.clone().command("sample")),
+                210,
+            );
             if success {
                 http.answer(200, json!({"id":"300","url":"u"}));
             } else {
@@ -805,7 +947,10 @@ mod tests {
             let result = execute(&mut http, start());
             assert_eq!(result.is_ok(), success);
             let sent = http.sent.lock().unwrap();
-            requests.push((sent[5].body.clone(), sent[5].headers.clone()));
+            requests.push((
+                sent[5 + count].body.clone(),
+                sent[5 + count].headers.clone(),
+            ));
         }
         assert_eq!(requests[0], requests[1]);
     }
@@ -831,7 +976,7 @@ mod tests {
     #[test]
     fn corrupted_checkpoint_never_resets_and_recovery_includes_reply_pages() {
         let mut http = Scripted::default();
-        basics(&http, json!([status("100", "9", "MR1:broken", None)]));
+        basics(&http, json!([status("100", "9", "MR2:broken", None)]));
         assert!(execute(&mut http, start())
             .unwrap_err()
             .message
@@ -863,9 +1008,8 @@ mod tests {
             200,
             json!({"ancestors":[status("100","9",&r.encode(),None)]}),
         );
-        for id in ["300", "301", "302"] {
-            http.answer(200, json!({"id":id,"url":"u"}));
-        }
+        answer_narrative(&http, &format!("@alice {}", r.clone().command("help")), 210);
+        http.answer(200, json!({"id":"300","url":"u"}));
         assert!(execute(&mut http, start()).is_ok());
         let texts: Vec<String> = http
             .sent
@@ -879,8 +1023,8 @@ mod tests {
             })
             .collect();
         assert!(texts.iter().all(|s| s.chars().count() <= 140));
-        assert!(texts.join("").contains("name discovery NAME"));
-        assert!(texts.join("").contains(".=dust/rock."));
+        assert!(texts.join(" ").contains("shared rover"));
+        assert!(texts.join(" ").contains("Game save (ignore)"));
         assert_eq!(Rover::parse(texts.last().unwrap()).unwrap().cursor, 51);
     }
 
@@ -890,6 +1034,18 @@ mod tests {
         let day = start() + 36;
         let mut http = Scripted::default();
         basics(&http, json!([status("100", "9", &r.encode(), None)]));
+        let mut expected = r.clone();
+        let movement = expected.advance(day);
+        let message = format!(
+            "Mars • Sol 37 (mission day)
+{}
+Auto-exploration: 36 daily recharge/move cycle(s). Latest: {movement}
+{}
+Reply scan, sample, map or help.",
+            weather(r.seed, day),
+            expected.status()
+        );
+        answer_narrative(&http, &message, 210);
         http.answer(200, json!({"id":"300","url":"u"}));
         http.answer(200, json!([]));
         assert_eq!(
@@ -898,7 +1054,7 @@ mod tests {
         );
         let posted = body(&http, 3);
         assert!(posted["status"].as_str().unwrap().contains("Sol 37"));
-        let saved = Rover::parse(posted["status"].as_str().unwrap()).unwrap();
+        let saved = Rover::parse(last_post(&http)["status"].as_str().unwrap()).unwrap();
         let mut expected = r;
         expected.advance(day);
         assert_eq!(saved, expected);
@@ -921,5 +1077,90 @@ mod tests {
             .message
             .contains("refusing to reset"));
         assert_eq!(http.sent.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn readable_posts_fit_and_preserve_every_word() {
+        for command in [
+            "help",
+            "help moves",
+            "help energy",
+            "help samples",
+            "map",
+            "scan",
+            "status",
+            "sample",
+        ] {
+            let message = format!("@explorer {}", rover().command(command));
+            for limit in [140, 500] {
+                let parts = narrative_parts(&message, limit).unwrap();
+                let mut rebuilt = Vec::new();
+                if parts.len() > 1 {
+                    rebuilt.push("@explorer");
+                }
+                for part in &parts {
+                    assert!(part.chars().count() <= limit);
+                    assert!(part.starts_with("@explorer "));
+                    assert!(!part.contains("MR2:"));
+                    let content = if parts.len() > 1 {
+                        part.split_once("] ").unwrap().1
+                    } else {
+                        part.as_str()
+                    };
+                    rebuilt.extend(content.split_whitespace());
+                }
+                assert_eq!(rebuilt, message.split_whitespace().collect::<Vec<_>>());
+            }
+        }
+    }
+
+    #[test]
+    fn map_explains_edges_unknowns_and_revealed_terrain_without_symbols() {
+        let mut r = rover();
+        r.pos = 0;
+        r.scanned = 1;
+        let map = r.map();
+        assert!(map.contains("North: map edge"));
+        assert!(map.contains("East: B1 — unknown"));
+        assert!(map.contains("South: A2 — unknown"));
+        let scan = r.command("scan");
+        assert!(!scan.contains("— unknown"));
+        assert!(scan.contains(&format!("East: B1 — {}", terrain(r.seed, 1))));
+        assert!(scan.contains("Battery 92/100"));
+    }
+
+    #[test]
+    fn replies_to_readable_landing_are_in_the_mission() {
+        let r = rover();
+        let mut http = Scripted::default();
+        basics(&http, json!([status("110", "9", &r.encode(), Some("100"))]));
+        http.answer(
+            200,
+            json!([{"id":"51","type":"mention","status":status("200","1","status",Some("100"))}]),
+        );
+        http.answer(
+            200,
+            json!({"ancestors":[status("100","9","Mars landing!",None)]}),
+        );
+        answer_narrative(
+            &http,
+            &format!("@alice {}", r.clone().command("status")),
+            210,
+        );
+        http.answer(200, json!({"id":"300","url":"u"}));
+        assert_eq!(execute(&mut http, start()).unwrap(), "Mars: 1 commands");
+        assert_eq!(
+            Rover::parse(last_post(&http)["status"].as_str().unwrap())
+                .unwrap()
+                .cursor,
+            51
+        );
+        for post in posted_bodies(&http) {
+            mastomini::text::validate_status(
+                post["status"].as_str().unwrap(),
+                post["spoiler_text"].as_str().unwrap_or(""),
+            )
+            .unwrap();
+        }
     }
 }

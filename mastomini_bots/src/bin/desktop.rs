@@ -124,9 +124,11 @@ fn main() -> Result<(), BoxError> {
         )?;
         std::thread::spawn(move || loop {
             mastobots::scheduler::tick(&shared, &mut timer_client, now_ms());
+            mastobots::status::tick(&shared, &mut timer_client, now_ms());
             std::thread::sleep(std::time::Duration::from_secs(1));
         });
     }
+
     let site = Site::new(
         server::config("mastomini-bots.local", "desktop"),
         Bots::new(svc, ctx, now_ms, mono_ms),

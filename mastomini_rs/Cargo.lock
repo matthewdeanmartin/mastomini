@@ -1317,6 +1317,7 @@ dependencies = [
  "rustls-pemfile",
  "ryu",
  "sha2",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

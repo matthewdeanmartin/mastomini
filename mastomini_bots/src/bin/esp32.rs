@@ -212,10 +212,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let mut client = client::EspClient::scheduler(resolver);
                 loop {
                     mastobots::scheduler::tick(&shared, &mut client, now_ms());
+                    mastobots::status::tick(&shared, &mut client, now_ms());
                     std::thread::sleep(Duration::from_secs(1));
                 }
             })?;
     }
+
     ThreadSpawnConfiguration::default().set()?;
     let mut announced = false;
     let mut maintenance = std::time::Instant::now();

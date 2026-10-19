@@ -61,7 +61,7 @@ completes the OAuth code flow (form post), and calls `verify_credentials`.
 - Timelines: home, public, tag, account statuses with filters. Mastodon
   pagination and `Link` headers.
 - Follows: follow/unfollow, followers/following.
-- Notifications: RAM ring (list, get, clear, dismiss, unread count).
+- Notifications: bounded persistent history (list, get, clear, dismiss, unread count).
   Markers: RAM only.
 - `GET /api/v2/search`. Neutral stubs for filters, lists, followed tags,
   announcements, preferences, and trends (`[]`).

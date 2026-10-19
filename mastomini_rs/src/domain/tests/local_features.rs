@@ -75,10 +75,12 @@ fn interrupted_local_token_creation_never_leaves_an_orphan_or_loses_an_existing_
 #[test]
 fn household_api_key_capacity_refuses_new_keys_and_reuses_only_a_revoked_slot() {
     let mut svc = household(MemStore::default());
-    svc.create_member(0, member("dave"), T0).unwrap();
-    svc.create_member(0, member("erin"), T0).unwrap();
+    for slot in 3..=16 {
+        svc.create_member(0, member(&format!("member{slot}")), T0)
+            .unwrap();
+    }
     let mut issued = Vec::new();
-    for slot in 0..4 {
+    for slot in 0..16 {
         for n in 0..MAX_API_KEYS_PER_ACCOUNT {
             issued.push(
                 svc.create_api_key(slot, "pass", &format!("Bot {n}"), "read", T0 + 1)
@@ -88,7 +90,7 @@ fn household_api_key_capacity_refuses_new_keys_and_reuses_only_a_revoked_slot() 
     }
     assert_eq!(issued.len(), MAX_API_KEYS);
     assert!(matches!(
-        svc.create_api_key(4, "pass", "Over capacity", "read", T0 + 2),
+        svc.create_api_key(16, "pass", "Over capacity", "read", T0 + 2),
         Err(Error::TooMany(_))
     ));
     for (_, token) in &issued {
@@ -96,7 +98,7 @@ fn household_api_key_capacity_refuses_new_keys_and_reuses_only_a_revoked_slot() 
     }
     svc.revoke(&issued[0].1).unwrap();
     let (_, replacement) = svc
-        .create_api_key(4, "pass", "Replacement", "read", T0 + 4)
+        .create_api_key(16, "pass", "Replacement", "read", T0 + 4)
         .unwrap();
     let mut svc = reopen(svc);
     assert!(svc.principal(&issued[0].1, T0 + 5).is_none());

@@ -59,7 +59,7 @@ fn power_cut_during_block_never_leaves_a_follow_across_it() {
 #[test]
 fn mute_hides_from_timelines_and_notifications_until_it_expires() {
     let mut svc = household(MemStore::default());
-    svc.clear_notifications(0);
+    svc.clear_notifications(0).unwrap();
     svc.tick(T0);
     svc.set_mute(0, 1, true, None, Some(60), T0).unwrap();
     let bobs = svc.post_status(1, post("hello @alice"), T0 + 1).unwrap();
@@ -101,7 +101,7 @@ fn conversation_mute_silences_the_whole_thread() {
             T0 + 2,
         )
         .unwrap();
-    svc.clear_notifications(0);
+    svc.clear_notifications(0).unwrap();
     // Muting from a reply records the mute on the root.
     svc.set_conversation_mute(0, reply, true, T0 + 3).unwrap();
     assert!(svc.thread_muted(0, root));
@@ -131,7 +131,7 @@ fn conversation_mute_silences_the_whole_thread() {
 #[test]
 fn reports_notify_admins_and_make_room_by_dropping_resolved_ones() {
     let mut svc = household(MemStore::default());
-    svc.clear_notifications(0);
+    svc.clear_notifications(0).unwrap();
     svc.state.server.rules = vec!["Be kind".into()];
     let rude = svc.post_status(2, post("rude"), T0 + 1).unwrap();
     let id = svc

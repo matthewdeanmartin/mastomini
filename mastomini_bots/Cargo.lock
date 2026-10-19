@@ -1311,6 +1311,7 @@ dependencies = [
  "rustls-pemfile",
  "ryu",
  "sha2",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -1333,6 +1334,7 @@ dependencies = [
  "postcard",
  "serde",
  "serde-json-core",
+ "serde_json",
  "sha2",
  "subtle",
 ]

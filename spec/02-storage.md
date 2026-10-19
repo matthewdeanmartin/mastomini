@@ -117,7 +117,7 @@ ordering and fits NVS's 15-character key limit.
 ### Namespaces and keys
 
 Each NVS namespace acts as a table and is enumerated at boot with
-`nvs_entry_find`. `A` = account slot as one hex digit (0–f). `ID` = 13-character
+`nvs_entry_find`. `A` = account slot as one base-32 digit (0–9, a–v; schema 8 extends the old 0–f alphabet). `ID` = 13-character
 base32 snowflake.
 
 | Namespace | Key | Value | Written when |
@@ -132,9 +132,9 @@ base32 snowflake.
 | `mm_stat` | `s` + `ID` | status: author slot, text, CW, visibility, language, reply-to, mentions bitmask, flags, edited_at | post/edit/delete/evict |
 | `mm_stat` | `r` + `ID` | boost: booster slot, target status id | boost/unboost |
 | `mm_hist` | `h` + `ID` + rev (0–2) | previous revision of an edited status: text, CW, sensitive, and when that version was published. Never for direct messages (schema 4) | edit |
-| `mm_stat` | `o` + `ID` | poll: options, end time, multiple, hide totals, one `u16` vote bitmask per option. Written before its status, like a DM envelope (schema 4) | post/edit/vote |
+| `mm_stat` | `o` + `ID` | poll: options, end time, multiple, hide totals, one `u32` vote bitmask per option. Written before its status, like a DM envelope (schema 4) | post/edit/vote |
 | `mm_rel` | `Q` + `A` + `A` | follow request (requester, locked account), same shape as a follow (schema 4) | request/answer |
-| `mm_rx` | `f`/`b`/`p` + `ID` + `A` | favourite / bookmark / pin: record id (snowflake, used as the notification id) | toggle |
+| `mm_rx` | `f`/`b`/`p` + `ID` + `A` | favourite / bookmark / pin: record id (snowflake) | toggle |
 | `mm_rx` | `m` + `ID` + `A` | conversation mute, same shape as a favourite (schema 2) | toggle |
 | `mm_rel` | `F`/`B`/`M` + `A` + `A` | follow (record id, `notify`, `reblogs`) / block (record id) / mute (record id, `notifications`, expiry) edge. `B` and `M` since schema 2 | toggle |
 | `mm_mod` | `m` + `A` | account moderation: account id (guards a reused slot), silenced, suspended-at, sensitized. Erased when all clear | admin action |
@@ -149,6 +149,7 @@ base32 snowflake.
 | `mm_social` | `p` + `A` | account public ID, followed/featured tags (each with ID/name), dismissed suggestion public IDs (schema 5) | toggle |
 | `mm_social` | `n` + `A` + `A` | private account note, owner and target public IDs (schema 5) | edit/clear |
 | `mm_social` | `a` + `ID` | announcement text/publication window, read-by public IDs, bounded reaction map (schema 5) | admin edit/member action |
+| `mm_notif` | `n` + `ID` | notification event, sender/recipient account IDs, optional status/object references (schema 9) | notify/dismiss/clear/cleanup/evict |
 | `mm_inv` | `i` + `ID` | invite / password-reset code: sha256(code), kind (invite, or reset with target slot + account id), expiry (schema 3) | issue/redeem/revoke |
 
 **Schema 2** added the `B`/`M`/`m` keys and the `mm_mod` and `mm_coll`
@@ -187,15 +188,35 @@ unfollows), moderation records whose account id no longer matches the slot,
 reports naming a missing account, collections of a missing curator, and (in RAM)
 collection items naming a deleted account.
 
+Schema 8 expands accounts to 32 and non-evicting API keys to 64. Slot keys
+extend 0–f with g–v, preserving existing keys and the 15-byte NVS limit.
+Poll vote masks widen from u16 to u32; postcard unsigned varints read old
+votes unchanged. Boot advances the schema marker only after validation.
+Older firmware refuses schema 8.
+
 Derived at boot, **not stored**: hashtags and mentions (parsed from text), all
 counts, conversations, timelines, and `last_id`.
 
-**Notifications are ephemeral.** They are never written to flash and never
-rebuilt at boot. A write that notifies someone (mention, reply, favourite, boost,
-follow) pushes an entry into a RAM ring of 512 notifications shared by all accounts.
-When the ring is full, the oldest entry is dropped, and a reboot empties it. Clear and
-dismiss only touch the ring. Mastodon clients cope with this: they show what
-the server returns.
+**Notifications are persistent (schema 9).** `mm_notif`, keyed by `n` + `ID`,
+stores each event's original ID, type, sender/recipient slots and account IDs,
+and optional status/object IDs. A RAM cache serves both notification APIs.
+The existing cap remains 512 events shared by all accounts; the oldest is
+removed before inserting another. Clear, individual/group dismissals and
+cleanup are durable. Boot restores ID order and prunes events whose accounts
+or referenced content no longer exist, including interrupted cleanup.
+Account IDs prevent reused slots from inheriting notifications.
+
+The upgrade adds a namespace and advances the schema marker only after validation;
+it does not repartition, erase the store, or rewrite existing account/post formats.
+Older firmware refuses schema 9. Previously lost RAM-only notifications are not
+reconstructed (nor are previously dismissed events replayed).
+
+Notification delivery follows the parent action's commit. A power cut between
+those writes can leave the action without a notification. If a notification write
+fails, the committed action remains successful and subsequent writes latch until
+restart; diagnostics expose the failure. Notifications never evict posts to make
+room for themselves. At 512 records, the NVS entry budget is at most 64 KiB
+(excluding namespace/page overhead); the steady-state RAM ring is unchanged.
 
 **No feed algorithms.** Timelines are reverse-chronological filters over the
 statuses in RAM, about as clever as an RSS feed. Nothing is ranked, scored or
@@ -311,8 +332,9 @@ migration) but is unused.
   number is in the account record, so an upload writes the new file and then
   updates the account record (the single commit point), and only then deletes the
   old file. A crash leaves at most one orphan file, which is removed at boot.
-- Limits: avatar ≤ 48 KiB, header ≤ 96 KiB. 16 × 144 KiB = 2.25 MiB, which leaves
-  headroom in 3 MiB for LittleFS metadata and copy-on-write.
+- Limits: avatar ≤ 48 KiB, header ≤ 96 KiB. the media partition remains 3 MiB, shared across 32 accounts. Uploads at
+  the per-file maxima cannot all fit simultaneously; full storage rejects
+  new uploads. This account-capacity upgrade does not repartition flash.
 - The server does not decode or resize images. It sniffs the magic bytes (PNG, JPEG,
   WebP, GIF), checks the size, and stores the file. The household app resizes on
   the client (canvas) before uploading. A native app uploading a 3 MB photo gets

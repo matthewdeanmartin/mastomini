@@ -298,9 +298,10 @@ fn state_survives_reboot() {
     assert_eq!(svc.state.statuses[&b].rec.in_reply_to_id, Some(a));
     assert!(svc.state.boosts.contains_key(&boost));
     assert!(svc.state.follows(0, 1) && svc.state.follows(1, 0));
-    assert!(
-        svc.state.notifications.is_empty(),
-        "notifications are RAM only"
+    assert_eq!(
+        svc.state.notifications.len(),
+        6,
+        "notifications survive reboot"
     );
     assert!(svc.last_id() >= boost);
 }
@@ -621,3 +622,7 @@ mod edits;
 mod local_features;
 mod moderation;
 mod social;
+
+mod capacity;
+
+mod notifications;

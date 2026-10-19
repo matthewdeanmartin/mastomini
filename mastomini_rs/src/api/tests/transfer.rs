@@ -73,6 +73,8 @@ fn a_household_moves_to_an_empty_board_with_sessions_and_messages_intact() {
     let statuses = r.json_body()["statuses"].as_u64().unwrap();
     assert_eq!(statuses as usize, old.svc.state.statuses.len());
 
+    assert_eq!(new.svc.state.notifications, old.svc.state.notifications);
+
     // Same name (the same board identity): devices stay signed in, and the
     // direct message is still readable with the old token.
     let me = new.get("/api/v1/accounts/verify_credentials", Some(&bob));

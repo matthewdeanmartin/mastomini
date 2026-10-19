@@ -296,6 +296,22 @@ fn dispatch<S: Store>(
     if req.body.len() > limit {
         return Response::error(413, "Request body is too large");
     }
+    // Public probes must not run maintenance, parse authentication, or scan state.
+    if req.method == "GET" && req.path == "/status" {
+        return Response::new(
+            200,
+            "text/html; charset=utf-8",
+            include_str!("../../../shared/status.html"),
+        )
+        .with_header("Cache-Control", "no-store");
+    }
+    if req.method == "GET" && req.path == "/api/mastomini/v1/public-status" {
+        return Response::ok(serde_json::json!({
+            "mode":"local",
+            "state":if svc.latched().is_none() && clock != diag::Clock::Unset {"operational"} else {"outage"},
+            "checked_at":(clock != diag::Clock::Unset).then_some(now), "days":[], "events":[]
+        })).with_header("Cache-Control", "no-store");
+    }
     svc.tick(now);
     let params = match Params::parse(req) {
         Ok(p) => p,

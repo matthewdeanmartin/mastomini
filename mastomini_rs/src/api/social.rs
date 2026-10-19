@@ -28,7 +28,7 @@ fn tag<S: Store>(c: &Call<'_, S>, viewer: u8, name: &str) -> Value {
     let today = c.now / 86_400_000;
     let history: Vec<_> = (0..7).map(|offset| {
         let day = today.saturating_sub(offset);
-        let mut accounts = 0u16;
+        let mut accounts = 0u32;
         let uses = c.svc.state.statuses.values().filter(|s| {
             let matched = s.rec.visibility == Visibility::Public && s.tags.iter().any(|t| t == name)
                 && crate::ids::millis(s.rec.id) / 86_400_000 == day

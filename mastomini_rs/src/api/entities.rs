@@ -29,7 +29,7 @@ fn fields_json(account: &Account) -> Vec<Value> {
         .rec
         .fields
         .iter()
-        .map(|f| json!({ "name": f.name, "value": text::escape(&f.value), "verified_at": null }))
+        .map(|f| json!({ "name": f.name, "value": text::render_profile_field(&f.value), "verified_at": null }))
         .collect()
 }
 

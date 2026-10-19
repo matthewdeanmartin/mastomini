@@ -14,13 +14,13 @@ def run_once(bots):
         lambda: (b := bots.call("GET", "/api/v1/bots/mars_rover").json())["runs"] > before and b,
         "Mars command",
     )
-    assert bot["last_run"]["ok"], bot["last_run"]
+    assert bot["last_run"]["ok"], bot["last_run"]["summary"]
     return bot["last_run"]["summary"]
 
 
 def checkpoint(text):
     # Read the compact state from Mastomini's HTML rendering.
-    return text.split("MR1:")[1].split("<")[0].split(",")
+    return text.split("MR2:")[1].split("<")[0].split(",")
 
 
 def test_mars_rover_thread_commands_and_duplicate_polls(mastomini, bots):
@@ -41,23 +41,36 @@ def test_mars_rover_thread_commands_and_duplicate_polls(mastomini, bots):
     })
     assert response.status_code == 200, response.text
     assert "landed" in run_once(bots)
-    root = mars.account_statuses(mars.me()["id"])[0]
+    posts = mars.account_statuses(mars.me()["id"])
+    root = next(p for p in posts if p["in_reply_to_id"] is None)
+    assert posts[0]["spoiler_text"] == "Game save (ignore)"
     assert "Mars landing" in root["content"]
+    landing_ids = {p["id"] for p in posts}
 
     # Copying the state into somebody else's thread does not authorize it.
-    fake = alice.status_post("Copied MR1:42", visibility="public")
+    fake = alice.status_post("Copied MR2:42", visibility="public")
     alice.status_post("@mars scan", in_reply_to_id=fake["id"])
     assert run_once(bots) == "Mars: 0 commands"
 
     alice.status_post("@mars scan", in_reply_to_id=root["id"])
     assert run_once(bots) == "Mars: 1 commands"
     log = mars.account_statuses(mars.me()["id"])[0]
-    assert "@alice" in log["content"] and "basalt" in log["content"]
+    assert log["spoiler_text"] == "Game save (ignore)"
+    posts = mars.account_statuses(mars.me()["id"])
+    narrative = [p for p in posts if not p["spoiler_text"]]
+    assert any("@alice" in p["content"] for p in narrative)
+    assert any("basalt" in p["content"] for p in narrative)
+    assert all("MR2:" not in p["content"] for p in narrative)
+    replies = [p for p in narrative if p["id"] not in landing_ids]
+    assert replies
+    assert all(any(m["acct"] == "alice" for m in p["mentions"]) for p in replies)
+    notified = {n["status"]["id"] for n in alice.notifications() if n["type"] == "mention"}
+    assert {p["id"] for p in replies} <= notified
     assert int(checkpoint(log["content"])[4], 36) == 92
     assert log["in_reply_to_id"] is not None
     assert run_once(bots) == "Mars: 0 commands"
 
-    alice.status_post("@mars sample", in_reply_to_id=log["id"])
+    alice.status_post("@mars sample", in_reply_to_id=narrative[0]["id"])
     assert run_once(bots) == "Mars: 1 commands"
     log = mars.account_statuses(mars.me()["id"])[0]
     assert int(checkpoint(log["content"])[4], 36) == 77

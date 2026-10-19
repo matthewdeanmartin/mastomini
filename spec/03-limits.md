@@ -52,7 +52,7 @@ and the server agree:
 
 | Collection | Limit | At limit |
 |---|---|---|
-| Accounts (incl. admin, disabled, tombstoned) | 16 | `422` "household is full". Fits `u16` bitmasks |
+| Accounts (incl. admin, disabled, tombstoned) | 32 | `422` "household is full". Fits `u32` bitmasks |
 | Statuses retained (posts, replies, DMs) | 4,096 | ring eviction |
 | Boosts retained | 2,048 | ring eviction of oldest boost |
 | Reactions (favourites + bookmarks + pins) | 16,384 | ring eviction of oldest status |
@@ -66,10 +66,10 @@ and the server agree:
 | Lists | 8 per account | `422` |
 | Followed / featured tags | 32 / 10 per account | `422`; normalized names, idempotent writes |
 | Announcements | 16 household-wide | `422`; admin deletes old notices |
-| Announcement reactions | 8 types, 32 B per emoji, at most 16 members each | `422` |
-| Private account notes | at most 16 × 16 pairs | cleared when either account is deleted |
-| Derived account statistics | 16 RAM entries | invalidated on relevant mutations; lazy rebuild |
-| Rendered account cache | at most 16 entries per request | discarded after response construction |
+| Announcement reactions | 8 types, 32 B per emoji, at most 32 members each | `422` |
+| Private account notes | at most 32 × 32 pairs | cleared when either account is deleted |
+| Derived account statistics | 32 RAM entries | invalidated on relevant mutations; lazy rebuild |
+| Rendered account cache | at most 32 entries per request | discarded after response construction |
 | Decrypted message cache | at most 64 entries / 32 KiB per authenticated request | excess results not cached; zeroized on drop |
 | Filters (v2) | 8 per account × 4 keywords and 4 statuses | `422` |
 | Followed hashtags | 16 per account | `422` |
@@ -77,7 +77,7 @@ and the server agree:
 | Reports | 32 | oldest resolved dropped; `422` if none is resolved |
 | Posts per report | 10 | `422` |
 | Collections | 8 per account, items inline (≤ 15 other members) | `422` |
-| Notifications (RAM ring, all accounts) | 512 | oldest dropped. Emptied by reboot |
+| Notifications (persisted, RAM cache, all accounts) | 512 | oldest dropped; survives reboot |
 | Invites / reset codes | 8 live, 7-day expiry | oldest expired first |
 | Custom emoji | 0 | `[]` |
 | Polls | 2–4 options × 50 chars, 1 poll per status, 5 minutes to 7 days, not in direct messages | `422` |
@@ -105,8 +105,8 @@ and the server agree:
 | Boost slab: 2,048 × 32 B | PSRAM | 64 KiB |
 | Reaction index: 16,384 × 16 B (id, status slot, account, kind) | PSRAM | 256 KiB |
 | Hashtag index (per status: up to 8 × u32 hash) | PSRAM | 128 KiB |
-| Accounts 16 × ~1.6 KiB, apps 32, tokens 64 | PSRAM | ~40 KiB |
-| Ephemeral: notification ring (512 × 32 B), markers (16 × 2), auth codes, idempotency keys (1 h), login-failure counters, rate/governor counters, token last-used | PSRAM | ~64 KiB |
+| Accounts 32 × ~1.6 KiB, apps 32, sessions 64 + API keys 64 | PSRAM | account payloads ~51 KiB plus apps/tokens |
+| Ephemeral: notification ring (512 × 32 B), markers (32 × 2), auth codes, idempotency keys (1 h), login-failure counters, rate/governor counters, token last-used | PSRAM | ~64 KiB |
 | Pending board responses | PSRAM for large allocations | Dispatch pauses at 512 KiB retained; one additional response may cross the threshold |
 | Buffered board requests | PSRAM for large allocations | 512 KiB shared growth budget, plus initial 4 KiB client buffers |
 | NVS page cache (`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM`) | PSRAM | measure (entry count dependent) |

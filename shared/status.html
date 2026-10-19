@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mastomini · Status</title>
+<style>
+:root{font:16px/1.6 system-ui,sans-serif;color:#e9edf5;background:#101522;color-scheme:dark}body{max-width:850px;margin:auto;padding:40px 24px}a{color:#a5baff}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:1.3rem}h2{font-size:1.1rem}#summary,section{border:1px solid #354057;border-radius:12px;padding:24px;margin:24px 0}#summary{font-size:1.5rem;font-weight:650;background:#202a3c}.operational{color:#7ee0b7}.outage{color:#ffb0a8}.unknown{color:#c7cedd}.muted,small{color:#b0bbcf}#bars{display:flex;gap:3px;height:40px;margin:20px 0 6px}.bar{flex:1;min-width:0;background:#455068;border-radius:3px}.bar.good{background:#60cba3}.bar.bad{background:#ee9288}.ends{display:flex;justify-content:space-between;font-size:.8rem}li{margin:12px 0}button{font:inherit;padding:8px 16px;background:#283650;border:1px solid #62769b;color:inherit;border-radius:6px;cursor:pointer}footer{margin-top:32px;font-size:.85rem}#error{color:#ffb0a8}[hidden]{display:none}
+</style>
+<header><h1>mastomini <span class="muted">/ Status</span></h1><a href="/app/">Open app</a></header>
+<div id="summary" role="status" aria-live="polite">Waiting for status</div>
+<p id="source" class="muted">Loading observations…</p>
+<p id="error" role="alert"></p>
+<section><h2>Website &amp; API</h2><p id="detail">No observations yet.</p>
+<div id="history" hidden><div id="bars" aria-label="Daily successful checks over the last 90 UTC days"></div><div class="ends"><span>89 days ago</span><span>Today (UTC)</span></div><p><small>Green: all observed checks passed · Coral: failures observed · Gray: no data. Daily bars have details on focus or hover.</small></p></div>
+<p id="checked" class="muted"></p></section>
+<section><h2>Recent availability changes</h2><p id="empty">No observations yet.</p><ul id="events"></ul></section>
+<button id="refresh" type="button">Refresh</button>
+<footer>Checks measure reachability and whether mastomini reports writable storage. They do not test posting, media, or every API operation. Missing observations do not count as uptime.</footer>
+<noscript><p>Enable JavaScript to load live status. The public JSON endpoint is <a href="/api/mastomini/v1/public-status">available here</a>.</p></noscript>
+<script>
+const el=id=>document.getElementById(id);
+const date=ms=>new Date(ms).toLocaleString();
+let busy=false;
+async function refresh(){
+ if(busy)return;busy=true;el('refresh').disabled=true;
+ try{
+  const response=await fetch('/api/mastomini/v1/public-status',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+  if(!response.ok)throw Error('Status endpoint unavailable');
+  const data=await response.json();
+  if(!['operational','outage','unknown'].includes(data.state)||!['local','observer'].includes(data.mode))throw Error('Invalid status response');
+  el('error').textContent='';
+  el('summary').className=data.state;
+  el('summary').textContent={operational:'Website & API operational',outage:'Service disruption detected',unknown:'Current status unknown'}[data.state];
+  const remote=data.mode==='observer';
+  el('source').replaceChildren();
+  el('source').textContent=remote?'Observed by mastomini-bots. Checks run every 30 minutes from the bots device.':'Reported by this mastomini server. For status during an outage, bookmark the independent ';
+  if(!remote){const a=document.createElement('a');a.href='https://mastomini-bots.local/status';a.textContent='bots status page';el('source').append(a);}
+  el('detail').textContent=data.state==='operational'?'The latest check passed.':data.state==='outage'?'The check failed. Mastomini may be unavailable or unable to accept writes.':'No fresh check is available. Monitoring may have stopped or the clock may not be set.';
+  el('checked').textContent=data.checked_at?'Last observation: '+date(data.checked_at):'No completed check since the observer started.';
+  el('history').hidden=!remote;el('bars').replaceChildren();
+  if(remote){
+   const today=Math.floor(Date.now()/86400000);let passed=0,total=0;
+   for(let day=today-89;day<=today;day++){
+    const row=data.days.find(d=>d[0]===day);const bar=document.createElement('span');
+    bar.className='bar'+(row?(row[1]===row[2]?' good':' bad'):'');bar.tabIndex=0;
+    bar.title=new Date(day*86400000).toISOString().slice(0,10)+': '+(row?`${row[1]} of ${row[2]} checks passed`:'No data');bar.setAttribute('aria-label',bar.title);el('bars').append(bar);
+    if(row){passed+=row[1];total+=row[2];}
+   }
+   if(total)el('detail').textContent+=` ${(100*passed/total).toFixed(2)}% of ${total} observed checks passed in the displayed window.`;
+  }
+  el('events').replaceChildren();el('empty').hidden=data.events.length>0;
+  el('empty').textContent=remote?'No availability changes recorded yet.':'Availability history is recorded on the bots status page.';
+  for(const [at,ok] of [...data.events].reverse()){
+   const li=document.createElement('li');li.textContent=date(at)+' — '+(ok?'Check passed; service reachable.':'Check failed; disruption detected.');el('events').append(li);
+  }
+ }catch(error){el('summary').className='unknown';el('summary').textContent='Current status unknown';el('error').textContent='Unable to refresh status. Any history shown below is from the last successful refresh.';}
+ finally{busy=false;el('refresh').disabled=false;}
+}
+el('refresh').addEventListener('click',refresh);refresh();setInterval(()=>{if(!document.hidden)refresh();},1800000);
+</script>
+</html>

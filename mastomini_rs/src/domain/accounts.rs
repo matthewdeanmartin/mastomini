@@ -62,7 +62,9 @@ impl<S: Store> Service<S> {
     fn free_slot(&self) -> Result<u8> {
         (0..MAX_ACCOUNTS as u8)
             .find(|slot| self.state.accounts[*slot as usize].is_none())
-            .ok_or_else(|| Error::Invalid("The household is full (16 accounts)".into()))
+            .ok_or_else(|| {
+                Error::Invalid(format!("The household is full ({MAX_ACCOUNTS} accounts)"))
+            })
     }
 
     /// Everything [`Self::insert_account`] checks, without writing.

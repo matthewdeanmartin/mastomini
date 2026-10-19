@@ -169,10 +169,14 @@ pub struct OpenRouterUpdate {
 }
 
 pub struct Service<S: KvStore> {
+    pub public_origin: String,
+    pub profiles: Vec<crate::profiles::Publication>,
+    pub profile_runtime: Vec<crate::profiles::Runtime>,
     pub enrollment: crate::enrollment::Enrollment,
     pub led_phrase: String,
     pub(crate) store: S,
     pub scheduler: crate::scheduler::Scheduler,
+    pub monitor: crate::status::Monitor,
     pub bots: Arc<Vec<Box<dyn Bot>>>,
     pub infos: Vec<BotInfo>,
     pub records: Vec<BotRecord>,
@@ -215,6 +219,13 @@ impl<S: KvStore> Service<S> {
             Some(text) => serde_json::from_str(&text).map_err(|e| format!("openrouter: {e}"))?,
             None => openrouter::Config::default(),
         };
+        let public_origin = store
+            .get("public_origin")?
+            .unwrap_or_else(|| crate::profiles::DEFAULT_ORIGIN.into());
+        let profiles = infos
+            .iter()
+            .map(|i| crate::profiles::load(&store, i.id))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut activity = Activity::default();
         activity.add(
             None,
@@ -229,10 +240,15 @@ impl<S: KvStore> Service<S> {
             return Err("Invalid stored LED phrase".into());
         }
         let scheduler = crate::scheduler::load(&store)?;
+        let monitor = crate::status::Monitor::load(&store);
         Ok(Service {
+            public_origin,
+            profiles,
+            profile_runtime: vec![crate::profiles::Runtime::default(); bots.len()],
             enrollment: crate::enrollment::Enrollment::default(),
             led_phrase,
             scheduler,
+            monitor,
             store,
             runtime: vec![Runtime::default(); bots.len()],
             bots: Arc::new(bots),
@@ -244,6 +260,13 @@ impl<S: KvStore> Service<S> {
             openrouter,
             waiting_for_clock: false,
         })
+    }
+
+    pub fn set_public_origin(&mut self, origin: &str) -> Result<(), String> {
+        let origin = crate::profiles::validate_origin(origin)?;
+        self.store.put("public_origin", &origin)?;
+        self.public_origin = origin;
+        Ok(())
     }
 
     pub fn set_led_phrase(&mut self, phrase: &str) -> Result<(), String> {

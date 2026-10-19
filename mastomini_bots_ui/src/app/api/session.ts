@@ -62,12 +62,20 @@ export class Session {
   }
 
   /** `run` posts now; `check` only signs in with the API key. */
-  request(id: string, action: 'run' | 'check' | 'check-model'): Promise<Bot> {
+  request(id: string, action: 'run' | 'check' | 'check-model' | 'profile'): Promise<Bot> {
     return this.api.post(`${V1}/bots/${encodeURIComponent(id)}/${action}`);
   }
 
   activity(since = 0, limit = 100): Promise<ActivityEvent[]> {
     return this.api.get(`${V1}/activity?since=${since}&limit=${limit}`);
+  }
+
+  publicOrigin(): Promise<{ origin: string }> {
+    return this.api.get(`${V1}/device/public-origin`);
+  }
+
+  setPublicOrigin(origin: string): Promise<{ origin: string }> {
+    return this.api.put(`${V1}/device/public-origin`, { origin });
   }
 
   light(): Promise<{ phrase: string }> {

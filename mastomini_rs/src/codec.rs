@@ -45,6 +45,7 @@ pub enum Kind {
     LedPhrase = 31,
     /// Password verifier and matching sealed DM key share one commit point.
     AccountWithKey = 32,
+    Notification = 33,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

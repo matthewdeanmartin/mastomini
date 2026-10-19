@@ -1,5 +1,4 @@
-//! Posting, reactions, boosts, follows, and the RAM-only notifications and
-//! markers.
+//! Posting, reactions, boosts, follows, durable notifications and RAM-only markers.
 
 use super::*;
 use crate::text;
@@ -204,7 +203,7 @@ impl<S: Store> Service<S> {
         {
             parent.replies = parent.replies.saturating_sub(1);
         }
-        self.state.notifications.retain(|n| n.status != Some(id));
+        self.retain_notifications(|n| n.status != Some(id))?;
         let boosts: Vec<u64> = self
             .state
             .boosts
@@ -237,11 +236,11 @@ impl<S: Store> Service<S> {
             if let Some(target) = self.state.statuses.get_mut(&boost.target) {
                 target.boosted &= !bit(boost.booster);
             }
-            self.state.notifications.retain(|n| {
+            self.retain_notifications(|n| {
                 !(n.kind == NotificationKind::Reblog
                     && n.status == Some(boost.target)
                     && n.from == boost.booster)
-            });
+            })?;
         }
         Ok(())
     }
@@ -286,7 +285,7 @@ impl<S: Store> Service<S> {
                 self.erase(Ns::Rx, &keys::reaction(kind, status_id, slot))?;
                 self.state.reactions.remove(&rid);
                 self.state.reaction_ids.remove(&(kind, status_id, slot));
-                self.update_mask(kind, status_id, slot, false);
+                self.update_mask(kind, status_id, slot, false)?;
                 return Ok(());
             }
             (true, None) => {}
@@ -312,7 +311,7 @@ impl<S: Store> Service<S> {
             },
         );
         self.state.reaction_ids.insert((kind, status_id, slot), rid);
-        self.update_mask(kind, status_id, slot, true);
+        self.update_mask(kind, status_id, slot, true)?;
         if kind == ReactionKind::Favourite {
             self.notify(
                 NotificationKind::Favourite,
@@ -325,7 +324,13 @@ impl<S: Store> Service<S> {
         Ok(())
     }
 
-    fn update_mask(&mut self, kind: ReactionKind, status_id: u64, slot: u8, on: bool) {
+    fn update_mask(
+        &mut self,
+        kind: ReactionKind,
+        status_id: u64,
+        slot: u8,
+        on: bool,
+    ) -> Result<()> {
         if let Some(status) = self.state.statuses.get_mut(&status_id) {
             let mask = match kind {
                 ReactionKind::Favourite => &mut status.favourited,
@@ -340,12 +345,13 @@ impl<S: Store> Service<S> {
             }
         }
         if !on && kind == ReactionKind::Favourite {
-            self.state.notifications.retain(|n| {
+            self.retain_notifications(|n| {
                 !(n.kind == NotificationKind::Favourite
                     && n.status == Some(status_id)
                     && n.from == slot)
-            });
+            })?;
         }
+        Ok(())
     }
 
     /// Reblog. Returns the boost id. Repeating returns the existing boost.
@@ -469,17 +475,15 @@ impl<S: Store> Service<S> {
 
     pub fn dismiss_notification(&mut self, slot: u8, id: u64) -> Result<()> {
         let before = self.state.notifications.len();
-        self.state
-            .notifications
-            .retain(|n| !(n.to == slot && n.id == id));
+        self.retain_notifications(|n| !(n.to == slot && n.id == id))?;
         if before == self.state.notifications.len() {
             return Err(Error::NotFound);
         }
         Ok(())
     }
 
-    pub fn clear_notifications(&mut self, slot: u8) {
-        self.state.notifications.retain(|n| n.to != slot);
+    pub fn clear_notifications(&mut self, slot: u8) -> Result<()> {
+        self.retain_notifications(|n| n.to != slot)
     }
 
     /// Markers are RAM only (spec/02 "Ephemeral state stays in RAM").

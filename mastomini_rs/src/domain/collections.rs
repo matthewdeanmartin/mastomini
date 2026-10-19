@@ -252,9 +252,9 @@ impl<S: Store> Service<S> {
         self.govern(Some(actor), now_ms)?;
         self.erase(Ns::Coll, &keys::collection(id))?;
         self.state.collections.remove(&id);
-        self.state
-            .notifications
-            .retain(|n| !(n.kind == NotificationKind::AddedToCollection && n.object == Some(id)));
+        self.retain_notifications(|n| {
+            !(n.kind == NotificationKind::AddedToCollection && n.object == Some(id))
+        })?;
         Ok(())
     }
 
@@ -311,11 +311,11 @@ impl<S: Store> Service<S> {
         self.govern(Some(actor), now_ms)?;
         self.write_collection(rec)?;
         if let Some(slot) = self.state.slot_of(item.account_id) {
-            self.state.notifications.retain(|n| {
+            self.retain_notifications(|n| {
                 !(n.kind == NotificationKind::AddedToCollection
                     && n.object == Some(id)
                     && n.to == slot)
-            });
+            })?;
         }
         Ok(())
     }

@@ -89,12 +89,12 @@ the source audit alone cannot choose among them.
    response time and server stages. A bounded DNS preflight distinguishes a
    resolver failure from an HTTP latency sample.
 2. **Request memoization.** Rendered account JSON is reused for repeated authors
-   during one API request, at most 16 accounts. DM decryption results are cached
+   during one API request, at most 32 accounts. DM decryption results are cached
    only in that authenticated request: at most 64 messages / 32 KiB of text.
    Cached strings and the device secret are zeroized on drop; mutations clear
    the plaintext cache. Visibility checks remain on every normal render path.
 3. **Exact derived account statistics.** A lazy RAM index computes counts and
-   latest-post timestamps for all 16 accounts in one pass, then serves constant
+   latest-post timestamps for all 32 accounts in one pass, then serves constant
    time lookups across requests. Relevant record writes/deletes invalidate it;
    the next read rebuilds it. Tests cover follow/block/delete, ring eviction,
    restart and slot reuse. Existing count/last-post semantics are preserved.

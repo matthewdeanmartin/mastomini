@@ -23,8 +23,11 @@ Nothing from the log is echoed except redacted URLs.
 """
 import argparse
 import collections
+import gzip
+import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from diag_common import redact
@@ -38,7 +41,8 @@ REASONS = {
     "804b0047": "connection interrupted (NS_ERROR_NET_INTERRUPT)",
     "804b000e": "timed out (NS_ERROR_NET_TIMEOUT)",
     "804b000d": "connection refused (NS_ERROR_CONNECTION_REFUSED)",
-    "804b005d": "activation refused; seen with a pending Local Network Access permission",
+    "804b005d": "NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED",
+    "804b0065": "NS_ERROR_NET_UNCLEAN_SHUTDOWN (may be retried)",
     "80470002": "stream closed (NS_BASE_STREAM_CLOSED)",
 }
 
@@ -46,6 +50,41 @@ REASONS = {
 def reason(code: str) -> str:
     code = code.lower().lstrip("0x") or "0"
     return f"{code} {REASONS.get(code, '')}".strip()
+
+
+def log_lines(path: Path):
+    """Text MOZ_LOG or processed Firefox Profiler JSON(.gz), in time order.
+
+    Profiler Log messages may be literal strings or string-table indexes.
+    Never print/export the raw messages: they can contain cookies and tokens.
+    """
+    if path.suffix not in (".gz", ".json"):
+        with path.open(encoding="utf-8", errors="replace") as stream:
+            yield from stream
+        return
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as stream:
+        profile = json.load(stream)
+    if "preprocessedProfileVersion" not in profile.get("meta", {}):
+        raise ValueError("expected a processed Firefox Profiler export")
+    shared = profile.get("shared", {}).get("stringArray", [])
+    records = []
+    for thread in profile.get("threads", []):
+        strings = thread.get("stringArray", shared)
+        markers = thread["markers"]
+        identity = f"{thread.get('pid', '')}:{thread.get('tid', '')}:{thread['name']}"
+        for index, data in enumerate(markers["data"]):
+            if not isinstance(data, dict) or data.get("type") != "Log":
+                continue
+            message = data["message"]
+            if isinstance(message, int):
+                message = strings[message]
+            records.append((markers["startTime"][index], identity,
+                            strings[markers["name"][index]], message.strip()))
+    for at, thread, module, message in sorted(records, key=lambda row: row[0]):
+        timestamp = datetime.fromtimestamp((profile["meta"]["startTime"] + at) / 1000,
+                                          timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+        yield f"{timestamp} UTC - [{thread}]: V/{module} {message}"
 
 
 class Analysis:
@@ -57,6 +96,7 @@ class Analysis:
         self.closes = []           # (time, session, reason)
         self.poison = []           # (time, connection, transaction, reason)
         self.aborted = []          # (time, session, stream id)
+        self.stream_errors = []    # failed CloseStream observations, not unique requests
         self.goaway_sent = []      # (time, session, code)
         self.goaway_recv = []      # (time, session, code)
         self.lna = []              # time of each granted permission
@@ -85,16 +125,22 @@ class Analysis:
         elif (c := re.search(r"nsHttpConnection::DontReuse (\w+) spdysession=(\w+)", text)):
             self.session_conn.setdefault(c[2], c[1])
         elif (c := re.match(r"Http2Session::Close (\w+) (\w+)", text)):
-            self.closes.append((t, c[1], c[2]))
+            if self.ours(c[1]):
+                self.closes.append((t, c[1], c[2].lower()))
         elif (c := re.search(r"nsHttpConnection::CloseTransaction\s*\[this=(\w+) trans=(\w+) reason=(\w+)\]", text)):
-            if c[3].lower() not in ("0", "80004004"):
+            if c[3].lower() not in ("0", "80004004") and self.host in self.conn_host.get(c[1], ""):
                 self.poison.append((t, c[1], c[2], c[3]))
-        elif (c := re.match(r"Http2Session::CloseStream (\w+) \w+ (0x\w+) 80004004", text)):
-            self.aborted.append((t, c[1], c[2]))
+        elif (c := re.match(r"Http2Session::CloseStream (\w+) \w+ (0x\w+) (\w+)", text)):
+            if self.ours(c[1]) and int(c[3], 16) != 0:
+                self.stream_errors.append((t, c[1], c[2], c[3].lower()))
+                if c[3].lower() == "80004004":
+                    self.aborted.append((t, c[1], c[2]))
         elif (c := re.match(r"Http2Session::GenerateGoAway (\w+) code=(\w+)", text)):
-            self.goaway_sent.append((t, c[1], c[2]))
+            if self.ours(c[1]):
+                self.goaway_sent.append((t, c[1], c[2]))
         elif (c := re.match(r"Http2Session::RecvGoAway (\w+) GOAWAY Last-Good-ID \w+ status (\w+)", text)):
-            self.goaway_recv.append((t, c[1], c[2]))
+            if self.ours(c[1]):
+                self.goaway_recv.append((t, c[1], c[2]))
         elif "LNAPermissionRequest" in text:
             if "granted" in text:
                 self.lna.append(t)
@@ -105,12 +151,14 @@ class Analysis:
 
     def report(self, timeline: bool) -> int:
         print(f"log {self.first} .. {self.last} UTC; host filter {self.host!r}")
-        ours = [c for c in self.closes if self.ours(c[1])]
+        # Ownership was checked when the event arrived. Pointer addresses can
+        # be reused for other hosts later in the same capture.
+        ours = self.closes
         by_reason = collections.Counter(reason(code) for _, _, code in ours)
         print(f"\nHTTP/2 sessions to the board closed by Firefox: {len(ours)}")
         for what, n in by_reason.most_common():
             print(f"  {n:4}  {what}")
-        poison = [p for p in self.poison if self.host in self.conn_host.get(p[1], "")]
+        poison = self.poison
         killed = {p[1] for p in poison}
         print(f"\nrequests whose activation killed a connection: {len(poison)} "
               f"({len(killed)} connections)")
@@ -120,12 +168,15 @@ class Analysis:
         collateral = [a for a in self.aborted if a[1] in bad_sessions]
         print(f"streams aborted with those connections (page sees 'CORS request did not succeed'): "
               f"{len(collateral)}")
+        print("failed stream-close observations (retries may recover; not a request failure rate):")
+        for what, n in collections.Counter(reason(c) for *_, c in self.stream_errors).most_common():
+            print(f"  {n:4}  {what}")
         print(f"\nLocal Network Access permissions granted: {len(self.lna)}"
               + (f" ({self.lna[0]} .. {self.lna[-1]})" if self.lna else ""))
         for what, n in self.lna_other.most_common():
             print(f"  other LNA results: {n} x {what}")
-        sent = [g for g in self.goaway_sent if self.ours(g[1])]
-        recv = [g for g in self.goaway_recv if self.ours(g[1])]
+        sent = self.goaway_sent
+        recv = self.goaway_recv
         print(f"GOAWAY sent by Firefox: {dict(collections.Counter(c for *_, c in sent))}; "
               f"from the board: {dict(collections.Counter(c for *_, c in recv))}")
         if timeline:
@@ -139,9 +190,11 @@ class Analysis:
 
     def verdict(self, poison, ours, recv) -> str:
         if any(p[3].lower() == "804b005d" for p in poison) and self.lna:
-            return ("Firefox's Local Network Access killed shared HTTP/2 connections while permissions "
-                    "were pending. Per browser: about:config network.lna.skip-domains = the board's "
-                    "name (spec/09). Not a board fault.")
+            return ("Firefox closed connections with NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED; "
+                    "the capture also contains LNA permission grants. Check the active "
+                    "network.lna.skip-domains setting and initiating site's permission. "
+                    "If already allowed, investigate why the exemption is ineffective; "
+                    "this trace alone does not explain that.")
         if any(code not in ("0", "00000000") for *_, code in recv):
             return "the board sent GOAWAY with an error: check /.well-known/incidents (h2_goaway)."
         if poison or any(code != "0" for *_, code in ours):
@@ -156,9 +209,10 @@ def main():
     parser.add_argument("--timeline", action="store_true", help="list each failure with its time")
     args = parser.parse_args()
     analysis = Analysis(args.host)
-    with args.log.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            analysis.feed(redact(line.rstrip("\n")) if "token" in line else line.rstrip("\n"))
+    for line in log_lines(args.log):
+        # Parsing numeric code= is safe and essential: generic URL redaction
+        # would erase GOAWAY codes. feed only prints structured known fields.
+        analysis.feed(line.rstrip("\n"))
     sys.exit(analysis.report(args.timeline))
 
 

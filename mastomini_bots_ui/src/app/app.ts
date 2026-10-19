@@ -10,6 +10,7 @@ import { Session } from './api/session';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <header class="top">
+      <a href="/status">Status</a>
       <a class="brand" routerLink="/bots">mastomini-bots</a>
       @if (session.signedIn()) {
         <nav>

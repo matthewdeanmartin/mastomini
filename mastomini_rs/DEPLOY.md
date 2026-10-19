@@ -1,5 +1,119 @@
 # Deploy mastomini to the ESP32-S3 board
 
+### 2026-10-19: Persistent notifications deployed (schema 9)
+
+- Procedure A on the household ESP32-S3, COM11, native USB
+  `VID_303A&PID_1001`, MAC `ac:a7:04:2c:29:9c`. Read-only preflight
+  confirmed the unchanged layout: nvs 0x9000/0x6000, phy_init 0xf000/0x1000,
+  factory 0x10000/0x400000, store 0x410000/0x800000,
+  media 0xc10000/0x300000, coredump 0xf10000/0x10000.
+- Revision `6a3f7f5142d9`, dirty working tree; existing edits preserved.
+  `UV_PYTHON=3.13 UV_NO_BUILD=1 make check` passed, including 248 library
+  tests and 10 property tests (also with bundled web), client suite 27 passed,
+  and conformance 139 passed / 58 skipped / 13 expected failures.
+  Updated the client reboot expectation to preserve notification IDs and removed
+  the obsolete follow-notification expected failure; policy gaps remain deferred.
+- Full 16 MiB pre-upgrade backup:
+  `.local/board-backups/pre-notification-schema9-com11-20261019-123452.bin`.
+  SHA-256 `1c3f2143bb17e35a8baa2b0a4a53c1dff63e5c2130ae9b36796ad3a61e6bc7f8`.
+  Private household backup; never commit its contents.
+- S3 HTTP/2 application: 2,626,960 bytes / 4,194,304 bytes, at
+  `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
+  SHA-256 `a1c57c599d471fa7c695940e254cf7fe7cd673b349f6a1b926d80814c1a51b91`.
+  Fingerprint `923fd171aaae`, built `2026-10-19T16:28:41.719Z`.
+- `deploy.py` wrote only application offset 0x10000 and reported
+  `Application updated. The board restarts; household data was not touched.`
+  Before and after boot: provisioned=true, accounts=18, statuses=114, repairs=0.
+  Ready at `192.168.1.161`; HTTP and strictly verified HTTPS probes passed by
+  IP and `mastomini.local`. Firmware fingerprint matches the working tree.
+  Post-upgrade store usage was about 0.664% of available NVS entries.
+- Schema 9 adds a bounded persistent notification namespace; no repartitioning
+  or household reset. Existing lost notifications are not reconstructed.
+  No live accounts, apps, posts or notifications were created for validation.
+  The initially attached COM5 board (`28:84:85:b1:70:e4`, different layout)
+  received read-only identification only; it was not flashed.
+- Logs: `.local/notification-deploy-check.log`,
+  `.local/notification-deploy-firmware.log`, `.local/notification-deploy-flash.log`,
+  `.local/notification-predeploy-backup.log`,
+  `.local/notification-predeploy-boot.log`, `.local/notification-postdeploy-boot.log`,
+  and `.local/notification-postdeploy-probe.log`.
+
+
+### 2026-10-17: 32-account / 64-API-key expansion deployed
+
+- Schema 8 extends account-key digits from 0–f to 0–v and widens account
+  masks to u32, including persisted poll votes. Existing keys and postcard
+  vote encodings are preserved. Older firmware refuses the newer schema.
+  API keys remain capped at four per member and separate from login sessions.
+- Full `UV_PYTHON=3.13 UV_NO_BUILD=1 make check` passed: 236 library tests,
+  10 property tests (also with bundled web), 56 UI tests, smoke, 27 client
+  tests, 138 conformance passes / 58 skips / 14 strict expected failures.
+  Four focused capacity tests also passed after strengthening the legacy
+  fixture to start with only 16 accounts. Desktop burst: 700/700 requests.
+  Conformance skips are inherited exclusions, not exercised coverage; some
+  reasons (notably scheduled posts) predate features now covered by Rust tests.
+- Final S3 HTTP/2 image: 2,610,656 bytes, within the 4 MiB application partition.
+  `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`
+  SHA-256: `6734c3f54e143edf634e1c32178191de896a7511ed8f3a839660c96a794d64a0`.
+  Source fingerprint: `82d7a9e71167`.
+- Identified COM11 by USB serial and esptool MAC `ac:a7:04:2c:29:9c`.
+  Read-only install preflight confirmed the existing Mastomini partition table.
+  Saved a complete 16 MiB pre-upgrade flash backup at
+  `.local/board-backups/pre-schema8-com11.bin` (private; never commit).
+  SHA-256: `6d69b50dfe07e7af7c3c44677c70302b47348ce535e2115f075278af6c1243f2`.
+- Pre-update live diagnostics: 12/16 occupied account slots, 97 statuses,
+  4 available account slots, 8 available API keys; internal free 6,427 B,
+  PSRAM free 8,004,920 B at that sample. These are request-time samples,
+  not a controlled baseline or stress-test minimum.
+- After USB reconnection, rechecked COM11's MAC and partition table and
+  performed Procedure A. The first image reproduced a startup crash during
+  store open, before reporting household counts. Moving the large fixed account,
+  moderation, DM-key and marker tables into fixed-length boxed slices resolved
+  it without increasing the internal task stack or altering persisted records.
+  A regression test bounds inline State below 8 KiB. Final cargo test passed
+  237 library tests and 10 property tests; Clippy and API review checks passed.
+- Final app-only flash hash verified. Boot: provisioned=true, accounts=12,
+  statuses=97, repairs=0, ready at 192.168.1.161. Strict HTTP/verified-HTTPS
+  probe passed and firmware-version matched the working tree. No accounts or
+  posts were created for validation.
+- Live capacity now reports **20 account slots and 56 API-key slots free**,
+  with 12/32 occupied account slots. A four-worker verified-HTTPS read burst
+  completed 40/40 requests in 17.47 seconds; no TLS failures or rejected
+  connections. Afterward: internal free 8,379 B, minimum 4,931 B; PSRAM free
+  7,932,828 B, minimum 7,533,344 B. These short-run measurements are not a
+  full stress certification or a controlled allocation-cost comparison. The
+  device's aggregate HTTP error counter was 2; all burst requests returned 200.
+- Backup remains under `.local/board-backups/`; logs and live snapshots are
+  `.local/capacity-*`. The media partition remains 3 MiB, unchanged.
+
+### 2026-10-17: Lightweight public status deployed
+
+- Procedure A upgraded COM11, confirmed MAC `ac:a7:04:2c:29:9c` and the
+  existing S3 partition layout. Only application offset `0x10000` was written;
+  esptool verified its hash. Household store/media and certificates were preserved.
+- `UV_PYTHON=3.13 UV_NO_BUILD=1 make check` passed: 230 library tests and
+  10 property tests (also with bundled web), 56 UI tests, smoke, 27 client
+  tests, and 138 conformance tests (58 skipped, 14 expected failures), plus
+  API coverage, formatting, Clippy, script checks and strict docs build.
+  Reconciled stale API review records after reviewing the affected code.
+  Restricted MkDocs to `<2` for the existing YAML configuration; Python 3.13
+  supplied published dependency wheels (no source builds).
+- `HTTP2=1 make firmware` produced a 2,605,504-byte app, within the 4 MiB
+  partition. Image: `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
+  SHA-256: `3d74e9919e328b3dfadaa05a60195662804444be2e9b3b40af9b792e99d3ca38`.
+  Dirty revision `6a3f7f5142d9`, built `2026-10-17T14:58:29.878Z`, fingerprint
+  `01baa9e312ba`. Shared status HTML is now included in the Rust/Python
+  fingerprint inputs. Sibling miniframework was clean at `4b10110`.
+- Before/after boot: `provisioned=true accounts=9 statuses=89 repairs=0`,
+  ready at `192.168.1.161`, 8 MB PSRAM detected. Strict IP and hostname probes passed;
+  firmware-version check matched. `/status` matched the source byte-for-byte
+  over verified HTTPS, and `/api/mastomini/v1/public-status` returned
+  `mode=local, state=operational`. No accounts, apps or posts were created
+  to validate the live board. Deployment logs are `.local/status-deploy-*.log`.
+- Bots monitoring remains at the requested 30-minute cadence; no forced probe
+  or bot restart was used to make the observer update sooner.
+
+
 This runbook is written to be followed step by step, by a person or by an
 automated agent. Every step says what to run, what output means success, and
 when to **stop and ask**. Do not improvise around a failed step.

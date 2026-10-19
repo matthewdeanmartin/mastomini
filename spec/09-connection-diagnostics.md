@@ -1,5 +1,155 @@
 # First connection failures and a small incident history
 
+## Seven-day uptime investigation, 2026-10-16
+
+### Follow-up: Firefox 158 capture identifies LNA connection failures
+
+The user confirmed Chrome is fast and does not fail. The supplied compressed
+Profiler export, `Firefox 2026-10-16 19.16 profile.json.gz`, covers
+23:16:43.165–23:17:47.560 UTC, Firefox 158 release build `20261007201254`.
+The updated `firefox_log.py` reads this format directly and reports:
+
+- 57 observed HTTP/2 session closes attributed to the board: 45 with
+  `804b005d` (`NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED`), 12 clean.
+- 53 connection CloseTransaction observations with that LNA code, plus
+  one with `804b0002`. These include repeated attempts, not unique failed
+  application requests; heap addresses are reused throughout the capture.
+- 60 stream-close observations with `804b0065`
+  (`NS_ERROR_NET_UNCLEAN_SHUTDOWN`). Firefox can retry this condition, so
+  counting only the older `80004004` misses relevant stream errors, while
+  equating all 60 with user-visible failures overcounts them.
+- Firefox sent GOAWAY code 2 on 45 observed occasions and code 0 on 12;
+  no received GOAWAY was matched. There were 32 LNA permission-granted
+  callbacks across the capture (that callback count is not host-filtered).
+- Native hostname lookup started at 23:16:51.135; a usable record is
+  observed around 23:17:04.924 (~13.8 seconds). Later LNA failures occur
+  on established TLS/H2 connections, so slow DNS alone cannot explain them.
+
+For example, at 23:17:08.693 a connection to `mastomini.local` is closed
+with `804b005d`, its streams receive `804b0065`, and Firefox sends GOAWAY
+2. Subsequent attempts repeat at approximately 0.35–0.42-second intervals.
+The trace identifies Firefox's LNA rejection as the immediate connection
+failure mechanism, **despite the configured exemption**. It does not show
+why that exemption is ineffective. Do not simply prescribe setting the
+same preference again or claim the setting is absent.
+
+The symbolic codes are confirmed by Mozilla's
+[error definitions](https://github.com/mozilla-firefox/firefox/blob/main/xpcom/base/ErrorList.py).
+Current upstream transaction code checks the target against the skip list
+before LNA permission state; this source inspection does not establish
+which code path or cached preference state the user's binary used.
+
+Next controlled checks: fully exit and relaunch Firefox with the existing
+exemption, then retest. If failures persist, test granting **mawkingbird.com**
+Local network devices permission, or adding the initiating domain to the
+existing comma-separated skip list (`mastomini.local,mawkingbird.com`).
+Mozilla [documents source and target exemptions](https://support.mozilla.org/en-US/kb/control-personal-device-local-network-permissions-firefox).
+These are proposed tests, not verified fixes. Capture again to confirm
+the LNA closes disappear. Chrome is the verified working option meanwhile.
+Do not reboot or change firmware to address this demonstrated browser path.
+
+Analyzer improvements: processed JSON/gzip ingestion, shared string tables,
+time ordering across threads, event-time host attribution to avoid pointer
+reuse corrupting old events, numeric GOAWAY preservation, and separate
+unclean-stream counts. Generic URL redaction must not erase `code=2` before
+parsing. The parser emits structured fields, not raw headers or cookies.
+The original capture is ignored by Git. Summarized output is local at
+`.local/profile-analysis-v2.txt`; 20 diagnostics/read-only tests pass.
+
+### Initial live-board measurements
+
+User reports roughly 50% failures / "CORS Failed" in mawkingbird.com on
+Firefox on a laptop. The saved default-release Firefox profile on the test
+machine already contains `network.lna.skip-domains = mastomini.local`; the
+user also confirmed that setting. Do not assume the old LNA workaround is
+missing or that peer GOAWAY identifies the underlying cause.
+
+The live S3 is still build `63bcb3c208dc`, uptime 603,860,804 ms (6.99 days),
+without a reboot for this investigation. Before probes, its counters showed:
+
+- No Wi-Fi disconnects, reconnect attempts, allocation failures, worker
+  stalls, request timeouts, storage failures, H2 refusals or recorded H2
+  protocol-error GOAWAYs from the server.
+- 395 peer resets, 200 peer GOAWAYs, 30 handshake failures, 3 established
+  TLS failures, 4 full handoffs, 9 admission rejections and 15 evictions.
+  These are lifetime totals, **not** the user's current request failure rate.
+  The recent ring includes peer GOAWAY code 2 and repeated TLS write errors.
+  A peer can terminate a connection because of browser policy or a server
+  response it dislikes; this does not exonerate the server implementation.
+- Internal free RAM 6,103 bytes, largest block 4,864, lifetime minimum 2,819.
+  The October 9 sample of the same build already had minimum 2,819, free
+  7,199 and largest block 5,632. Connection occupancy differs, so this is
+  not a controlled leak measurement. RAM headroom is poor, but there is no
+  newly lowered internal minimum or recorded allocation failure here.
+
+Read-only verification on the still-running board:
+
+- Three HTTP/2 startup bursts: all 96 streams answered with CORS in
+  0.50–0.56 seconds per burst. A subsequent verbose burst also answered
+  all 32 streams. **The saved diagnostic token is rejected with 401** on
+  protected routes: this verifies transport and CORS on error responses,
+  not successful authenticated timeline loading. The probes themselves
+  incremented the HTTP error counter (13 unauthorized responses per burst).
+- Short public-metadata HTTP/1.1 and HTTP/2 tests, one and two concurrent
+  clients: no request or connection failures; request counter increased
+  by 1,335 over the whole transport run. Account/post counts stayed 9/86.
+  H1 warm p95 82–84 ms; H2 warm batch p95 196–261 ms. Cold household-page
+  loads were about 2.7 seconds H1 / 0.85 seconds H2. This is not a soak test
+  or a reproduction in the user's Firefox profile.
+- Verified HTTPS with IP pinned and hostname/SNI preserved returned HTTP
+  200 in 430 ms, while the same hostname URL exceeded an 8-second DNS
+  deadline. Three later captures returned verified HTTPS in 390–422 ms,
+  no incident deltas, and each OS lookup exceeded four seconds. A lookup
+  allowed 20 seconds finally returned the correct IP after **13.859 seconds**.
+  This establishes very slow OS name resolution; Firefox's resolver path
+  still needs a fresh trace. It does not establish that every CORS failure
+  is caused by DNS, particularly on already-established H2 connections.
+
+Local raw evidence is in ignored `.local/uptime-{sys,incidents,log}-before.*`,
+`.local/uptime-watch-20261016.jsonl` and
+`mastomini_rs/loadtests/reports/transport-uptime-seven-days-20261016-190209.json`.
+No firmware, browser settings or router configuration were changed.
+
+### Diagnostics and improvements in priority order
+
+1. Use the new `loadtests/watch_health.py` while reproducing with a fresh
+   Firefox `about:logging` Networking capture. It appends UTC, boot ID,
+   uptime, heap, worker samples, counter deltas, verified direct-IP HTTPS
+   timings and bounded OS resolution results. Its DNS child process can
+   actually be terminated on timeout. This extends the board's ~160-second
+   sample history without adding board RAM or flash writes. See the
+   load-test README for the command. The observer itself adds connections.
+2. Analyze the Firefox trace with `firefox_log.py`; correlate failed requests
+   and connection-close reasons with the capture. Inspect DNS and socket
+   activity too, rather than treating code 2 as proof of LNA. Browser
+   captures can contain credentials and should remain local.
+3. If Firefox confirms lookup delay, compare the **same HTTPS hostname**
+   using a temporary hosts mapping to the reserved DHCP address. This
+   preserves origin, OAuth identity and certificate checks. If that fixes
+   the issue, provide stable LAN name resolution and investigate multicast
+   discovery; changing the login server URL to an IP confounds the test.
+   This mapping was proposed, not applied.
+4. Split firmware `net.errors` into HTTP 4xx/5xx, parse failures and transport
+   failures. Add bounded H2 failure context: active stream count, last stream
+   ID, connection age, last frame type and peer GOAWAY code, plus peer
+   RST_STREAM counters. Avoid raw headers, URLs and GOAWAY debug strings.
+   Current lifetime totals and peer GOAWAY alone cannot localize a failure.
+5. Add coarse long-duration heap/occupancy trend buckets or retain host-side
+   samples over days. Compare free/largest internal blocks at equivalent
+   idle occupancy before changing TLS slot counts. Raising limits with only
+   a few KiB of internal RAM is not supported by these measurements.
+6. At the Angular client layer, bounded read deadlines and at most one
+   delayed retry for idempotent network failures can reduce transient pain.
+   Preserve the original failure in diagnostics; never retry uncertain writes
+   blindly or treat status 0 as an invalid token. This does not fix DNS or
+   explain Firefox's connection teardown and was not implemented here.
+
+The collector was exercised against the board, and all 17 diagnostics/read-only
+tests pass locally. No claim of a
+fixed client failure is made without a fresh Firefox reproduction.
+
+## Earlier investigation
+
 Investigation and implementation, 2026-09-26. The RAM recorder and Health page
 are implemented and built locally, but have not been flashed or validated on
 hardware. The earlier phone incident has no saved trace, so its cause is not yet

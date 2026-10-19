@@ -71,6 +71,9 @@ fn bot_json<S: KvStore>(svc: &Service<S>, i: usize, now: Option<u64>) -> Value {
         "id": info.id,
         "name": info.name,
         "description": info.description,
+        "instructions_url": format!("/bots/{}", info.id),
+        "profile_error": svc.profile_runtime[i].error,
+        "profile_published": !svc.profiles[i].signature.is_empty(),
         "schedule": svc.schedule(i).describe(),
         "uses_llm": info.uses_llm,
         "needs_mastodon": info.needs_mastodon,
@@ -167,6 +170,19 @@ pub fn handle<S: KvStore>(
     let seg = req.segments();
     let method = req.method.as_str();
     match (method, seg.as_slice()) {
+        ("GET", ["status"]) => {
+            return Response::new(
+                200,
+                "text/html; charset=utf-8",
+                include_str!("../../shared/status.html"),
+            )
+            .with_header("Cache-Control", "no-store")
+        }
+        ("GET", ["api", "mastomini", "v1", "public-status"]) => {
+            return Response::ok(svc.monitor.public(now)).with_header("Cache-Control", "no-store")
+        }
+        (_, ["bots"]) => return crate::profiles::page(svc, req, None),
+        (_, ["bots", id]) => return crate::profiles::page(svc, req, Some(id)),
         ("GET", []) => return Response::redirect("/app/"),
         ("GET" | "HEAD", ["app", ..]) => return crate::web::serve(req),
         ("GET", ["favicon.ico"]) => return Response::new(204, "image/x-icon", Vec::new()),
@@ -274,6 +290,23 @@ pub fn handle<S: KvStore>(
         Err(r) => return r,
     };
     let result: Result<Response, Response> = (|| match (method, rest) {
+        ("GET", ["device", "public-origin"]) => {
+            Ok(Response::ok(json!({"origin":svc.public_origin})))
+        }
+        ("PUT", ["device", "public-origin"]) => {
+            svc.set_public_origin(str_field(&body, "origin"))
+                .map_err(|e| Response::error(422, &e))?;
+            Ok(Response::ok(json!({"origin":svc.public_origin})))
+        }
+        ("POST", ["bots", id, "profile"]) => {
+            let i = find(svc, id)?;
+            let config = &svc.records[i].config;
+            if config.instance.is_empty() || config.token.is_empty() {
+                return Err(Response::error(422, "Choose a server and API key first"));
+            }
+            svc.profile_runtime[i].requested = true;
+            Ok(Response::json(202, &bot_json(svc, i, now)))
+        }
         ("GET", ["device", "light"]) => Ok(Response::ok(json!({"phrase": svc.led_phrase}))),
         ("PUT", ["device", "light"]) => {
             let phrase = body["phrase"]
@@ -652,7 +685,10 @@ mod tests {
         let v = call(&mut s, authed("GET", path, &token)).json_body();
         assert_eq!(v["key_set"], false);
         assert_eq!(v["default_model"], "google/gemma-4-31b-it");
-        assert_eq!(v["used_by"], json!(["llm_reply", "llm_post"]));
+        assert_eq!(
+            v["used_by"],
+            json!(["shoebox", "lost_things", "llm_reply", "llm_post"])
+        );
         let r = call(
             &mut s,
             authed("PUT", path, &token)
@@ -693,6 +729,13 @@ mod tests {
     #[test]
     fn public_pages() {
         let mut s = server();
+        assert_eq!(call(&mut s, Request::new("GET", "/status")).status, 200);
+        let status = call(
+            &mut s,
+            Request::new("GET", "/api/mastomini/v1/public-status"),
+        );
+        assert_eq!(status.status, 200);
+        assert_eq!(status.json_body()["state"], "unknown");
         assert_eq!(
             call(&mut s, Request::new("GET", "/")).header("Location"),
             Some("/app/")
@@ -701,5 +744,64 @@ mod tests {
         let v = call(&mut s, Request::new("GET", "/api/v1/version")).json_body();
         assert_eq!(v["name"], "mastomini-bots");
         assert_eq!(call(&mut s, Request::new("GET", "/etc/passwd")).status, 404);
+    }
+}
+
+#[cfg(test)]
+mod public_profile_tests {
+    use super::*;
+    use crate::store::MemStore;
+    #[test]
+    fn instructions_are_public_but_profile_controls_require_authentication() {
+        let mut svc = Service::open(MemStore::default(), crate::bots::all()).unwrap();
+        let ctx = Ctx {
+            platform: Platform::default,
+            tls: None,
+        };
+        for path in [
+            "/bots",
+            "/bots/shoebox",
+            "/bots/lost_things",
+            "/bots/trader_6",
+        ] {
+            assert_eq!(
+                handle(&mut svc, &ctx, &Request::new("GET", path), Some(1000), 1000).status,
+                200
+            );
+        }
+        for (method, path) in [
+            ("PUT", "/api/v1/device/public-origin"),
+            ("POST", "/api/v1/bots/shoebox/profile"),
+        ] {
+            assert_eq!(
+                handle(
+                    &mut svc,
+                    &ctx,
+                    &Request::new(method, path),
+                    Some(1000),
+                    1000
+                )
+                .status,
+                401
+            );
+        }
+        let token = svc.sessions.start(1000);
+        let request = Request::new("PUT", "/api/v1/device/public-origin")
+            .with_header("Authorization", &format!("Bearer {token}"))
+            .with_json(&json!({"origin":"https://my-bots.local/"}));
+        assert_eq!(
+            handle(&mut svc, &ctx, &request, Some(1000), 1000).status,
+            200
+        );
+        let restarted = Service::open(svc.store.clone(), crate::bots::all()).unwrap();
+        assert_eq!(restarted.public_origin, "https://my-bots.local");
+        let i = svc.index("shoebox").unwrap();
+        svc.records[i].config.token = "secret".into();
+        let request = Request::new("POST", "/api/v1/bots/shoebox/profile")
+            .with_header("Authorization", &format!("Bearer {token}"));
+        let result = handle(&mut svc, &ctx, &request, Some(1000), 1000);
+        assert_eq!(result.status, 202);
+        assert!(svc.profile_runtime[i].requested);
+        assert!(!String::from_utf8_lossy(&result.body).contains("secret"));
     }
 }

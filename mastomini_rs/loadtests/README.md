@@ -47,6 +47,40 @@ The standalone CLI does not perform the sweep's recovery/count checks. See
 
 # Connection diagnostics
 
+For failures that appear after days of uptime, capture evidence **before a
+reboot**, while reproducing the failure in the actual client:
+
+```powershell
+uv run --project loadtests python loadtests/watch_health.py --address 192.168.1.161 --output ../.local/health-watch.jsonl --samples 60 --interval 10
+```
+
+This appends UTC-stamped system/incident snapshots, incident counter deltas,
+verified HTTPS TCP/TLS/HTTP timings, and bounded OS hostname lookup results.
+Snapshots connect by IP so a broken `.local` resolver cannot hide board health.
+The default run takes at least ten minutes (collection time is additional).
+Each sample creates one TLS connection and two plain HTTP diagnostic reads;
+it is a low-rate observer, not a passive capture. Deltas include probe activity.
+Counters are not subtracted across boot IDs or missing snapshots. No tokens,
+Wi-Fi identifiers, application response bodies or free-form logs are saved.
+The report does include the hostname's resolved IP addresses. Keep it local.
+
+Pair this with a **fresh** Firefox `about:logging` Networking capture during
+Mawkingbird failures. OS DNS failures are evidence about the OS resolver, not
+proof that Firefox's resolver failed. Peer GOAWAY code 2 does not by itself
+prove LNA. Check the active `network.lna.skip-domains` value before repeating
+the workaround below; an already-set exemption calls for a new trace.
+
+`firefox_log.py` accepts text networking logs and processed Firefox Profiler
+`.json` / `.json.gz` exports (including shared string tables in Firefox 158):
+
+```powershell
+uv run --project loadtests python loadtests/firefox_log.py "../Firefox 2026-10-16 19.16 profile.json.gz" --timeline
+```
+
+It reports numeric LNA failures and unclean stream shutdowns without treating
+retried streams as unique failed requests. Profiler exports are loaded into
+memory; text logs remain streamed. Only the structured analysis is printed.
+
 For "CORS request did not succeed", logins that will not stick, or slow
 loads in a web client (Mawkingbird, Elk, Phanpy). In October 2026 every such
 report was a dropped or refused connection, never a missing CORS header

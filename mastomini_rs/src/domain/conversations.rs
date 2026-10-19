@@ -17,7 +17,7 @@ pub struct Conversation {
     /// The newest message the member can see.
     pub last: u64,
     /// Everyone in it (authors and mentions), as slots.
-    pub participants: u16,
+    pub participants: AccountMask,
     pub unread: bool,
 }
 
@@ -41,7 +41,7 @@ impl<S: Store> Service<S> {
     /// The member's conversations, newest message first. Hidden ones stay
     /// hidden until a newer message arrives.
     pub fn conversations(&self, viewer: u8) -> Vec<Conversation> {
-        let mut by_root: BTreeMap<u64, (u64, u16, u8)> = BTreeMap::new();
+        let mut by_root: BTreeMap<u64, (u64, AccountMask, u8)> = BTreeMap::new();
         for s in self.state.statuses.values() {
             if s.rec.visibility != Visibility::Direct
                 || !self.can_see(Some(viewer), s)

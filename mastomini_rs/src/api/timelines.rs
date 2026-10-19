@@ -1,5 +1,5 @@
 //! Timelines, notifications, markers, search, favourites and bookmarks.
-//! All reads come from RAM; notifications and markers never touch flash.
+//! All reads come from RAM; notification mutations are durable, markers are not.
 
 use super::time::iso;
 use super::{entities, fail, Call, Reply};
@@ -177,7 +177,7 @@ fn dismiss<S: Store>(c: &mut Call<'_, S>, id: Option<&str>) -> Reply {
 
 fn clear<S: Store>(c: &mut Call<'_, S>) -> Reply {
     let viewer = c.user_scoped("write:notifications")?;
-    c.svc.clear_notifications(viewer);
+    c.svc.clear_notifications(viewer).map_err(fail)?;
     Ok(Response::ok(json!({})))
 }
 

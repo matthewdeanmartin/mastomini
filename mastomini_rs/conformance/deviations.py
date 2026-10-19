@@ -88,7 +88,6 @@ DIFFERENT: dict[str, str] = {
     'test_contract_core.py::test_instance_info': 'posts are 140 characters, not 500 (spec/03)',
     'test_integration_readonly.py::test_instance_info_shape': 'posts are 140 characters, not 500',
     'test_contract_status_validation.py::test_status_at_the_limit_is_accepted': 'posts are 140 characters, not 500',
-    'test_contract_core.py::test_follow_generates_notification': 'the seed already has alice following bob; as on Mastodon, following again is a no-op and does not notify twice',
     'test_contract_accounts_extra.py::test_account_relationships_invalid_id': 'as on Mastodon, relationships skip unknown ids (the mock invents one)',
     'test_bughunt_bulk_by_id.py::test_familiar_followers_bulk': 'as on Mastodon, familiar followers are only accounts the viewer follows',
     'test_contract_admin.py::test_admin_account_delete': 'as on Mastodon (AccountPolicy#destroy?), an account must be suspended before its data is deleted',

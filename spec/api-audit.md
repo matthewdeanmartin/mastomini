@@ -27,7 +27,7 @@ this REST table. Discovery and OAuth endpoints are included.
 | Followed and featured tags | Persistent, normalized, idempotent; 32 followed and 10 featured per member. Followed public tags enter home; suggestions, usage history and profile counts respect visibility. |
 | Private account notes | Persisted per viewer/target, 2000 UTF-8 bytes, empty comment clears; private to that viewer. |
 | Suggestion dismissal (backlog 3) | Persisted and filtered in both suggestion API versions. |
-| Grouped notifications (backlog 5) | Favourite/reblog groups by target, follow group, individual other types; pagination, unread counts, accounts and group dismissal. Groups use the existing bounded RAM ring; no historical/time-window grouping. |
+| Grouped notifications (backlog 5) | Favourite/reblog groups by target, follow group, individual other types; pagination, unread counts, accounts and group dismissal. Groups use bounded persistent history (schema 9) with a RAM cache; no time-window grouping. |
 | Announcements | Admin CRUD, publish/unpublish, publication windows; member listing, dismissal and Unicode reactions. REST management is documented in the administration guide. |
 | Compatibility aliases | Profile GET/PATCH, avatar/header DELETE (generated defaults), OAuth userinfo, legacy search and direct timeline. Uploads remain unsupported. |
 
@@ -109,3 +109,37 @@ automatic parity certification. Keep routing precedence in mind (account list
 routes, for example, are dispatched before the generic account router).
 Use the tests in `api/tests`, `clienttests`, and the verbatim `conformance/tests`
 for behavioral evidence; exceptions live in `conformance/deviations.py`.
+
+## Deployment review, 2026-10-17
+
+Reconciled stale source fingerprints for the existing admin-only bot enrollment,
+owner/password-gated encrypted household export, unprovisioned-only import and
+restore page, reload refactor, forwarded import-passphrase header, framework
+incident serialization, atomic password/key updates, and LRU session eviction.
+Household APIs and HTML remain outside the Mastodon REST inventory; the OAuth
+token row now states the session eviction rule. Existing enrollment, transfer,
+password recovery and session tests remain in the deployment gates. This review
+does not certify physical power-loss recovery during import.
+
+The new public `/status` page and `/api/mastomini/v1/public-status` are household
+extensions. Their GET handlers precede maintenance/authentication, expose only
+clock/storage readiness, use no-store, and do not allocate retained history on
+mastomini. History and the 30-minute observer run on the bots board.
+
+
+## Account capacity expansion (2026-10-17)
+
+Reviewed schema 8: 32 account slots, 64 non-evicting API keys (4 per
+account), u32 audience/reaction/poll/conversation/list/tag masks and stable
+single-character slot keys extended from 0–f to 0–v. Capacity endpoints
+derive their values from these limits. Boundary tests cover slots 15, 16,
+31, full capacity, reboot, private audiences, social records, DM keys,
+lists, poll cleanup, legacy poll decoding, and encrypted backup/restore.
+Profile field rendering escapes text and only links validated HTTP(S)
+URLs with rel=me, including public profile HTML; tests cover unsafe values.
+No REST routes or request formats changed.
+
+Hardware follow-up: the expanded fixed account tables now use fixed-length
+boxed slices so store reconstruction does not copy large arrays on the ESP32
+startup stack. Storage encoding is unchanged; a regression test bounds inline
+State size. Final on-board boot and verified HTTPS checks passed.

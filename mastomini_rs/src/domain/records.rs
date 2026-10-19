@@ -1,9 +1,10 @@
 //! Records as they are persisted (spec/02-storage.md "Namespaces and keys").
 //!
-//! Anything derivable (counts, hashtags, notifications, timelines) is not
+//! Anything derivable (counts, hashtags, timelines) is not
 //! stored. Mentions *are* stored as account ids so a post's audience is fixed
 //! when it is written, even if a username is later reused.
 
+use super::AccountMask;
 use crate::auth::Verifier;
 use serde::{Deserialize, Serialize};
 
@@ -341,12 +342,12 @@ pub struct PollRec {
     pub expires_ms: u64,
     pub multiple: bool,
     pub hide_totals: bool,
-    pub votes: Vec<u16>,
+    pub votes: Vec<AccountMask>,
 }
 
 impl PollRec {
     /// Slots that voted for anything.
-    pub fn voters(&self) -> u16 {
+    pub fn voters(&self) -> AccountMask {
         self.votes.iter().fold(0, |m, v| m | v)
     }
 }

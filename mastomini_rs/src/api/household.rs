@@ -596,7 +596,7 @@ mod bot_setup_tests {
         assert_eq!(s.get(&format!("{base}/capacity"), None).status, 401);
         assert_eq!(
             s.get(&format!("{base}/capacity"), Some(&token)).json_body()["accounts_available"],
-            14
+            30
         );
         let request = json!({"username":"trader", "password":"generated-secret", "display_name":"Trader", "role":"owner"});
         let first = s.send_json("POST", base, Some(&token), &request);

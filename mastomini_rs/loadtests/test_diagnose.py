@@ -1,8 +1,9 @@
 """Unit tests for the connection diagnostics' pure parts (no board needed)."""
 import json
+import gzip
 
 from diag_common import percentile, read_token, redact
-from firefox_log import Analysis
+from firefox_log import Analysis, log_lines
 from har_summary import summarize
 
 
@@ -74,6 +75,64 @@ def test_firefox_log_without_failures_says_so(capsys):
         analysis.feed(text)
     assert analysis.report(timeline=False) == 0
     assert "no connection-level failures" in capsys.readouterr().out
+
+
+def test_firefox_158_unclean_stream_shutdown_is_counted_without_claiming_request_failure(capsys):
+    analysis = Analysis("mastomini.local")
+    for text in FIREFOX[:3] + [
+        line("15:07:00.000000", "Http2Session::Close s1 804B005D"),
+        line("15:07:00.000100", "Http2Session::CloseStream s1 x1 0x3 804B0065"),
+        line("15:07:00.000200", "Http2Session::GenerateGoAway s1 code=2"),
+    ]:
+        analysis.feed(text)
+    analysis.report(False)
+    out = capsys.readouterr().out
+    assert "NS_ERROR_NET_UNCLEAN_SHUTDOWN" in out
+    assert "not a request failure rate" in out
+    assert "{'2': 1}" in out
+
+
+def test_firefox_pointer_reuse_does_not_change_old_event_ownership(capsys):
+    analysis = Analysis("mastomini.local")
+    for text in FIREFOX[:3] + [
+        line("15:07:00.000000", "Http2Session::Close s1 804B005D"),
+        line("15:07:01.000000", "nsHttpConnection::OnSocketWritable [this=c1] host=example.org"),
+        line("15:07:01.001000", "nsHttpConnection::StartSpdy [this=c1, mDid0RTTSpdy=0]"),
+        line("15:07:01.002000", "Http2Session::Http2Session s1 serial=0x18A1", level="I"),
+        line("15:07:02.000000", "Http2Session::Close s1 804B0014"),
+    ]:
+        analysis.feed(text)
+    analysis.report(False)
+    out = capsys.readouterr().out
+    assert "sessions to the board closed by Firefox: 1" in out
+    assert "804b0014" not in out
+
+
+def test_processed_gzip_profile_merges_threads_and_preserves_numeric_codes(tmp_path, capsys):
+    profile = {"meta": {"preprocessedProfileVersion": 75, "startTime": 0},
+               "shared": {"stringArray": ["nsHttp", "Http2Session::GenerateGoAway s1 code=2"]},
+               "threads": [
+                   {"name": "GeckoMain", "pid": 1, "tid": 1, "markers": {
+                       "startTime": [6], "name": [0], "data": [{"type": "Log", "message":
+                           "nsHttpChannel::OnPermissionPromptResult [this=c] LNAPermissionRequest granted"}]}},
+                   {"name": "Socket Thread", "pid": 1, "tid": 2, "markers": {
+                       "startTime": [1, 2, 3, 4, 5], "name": [0] * 5, "data": [
+                           {"type": "Log", "message": message} for message in [
+                               "nsHttpConnection::OnSocketWritable [this=c1] host=mastomini.local",
+                               "nsHttpConnection::StartSpdy [this=c1]",
+                               "Http2Session::Http2Session s1",
+                               "Http2Session::Close s1 804B005D", 1]]}}]}
+    path = tmp_path / "profile.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as output:
+        json.dump(profile, output)
+    lines = list(log_lines(path))
+    assert "00:00:00.001000" in lines[0]
+    assert "code=2" in lines[-2]
+    analysis = Analysis("mastomini.local")
+    for text in lines:
+        analysis.feed(text)
+    assert analysis.report(False) == 1
+    assert "{'2': 1}" in capsys.readouterr().out
 
 
 def entry(at, method, path, status, timings):
