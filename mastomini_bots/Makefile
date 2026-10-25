@@ -42,10 +42,10 @@ build:
 	$(CARGO) build --locked
 
 test:
-	$(CARGO) test --locked
+	$(CARGO) test --locked --features e2e
 
 lint:
-	$(CARGO) clippy --locked --all-targets -- -D warnings
+	$(CARGO) clippy --locked --all-targets --features e2e -- -D warnings
 
 fmt:
 	$(CARGO) fmt
@@ -73,7 +73,7 @@ setup-nanacoin:
 	$(UV) run --no-build scripts/setup-nanacoin.py $(ARGS)
 
 coverage:
-	$(CARGO) llvm-cov --locked --lib --html --output-dir .local/coverage
+	$(CARGO) llvm-cov --locked --lib --features e2e --html --output-dir .local/coverage
 
 # Byte-compiles the board tooling and parses the shell scripts: catches
 # syntax errors in scripts that only run against real hardware.
@@ -100,6 +100,28 @@ deploy:
 
 install:
 	bash scripts/install.sh "$(PORT)" --confirm-mac "$(MAC)"
+
+# One time, over USB: from the first (single-slot) layout to the OTA layout.
+# Keeps settings, keys, bot memory and Wi-Fi; backs up nvs and store first.
+relayout: firmware
+	bash -c 'source scripts/esp-python.sh && "$$esp_python" scripts/relayout.py --port "$(PORT)" \
+	  --images "$$images" --backup-dir .local/relayout-backups --confirm-mac "$(MAC)"'
+
+# Every update after that, over Wi-Fi: build, sign (the household key in
+# miniframework/.local/ota) and send with this build machine's deploy key.
+MF := ../../microcontroller/miniframework
+ifndef MASTOBOTS_OTA_VERSION
+MASTOBOTS_OTA_VERSION := $(shell git rev-parse --short HEAD)$(shell git diff --quiet || echo +)-$(shell date -u +%Y%m%d%H%M%S)
+endif
+export MASTOBOTS_OTA_VERSION
+BOTS_URL ?= https://mastomini-bots.local
+
+ota: firmware
+	cd $(MF)/crates/miniframework && cargo run -q --features ota --example ota_tool -- bundle \
+	  --seed ../../.local/ota/ota.seed --app mastomini-bots --board "MASTOMINI_BOTS-BOARD:s3:mastomini-bots.local;" \
+	  --chip esp32s3 --version "$(MASTOBOTS_OTA_VERSION)" \
+	  C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin ../../.local/ota/mastomini-bots.mfw
+	bash $(MF)/tools/ota-push.sh $(BOTS_URL) $(MF)/.local/ota/mastomini-bots.mfw .env MASTOBOTS_OTA_KEY certs/household-ca.crt
 
 boot-log:
 	"$(ESP_PYTHON)" scripts/boot-log.py --port "$(PORT)"

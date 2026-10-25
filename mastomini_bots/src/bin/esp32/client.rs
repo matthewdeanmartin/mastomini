@@ -9,7 +9,11 @@
 //! - `save_client_session`: a reconnect resumes the TLS session instead of
 //!   a full ~1 s handshake.
 //!
-//! One client (and so one kept-alive connection) per server. Household
+//! One client (and so one kept-alive connection) per server, at most
+//! [`MAX_KEPT`] at once: each holds a socket and buffers, and a board that
+//! kept one for every server it ever reached (six boards for the SRE bot,
+//! every feed for the feeds bot) ran out of internal RAM and dropped its own
+//! admin site's connections mid-reply. The least recently used goes. Household
 //! names (`.local`, `.lan`, `.home.arpa`, private addresses) are verified
 //! against the household CA; everything else against the public CA bundle.
 
@@ -17,12 +21,14 @@ use esp_idf_svc::sys::*;
 use mastobots::household_trust::household_host;
 use mastobots::mastodon::{HttpClient, HttpRequest, HttpResponse};
 use std::collections::HashMap;
-use std::ffi::{c_char, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 const TTL: Duration = Duration::from_secs(600);
 const BODY_LIMIT: usize = 256 * 1024;
+/// Kept-alive connections per client (each worker thread has its own).
+const MAX_KEPT: usize = 3;
 /// Per socket operation; a model can think for tens of seconds.
 const TIMEOUT_MS: i32 = 60_000;
 
@@ -36,10 +42,40 @@ pub struct EspClient {
     resolved: HashMap<String, (Ipv4Addr, Instant)>,
 }
 
-/// An `esp_http_client` and the strings its config points at.
+/// An `esp_http_client`, the strings its config points at, and where its
+/// event handler puts the response headers we keep.
 struct Handle {
     raw: esp_http_client_handle_t,
     _strings: Vec<CString>,
+    /// The client's `user_data`: boxed, so it never moves while the client
+    /// lives. Dropped after the client (Drop cleans the client up first).
+    headers: Box<HttpResponse>,
+    /// Last request on it, to close the least recently used.
+    used: Instant,
+}
+
+/// `HTTP_EVENT_ON_HEADER`: keep the headers in `KEPT_HEADERS`.
+unsafe extern "C" fn on_event(event: *mut esp_http_client_event_t) -> esp_err_t {
+    // SAFETY: esp_http_client passes a live event for the duration of the
+    // call; the key and value are NUL-terminated strings it owns.
+    let event = unsafe { &*event };
+    if event.event_id == esp_http_client_event_id_t_HTTP_EVENT_ON_HEADER
+        && !event.user_data.is_null()
+        && !event.header_key.is_null()
+        && !event.header_value.is_null()
+    {
+        // SAFETY: user_data is the Handle's boxed response, which outlives
+        // the client; nothing else touches it while a request is running.
+        let kept = unsafe { &mut *event.user_data.cast::<HttpResponse>() };
+        let (key, value) = unsafe {
+            (
+                CStr::from_ptr(event.header_key).to_string_lossy(),
+                CStr::from_ptr(event.header_value).to_string_lossy(),
+            )
+        };
+        kept.keep_header(&key, &value);
+    }
+    ESP_OK
 }
 
 // SAFETY: a Handle is only used by the scheduler thread that owns EspClient.
@@ -124,8 +160,21 @@ impl EspClient {
         port: Option<u16>,
     ) -> Result<esp_http_client_handle_t, String> {
         let key = format!("{scheme}://{host}:{port:?}");
-        if let Some(h) = self.clients.get(&key) {
+        if let Some(h) = self.clients.get_mut(&key) {
+            h.used = Instant::now();
             return Ok(h.raw);
+        }
+        while self.clients.len() >= MAX_KEPT {
+            let Some(oldest) = self
+                .clients
+                .iter()
+                .min_by_key(|(_, h)| h.used)
+                .map(|(k, _)| k.clone())
+            else {
+                break;
+            };
+            // Dropping the Handle closes the connection and frees its buffers.
+            self.clients.remove(&oldest);
         }
         let connect_to = if host.ends_with(".local") {
             self.resolve(host)?.to_string()
@@ -135,7 +184,10 @@ impl EspClient {
         let port = port.map_or(String::new(), |p| format!(":{p}"));
         let url = cstr(&format!("{scheme}://{connect_to}{port}/"))?;
         let name = cstr(host)?;
+        let mut headers = Box::<HttpResponse>::default();
         let mut config = esp_http_client_config_t {
+            event_handler: Some(on_event),
+            user_data: (&mut *headers as *mut HttpResponse).cast::<c_void>(),
             url: url.as_ptr(),
             timeout_ms: self.timeout_ms,
             keep_alive_enable: true,
@@ -164,6 +216,8 @@ impl EspClient {
             Handle {
                 raw,
                 _strings: vec![url, name],
+                headers,
+                used: Instant::now(),
             },
         );
         Ok(raw)
@@ -174,9 +228,13 @@ impl EspClient {
         self.resolved.remove(host);
     }
 
-    fn exchange(&mut self, req: &HttpRequest) -> Result<HttpResponse, String> {
+    fn exchange(&mut self, req: &HttpRequest, limit: usize) -> Result<HttpResponse, String> {
         let (scheme, host, port, path) = split(&req.url).ok_or("not a URL")?;
         let h = self.handle(scheme, host, port)?;
+        let key = format!("{scheme}://{host}:{port:?}");
+        if let Some(handle) = self.clients.get_mut(&key) {
+            handle.headers.headers.clear();
+        }
         let connect_to = match self.resolved.get(host) {
             Some((ip, _)) => ip.to_string(),
             None => host.to_string(),
@@ -238,25 +296,38 @@ impl EspClient {
                 if n == 0 {
                     break;
                 }
-                if body.len() + n as usize > BODY_LIMIT {
+                if body.len() + n as usize > limit {
                     return Err("the response is too large".into());
                 }
                 body.extend_from_slice(&chunk[..n as usize]);
             }
             // The connection stays open for the next request to this server.
-            Ok(HttpResponse { status, body })
+            let headers = self
+                .clients
+                .get_mut(&key)
+                .map(|handle| std::mem::take(&mut handle.headers.headers))
+                .unwrap_or_default();
+            Ok(HttpResponse {
+                status,
+                body,
+                headers,
+            })
         }
     }
 }
 
 impl HttpClient for EspClient {
     fn send(&mut self, req: &HttpRequest) -> Result<HttpResponse, String> {
+        self.send_bounded(req, BODY_LIMIT)
+    }
+    fn send_bounded(&mut self, req: &HttpRequest, limit: usize) -> Result<HttpResponse, String> {
+        let limit = limit.min(BODY_LIMIT);
         let started = Instant::now();
         let reused = split(&req.url).is_some_and(|(scheme, host, port, _)| {
             self.clients
                 .contains_key(&format!("{scheme}://{host}:{port:?}"))
         });
-        let mut result = self.exchange(req);
+        let mut result = self.exchange(req, limit);
         if result.is_err() && reused && req.method == "GET" {
             // An idle keep-alive socket may have been closed by the server.
             // Reconnect once for reads only: never duplicate a post or a
@@ -264,7 +335,7 @@ impl HttpClient for EspClient {
             if let Some((scheme, host, port, _)) = split(&req.url) {
                 self.forget(scheme, host, port);
                 log::info!("Reconnecting an idle client for one GET retry");
-                result = self.exchange(req);
+                result = self.exchange(req, limit);
             }
         }
         if result.as_ref().map_or(true, |r| r.status >= 400) {

@@ -60,6 +60,10 @@ const idPath = (base: string, id: string) => `${base}/${encodeURIComponent(id)}`
 export class Admin {
   private readonly api = inject(Api);
 
+  digest(): Promise<{unresolved_reports: number; pending_approvals: number; invites_expiring_7d: number}> {
+    return this.api.get('/api/mastomini/v1/admin/digest');
+  }
+
   reports(path: string, signal?: AbortSignal): Promise<Page<Report>> {
     return this.api.page(path, signal);
   }

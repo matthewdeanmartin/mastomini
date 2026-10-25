@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 const CREDENTIAL_FILES: [&str; 3] = [".env", "../.env", "../mastomini_rs/.env"];
 
-const SETTINGS: [(&str, &[&str]); 5] = [
+const SETTINGS: [(&str, &[&str]); 6] = [
+    // The build machine's key for `make ota` (Bearer on POST /api/v1/ota).
+    ("MASTOBOTS_OTA_KEY", &["MASTOBOTS_OTA_KEY"]),
     ("MASTOMINI_WIFI_SSID", &["MASTOMINI_WIFI_SSID", "WIFI_SSID"]),
     (
         "MASTOMINI_WIFI_PASSWORD",
@@ -102,6 +104,19 @@ fn main() {
 
     // Recovery is deliberately process-environment-only, never loaded from
     // .env. Normal upgrades cannot accidentally generate another reset.
+    // The household's update key, public half (miniframework `make ota-key`),
+    // and the version `make ota` names the bundle with.
+    let ota_pub = root.join("../../microcontroller/miniframework/.local/ota/ota.pub");
+    println!("cargo:rerun-if-changed={}", ota_pub.display());
+    println!("cargo:rerun-if-env-changed=MASTOBOTS_OTA_VERSION");
+    if let Ok(key) = std::fs::read_to_string(&ota_pub) {
+        println!("cargo:rustc-env=MASTOBOTS_OTA_PUBKEY={}", key.trim());
+    } else {
+        println!(
+            "cargo:warning=no OTA public key ({}): network updates will be refused",
+            ota_pub.display()
+        );
+    }
     println!("cargo:rerun-if-env-changed=MASTOMINI_BOTS_RESET_ADMIN_ONCE");
     if let Ok(id) = std::env::var("MASTOMINI_BOTS_RESET_ADMIN_ONCE") {
         assert!(

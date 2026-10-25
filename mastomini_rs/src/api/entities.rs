@@ -327,6 +327,7 @@ pub fn entry<S: Store>(svc: &Service<S>, ctx: &Ctx, e: Entry, viewer: Option<u8>
             .boosts
             .get(&id)
             .map_or(Value::Null, |b| boost(svc, ctx, b, viewer)),
+        Entry::Remote(_) => super::remote::entry(svc, ctx, e),
     }
 }
 

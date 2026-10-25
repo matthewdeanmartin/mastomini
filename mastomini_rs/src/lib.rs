@@ -16,6 +16,7 @@ pub mod crypto;
 pub mod domain;
 pub mod http;
 pub mod ids;
+pub mod media;
 /// The board's incident history now lives in the framework
 /// (`/.well-known/incidents`); re-exported for the status light and `/diag`.
 pub use miniframework::incidents;

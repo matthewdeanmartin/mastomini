@@ -20,6 +20,7 @@ mod oauth;
 mod polls;
 pub mod query;
 pub mod records;
+pub mod remote;
 pub mod scheduled;
 mod server;
 pub mod social;
@@ -86,7 +87,8 @@ const HOUR_MS: u64 = 60 * 60 * 1000;
 /// 7: atomic password verifier and sealed DM key.
 /// 8: 32 account slots, u32 poll masks, extended slot-key alphabet.
 /// 9: bounded durable notifications (`mm_notif`); existing records unchanged.
-pub const SCHEMA: u16 = 9;
+/// 10: accounts on other servers, their posts and device keys (`mm_remote`).
+pub const SCHEMA: u16 = 10;
 /// Previous versions kept per edited status, and in all (spec/03).
 pub const MAX_REVISIONS_PER_STATUS: u8 = 3;
 pub const MAX_REVISIONS: usize = 1024;
@@ -612,6 +614,8 @@ pub(crate) mod keys {
 pub struct Service<S: Store> {
     pub led_phrase: String,
     pub scheduling: scheduled::Scheduling,
+    /// Accounts on other servers (remote.rs).
+    pub remote: remote::Remote,
     store: S,
     pub state: State,
     ids: IdGen,
@@ -639,6 +643,7 @@ impl<S: Store> Service<S> {
         let mut service = Service {
             led_phrase: String::new(),
             scheduling: Default::default(),
+            remote: Default::default(),
             store,
             state: State::default(),
             ids: IdGen::default(),
@@ -662,6 +667,7 @@ impl<S: Store> Service<S> {
         self.load_social()?;
         self.load_scheduled()?;
         self.load_notifications()?;
+        self.load_remote()?;
         self.check_invariants()?;
         if upgrade_schema {
             self.store.set(

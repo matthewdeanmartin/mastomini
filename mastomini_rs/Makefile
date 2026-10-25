@@ -5,7 +5,7 @@ CARGO ?= cargo
 UV ?= uv
 ESP_PYTHON ?= /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
 
-.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board probe-mdns board-version api-coverage
+.PHONY: help run run-web web web-check ui-test build test lint fmt fmt-check scripts-check smoke client-test conformance conformance-sync docs docs-serve check certs certs-check reissue-cert rotate-certs firmware deploy install boot-log probe-board probe-mdns board-version api-coverage move-export move-import firmware-takeover deploy-takeover
 
 help:
 	@printf '%s\n' \
@@ -39,7 +39,11 @@ help:
 	  'make boot-log PORT=COM11        Capture the boot log and the board address' \
 	  'make probe-board ADDRESS=ip     Strict read-only check of a running board' \
 	  'make probe-mdns ADDRESS=ip      Compare IP access, mDNS replies and OS name lookup' \
-	  'make board-version ADDRESS=ip   Does the board run this working tree? (exit 1: flash it)'
+	  'make board-version ADDRESS=ip   Does the board run this working tree? (exit 1: flash it)' \
+	  'make firmware-takeover BOARD=p4 Build BOARD under the household identity (mastomini, certs/)' \
+	  'make deploy-takeover PORT=COM19 Upgrade the household P4 (the household board since 2026-10-21)' \
+	  'make move-export ADDRESS=ip     Download the household from a board (.local/move/, owner from .env)' \
+	  'make move-import ADDRESS=ip FILE=..  Restore it onto an erased board (spec/board_migration_plan.md)'
 
 # HTTPS next to HTTP once make certs has run (docs/security/https.md).
 HTTPS_PORT ?= 8443
@@ -182,6 +186,27 @@ probe-board:
 
 board-version:
 	$(UV) run --project clienttests python scripts/firmware-version.py --address "$(ADDRESS)"
+
+# Moving the household to another board (DEPLOY.md "Moving the household").
+# The new board takes the household's name and certificate, so signed-in
+# devices and bots follow it; only once the old board is off.
+#
+# Since 2026-10-21 the household board is the P4: upgrade it with
+# `make deploy-takeover PORT=COM19` (BOARD defaults to p4), not `make deploy`.
+BOARD ?= p4
+TAKEOVER := MASTOMINI_BOARD=$(BOARD) MASTOMINI_HOSTNAME=mastomini MASTOMINI_CERT_DIR=certs HTTP2=1
+
+firmware-takeover:
+	$(TAKEOVER) bash scripts/build-esp32.sh
+
+deploy-takeover:
+	$(TAKEOVER) bash scripts/deploy.sh "$(PORT)"
+
+move-export:
+	$(UV) run --project loadtests python loadtests/household_move.py export --address "$(ADDRESS)"
+
+move-import:
+	$(UV) run --project loadtests python loadtests/household_move.py import --address "$(ADDRESS)" --file "$(FILE)"
 
 probe-mdns:
 	$(UV) run --project clienttests python -u scripts/probe-mdns.py --address "$(ADDRESS)"

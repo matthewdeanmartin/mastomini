@@ -32,11 +32,11 @@ PROFILES = {
     # The P4-WIFI6 is flashed through a CH343 bridge, whose DTR/RTS reset works.
     's3': dict(chip='esp32s3', target='xtensa-esp32s3-espidf', flash_size='16MB',
                flash_bytes=0x1000000, bootloader=0x0, after='watchdog_reset',
-               target_dir='C:/mmr', cert_dir='certs', hostname='mastomini',
+               target_dir='C:/tmp/mmr', cert_dir='certs', hostname='mastomini',
                sdkconfig='sdkconfig.defaults', features='esp32', led='', toolchain='xtensa'),
     'p4': dict(chip='esp32p4', target='riscv32imafc-esp-espidf', flash_size='32MB',
                flash_bytes=0x2000000, bootloader=0x2000, after='hard_reset',
-               target_dir='C:/mmr-p4', cert_dir='certs-p4', hostname='mastomini-p4',
+               target_dir='C:/tmp/mmr-p4', cert_dir='certs-p4', hostname='mastomini-p4',
                sdkconfig='boards/p4/sdkconfig.defaults', features='esp32,board-p4', led='off',
                toolchain='riscv'),
 }

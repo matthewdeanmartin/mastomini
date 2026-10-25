@@ -373,6 +373,9 @@ impl<S: Store> Service<S> {
 
     /// Resolve a bearer token. Disabled accounts and old epochs are rejected.
     pub fn principal(&mut self, token: &str, now_ms: u64) -> Option<Principal> {
+        if token.starts_with(super::remote::DEVICE_PREFIX) {
+            return self.device_principal(token, now_ms);
+        }
         let hash = sha256(token);
         if let Some(t) = self
             .state

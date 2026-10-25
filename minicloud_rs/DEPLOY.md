@@ -98,7 +98,7 @@ never bypass a mismatch for this unit.
 This machine already has Git Bash, make, stable Rust and `+esp`, Node/npm,
 Python, uv, ESP-IDF 5.5.3, esptool 4.12 and pyserial. The C6 build script sets
 the installed Windows IDF/compiler paths and defaults its Cargo output to
-`C:/mcr` to avoid long Windows build paths. Do not switch to PowerShell,
+`C:/tmp/mcr` to avoid long Windows build paths. Do not switch to PowerShell,
 cmd, WSL, or download a different toolchain to solve a routine path problem.
 
 ## 2. Load private build settings

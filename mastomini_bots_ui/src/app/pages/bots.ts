@@ -107,7 +107,7 @@ interface Draft {
                 [disabled]="!bot.ready || bot.running || bot.queued">{{ isReply(bot) ? 'Check mentions now' : 'Run now' }}</button>
         <button class="btn btn--quiet" type="button" (click)="act(bot, 'check')"
                 [disabled]="!bot.ready || bot.running || bot.queued">
-          {{ usesNanaCoin(bot) ? 'Check connections' : 'Check Mastodon key' }}
+          {{ usesNanaCoin(bot) || bot.id === 'sre' ? 'Check connections' : 'Check Mastodon key' }}
         </button>
         @if (bot.uses_llm) {
           <button class="btn btn--quiet" type="button" (click)="act(bot, 'check-model')"
@@ -118,6 +118,7 @@ interface Draft {
         <button class="btn btn--quiet" type="button" (click)="edit(bot)">
           {{ editing() === bot.id ? 'Close settings' : 'Settings' }}
         </button>
+        @if (bot.id === 'sre') { <a class="btn btn--quiet" routerLink="/sre">Open the SRE page</a> }
         @if (editing() === bot.id) {
           <form (ngSubmit)="save(bot)">
             <label [for]="bot.id + '-instance'">Mastodon server{{ bot.needs_mastodon ? '' : ' (optional)' }}</label>

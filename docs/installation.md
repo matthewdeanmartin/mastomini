@@ -80,7 +80,7 @@ minutes; later builds are much faster. The build never touches a board. It ends
 with a line like:
 
 ```
-Application: C:\mmr\xtensa-esp32s3-espidf\release\mastomini-esp32.bin (1608832 / 4194304 bytes)
+Application: C:\tmp\mmr\xtensa-esp32s3-espidf\release\mastomini-esp32.bin (1608832 / 4194304 bytes)
 ```
 
 ### Find the board's serial port

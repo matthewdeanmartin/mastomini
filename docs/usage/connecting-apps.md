@@ -62,3 +62,32 @@ The app-by-app compatibility matrix is planned (see `spec/07-testing.md`).
 Rules, terms of service and the privacy policy are at `/about`,
 `/terms-of-service` and `/privacy-policy` on the board, and apps that show a
 server's rules and terms pick them up from the Mastodon API.
+
+### Following accounts on other servers
+
+mastomini does not federate, but members can follow public accounts on other
+Mastodon servers and read their posts by RSS (design:
+`spec/remote_follow_rss.md`).
+
+- **Search and follow from any app.** Search for a full `@name@server` (the
+  board asks that server) or for a name with *resolve* on (the board asks the
+  household's search server, `mastodon.nu` unless an admin changes it). Open
+  the account and tap Follow. The household app's **Accounts elsewhere** page
+  does the same.
+- **Posts arrive once a night**, in the home timeline of everyone who follows
+  the account, in every app. They are read-only: they cannot be favourited,
+  boosted or replied to here; "Open the original" opens them on their own
+  server.
+- **Pictures** come as small copies when the board has an SD card; without
+  one, posts come without pictures. Posts marked adult never get pictures.
+- **Post and hashtag search** need an account on the search server: an
+  admin signs in on the **Accounts elsewhere** admin page (the server's own
+  login page; read-only). Everyone's searches then go through that account,
+  and the Posts tab shows what it finds. Pictures in found posts are links
+  to the original, not copies.
+- **Limits:** by default 30 accounts for the household and 10 per person; an
+  admin changes them on the **Accounts elsewhere** admin page, where they can
+  also turn the feature off or change the search server.
+
+Nothing is ever sent to the other servers: no follow request, no reply. They
+see one feed request a night, from the bots board.

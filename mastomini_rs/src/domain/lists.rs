@@ -193,6 +193,7 @@ impl<S: Store> Service<S> {
                 return false;
             };
             match entry {
+                Entry::Remote(_) => false,
                 Entry::Boost { id, .. } => {
                     let booster = self.state.boosts.get(&id).map_or(0, |b| bit(b.booster));
                     booster & members != 0 && (booster | bit(s.rec.author)) & hidden == 0

@@ -290,6 +290,37 @@ pub fn handle<S: KvStore>(
         Err(r) => return r,
     };
     let result: Result<Response, Response> = (|| match (method, rest) {
+        ("GET", ["bots", "sre", "actions"])
+        | ("POST", ["bots", "sre", "actions", "propose" | "approve" | "cancel"]) => {
+            Ok(crate::bots::sre_actions::api(svc, req, &body, now))
+        }
+        ("GET", ["bots", "sre", "admin-digest"]) => {
+            let i = find(svc, "sre")?;
+            Ok(Response::ok(
+                json!({"summary": svc.records[i].state.get("admin_digest"),
+                "utc_week": svc.records[i].state.get("admin_week")}),
+            ))
+        }
+        ("GET", ["bots", "sre", "overview"]) => {
+            let i = find(svc, "sre")?;
+            let body = crate::bots::sre::overview(
+                &svc.settings(i),
+                &svc.records[i].state,
+                svc.record_bytes(i),
+            );
+            Ok(Response::ok(body).with_header("Cache-Control", "no-store"))
+        }
+        ("GET", ["bots", "sre", "history"]) => {
+            let i = find(svc, "sre")?;
+            let now = now.ok_or_else(|| Response::error(503, "Clock is not set"))?;
+            Ok(Response::new(
+                200,
+                "application/json",
+                serde_json::to_vec(&crate::bots::sre_history::read(&svc.records[i].state, now))
+                    .map_err(|_| Response::error(500, "Could not encode history"))?,
+            )
+            .with_header("Cache-Control", "no-store"))
+        }
         ("GET", ["device", "public-origin"]) => {
             Ok(Response::ok(json!({"origin":svc.public_origin})))
         }
@@ -434,6 +465,88 @@ mod tests {
 
     fn authed(method: &str, url: &str, token: &str) -> Request {
         Request::new(method, url).with_header("Authorization", &format!("Bearer {token}"))
+    }
+
+    #[test]
+    fn sre_history_is_private_and_expires_without_a_new_run() {
+        let mut s = server();
+        let path = "/api/v1/bots/sre/history";
+        assert_eq!(call(&mut s, Request::new("GET", path)).status, 401);
+        let i = s.0.index("sre").unwrap();
+        crate::bots::sre_history::record(
+            &mut s.0.records[i].state,
+            NOW,
+            &[("board.local", "down")],
+        );
+        let token = s.0.sessions.start(1000);
+        let request = authed("GET", path, &token);
+        let response = call(&mut s, request.clone());
+        assert_eq!(response.status, 200);
+        assert_eq!(response.json_body()["days"][0]["statuses"], "d");
+        assert_eq!(response.header("Cache-Control"), Some("no-store"));
+        let response = handle(&mut s.0, &s.1, &request, Some(NOW + 7 * 86_400_000), 1000);
+        assert_eq!(response.json_body()["days"], json!([]));
+        assert_eq!(handle(&mut s.0, &s.1, &request, None, 1000).status, 503);
+    }
+
+    #[test]
+    fn sre_overview_is_private_and_never_shows_secrets() {
+        let mut s = server();
+        let path = "/api/v1/bots/sre/overview";
+        assert_eq!(call(&mut s, Request::new("GET", path)).status, 401);
+        let i = s.0.index("sre").unwrap();
+        s.0.records[i]
+            .settings
+            .insert("notify_ntfy_topic".into(), "SECRET-TOPIC".into());
+        s.0.records[i]
+            .settings
+            .insert("runbook_rules".into(), "heap.low = digest".into());
+        s.0.records[i]
+            .state
+            .insert("s:nanacoin.local".into(), "fail".into());
+        let token = s.0.sessions.start(1000);
+        let response = call(&mut s, authed("GET", path, &token));
+        assert_eq!(response.status, 200);
+        assert_eq!(response.header("Cache-Control"), Some("no-store"));
+        let body = response.json_body();
+        assert!(!body.to_string().contains("SECRET-TOPIC"));
+        assert_eq!(body["notify"]["channels"], json!(["ntfy"]));
+        assert_eq!(body["record"]["limit"], 4000);
+        let nanacoin = body["boards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["host"] == "nanacoin.local")
+            .unwrap();
+        assert_eq!(nanacoin["status"], "fail");
+        let heap = body["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "heap.low")
+            .unwrap();
+        assert_eq!(
+            (&heap["default"], &heap["action"]),
+            (&json!("notify"), &json!("digest"))
+        );
+    }
+
+    #[test]
+    fn sre_actions_require_an_admin_session() {
+        let mut s = server();
+        for (method, path) in [
+            ("GET", "/api/v1/bots/sre/actions"),
+            ("POST", "/api/v1/bots/sre/actions/propose"),
+            ("POST", "/api/v1/bots/sre/actions/approve"),
+            ("POST", "/api/v1/bots/sre/actions/cancel"),
+        ] {
+            assert_eq!(call(&mut s, Request::new(method, path)).status, 401);
+        }
+        let token = s.0.sessions.start(1000);
+        let response = call(&mut s, authed("GET", "/api/v1/bots/sre/actions", &token));
+        assert_eq!(response.status, 200);
+        assert_eq!(response.header("Cache-Control"), Some("no-store"));
+        assert!(response.json_body()["pending"].is_null());
     }
 
     #[test]

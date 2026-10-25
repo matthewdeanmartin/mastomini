@@ -116,6 +116,10 @@ impl DesktopClient {
 
 impl HttpClient for DesktopClient {
     fn send(&mut self, req: &HttpRequest) -> Result<HttpResponse, String> {
+        self.send_bounded(req, BODY_LIMIT as usize)
+    }
+    fn send_bounded(&mut self, req: &HttpRequest, limit: usize) -> Result<HttpResponse, String> {
+        let limit = (limit as u64).min(BODY_LIMIT);
         let mut call = self.agent.request(req.method, &req.url);
         for (name, value) in &req.headers {
             call = call.set(name, value);
@@ -135,16 +139,22 @@ impl HttpClient for DesktopClient {
             }
         };
         let status = response.status();
+        let mut kept = HttpResponse::new(status, Vec::new());
+        for name in crate::mastodon::KEPT_HEADERS {
+            if let Some(value) = response.header(name) {
+                kept.keep_header(name, value);
+            }
+        }
         let mut body = Vec::new();
         response
             .into_reader()
-            .take(BODY_LIMIT + 1)
+            .take(limit + 1)
             .read_to_end(&mut body)
             .map_err(|e| e.to_string())?;
-        if body.len() as u64 > BODY_LIMIT {
-            return Err("HTTP response exceeds 1 MiB".into());
+        if body.len() as u64 > limit {
+            return Err("HTTP response exceeds request limit".into());
         }
-        Ok(HttpResponse { status, body })
+        Ok(HttpResponse { body, ..kept })
     }
 }
 
@@ -154,6 +164,25 @@ mod tests {
     use std::io::Write;
     use std::net::TcpListener;
     use ureq::Resolver as _;
+
+    #[test]
+    fn request_specific_limit_is_enforced_by_the_socket_reader() {
+        let mut client = DesktopClient::new(None, "").unwrap();
+        let (url, task) = serve(200, vec![b'x'; 1024]);
+        assert!(client
+            .send_bounded(
+                &HttpRequest {
+                    method: "GET",
+                    url,
+                    headers: vec![],
+                    body: vec![]
+                },
+                32
+            )
+            .unwrap_err()
+            .contains("request limit"));
+        task.join().unwrap();
+    }
 
     #[test]
     fn resolver_honors_overrides_expires_cache_and_forgets_failed_addresses() {
@@ -234,7 +263,7 @@ mod tests {
             request.extend(payload);
             write!(
                 socket,
-                "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nETag: \"v1\"\r\nX-Other: no\r\nConnection: close\r\n\r\n",
                 body.len()
             )
             .unwrap();
@@ -258,13 +287,9 @@ mod tests {
                     body: payload.as_bytes().to_vec(),
                 })
                 .unwrap();
-            assert_eq!(
-                result,
-                HttpResponse {
-                    status,
-                    body: b"answer".to_vec()
-                }
-            );
+            assert_eq!((result.status, &result.body[..]), (status, &b"answer"[..]));
+            // Validators are kept; headers nobody uses are not.
+            assert_eq!(result.headers, [("etag".to_string(), "\"v1\"".to_string())]);
             let request = task.join().unwrap();
             assert!(request.starts_with(method));
             assert!(request.to_ascii_lowercase().contains("x-test: value"));
@@ -279,7 +304,7 @@ mod tests {
                 body: vec![]
             })
             .unwrap_err()
-            .contains("1 MiB"));
+            .contains("request limit"));
         task.join().unwrap();
     }
 

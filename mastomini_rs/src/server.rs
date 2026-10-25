@@ -29,6 +29,19 @@ pub trait Setup: Send + Sync {
     fn page(&self, req: &Request, provisioned: bool) -> Response;
 }
 
+/// A request to a public server: searches on other servers and signing in
+/// to the search server (api::remote_search). Bounded in time and size;
+/// `(status, body)`. Never logs the URL or body (they carry codes).
+pub trait Fetch: Send + Sync {
+    fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Result<(u16, Vec<u8>), String>;
+}
+
 pub struct Household<S: Store> {
     pub shared: Shared<S>,
     pub ctx: Arc<Ctx>,
@@ -37,6 +50,8 @@ pub struct Household<S: Store> {
     setup: Option<Box<dyn Setup>>,
     /// Called once when a request leaves the store failed (read-only).
     storage_failed: fn(),
+    /// Searches on other servers; `None`: only what the board knows.
+    fetch: Option<Box<dyn Fetch>>,
 }
 
 impl<S: Store> Household<S> {
@@ -47,7 +62,13 @@ impl<S: Store> Household<S> {
             now_ms,
             setup: None,
             storage_failed: || {},
+            fetch: None,
         }
+    }
+
+    pub fn with_fetch(mut self, fetch: Box<dyn Fetch>) -> Self {
+        self.fetch = Some(fetch);
+        self
     }
 
     pub fn with_setup(mut self, setup: Box<dyn Setup>) -> Self {
@@ -68,23 +89,13 @@ fn trace_timing() -> bool {
         || std::env::var_os("MASTOMINI_TRACE_TIMING").is_some()
 }
 
-/// The largest request body: profile uploads (`update_credentials`, with
-/// avatar and header images) stream up to this; everything else is
-/// refused by the framework above [`http::BODY_LIMIT`].
-const UPLOAD_ROUTE: &str = "/api/v1/accounts/update_credentials";
-const IMPORT_ROUTE: &str = "/api/mastomini/v1/import";
-
 /// Routes whose body streams in above [`http::BODY_LIMIT`], and their limit:
 /// profile uploads, and restoring a household export onto a new board.
 fn streamed_limit(method: &str, path: &str) -> Option<usize> {
     if !matches!(method, "PATCH" | "POST" | "PUT") {
         return None;
     }
-    match path {
-        UPLOAD_ROUTE => Some(http::UPLOAD_BODY_LIMIT),
-        IMPORT_ROUTE => Some(crate::domain::transfer::ARCHIVE_MAX),
-        _ => None,
-    }
+    Some(http::body_limit(path)).filter(|&limit| limit > http::BODY_LIMIT)
 }
 
 impl<S: Store + Send + 'static> Household<S> {
@@ -131,6 +142,7 @@ impl<S: Store + Send + 'static> Household<S> {
                 }
             }
         }
+        self.remote_lookup(request);
         let waiting = Instant::now();
         let mut service = self.lock();
         let lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
@@ -140,6 +152,33 @@ impl<S: Store + Send + 'static> Household<S> {
             (self.storage_failed)();
         }
         (response, lock_ms)
+    }
+
+    /// A search that names an account on another server: ask that server
+    /// first, without the lock, and keep the answer for the handler. The
+    /// connection loop still waits for it (handlers cannot answer later), so
+    /// the fetch is bounded and its answer cached (api::remote).
+    fn remote_lookup(&self, request: &Request) {
+        let (Some(fetch), Some(now)) = (&self.fetch, (self.now_ms)()) else {
+            return;
+        };
+        for _ in 0..api::remote_search::MAX_STEPS {
+            let Some(out) = api::remote_search::pending(&mut self.lock(), &self.ctx, request, now)
+            else {
+                return;
+            };
+            let started = Instant::now();
+            let answer = fetch.send(out.method, &out.url, &out.headers, &out.body);
+            log::info!(
+                "remote lookup {} in {} ms",
+                match &answer {
+                    Ok((status, _)) => status.to_string(),
+                    Err(_) => "failed".into(),
+                },
+                started.elapsed().as_millis()
+            );
+            api::remote_search::finish(&mut self.lock(), out, answer, now);
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Service<S>> {
@@ -186,8 +225,20 @@ impl<S: Store + Send + 'static> miniframework::Service for Household<S> {
             status,
             headers,
             body,
+            file,
         } = response;
-        reply.owned(status, content_type, body);
+        // An image on the SD card goes out 4 KiB at a time, and the lock
+        // is already released: other clients keep their turns.
+        match file.map(|path| std::fs::File::open(path).and_then(|f| Ok((f.metadata()?.len(), f))))
+        {
+            Some(Ok((len, f))) => reply.stream(status, content_type, len, Box::new(f)),
+            Some(Err(_)) => reply.owned(
+                404,
+                "application/json",
+                br#"{"error":"Record not found"}"#.to_vec(),
+            ),
+            None => reply.owned(status, content_type, body),
+        }
         for (name, value) in headers {
             if !name.eq_ignore_ascii_case("Content-Type") {
                 reply.header(name, value);
@@ -245,6 +296,12 @@ pub fn config(ctx: &Ctx, target: &str) -> Config {
     let mut config = Config::new("mastomini", ctx.host());
     config.version = env!("CARGO_PKG_VERSION");
     config.build = env!("MASTOMINI_BUILD_FINGERPRINT");
+    // Owner confirms intentionally tight internal RAM. Oct 19 history:
+    // 7,587–8,975 B free, 6,167 B low-water, 6,912 B largest block.
+    // Provisional floors below that normal band; allocation failures stay visible.
+    config.ops.heap_warn = 6 * 1024;
+    config.ops.heap_fail = 4 * 1024;
+    config.ops.largest_warn = 4 * 1024;
     config.app_paths = &["/"];
     config.body_limit = http::BODY_LIMIT;
     // Only the framework's own replies use this buffer; mastomini's
@@ -280,7 +337,7 @@ mod tests {
     fn upload(token: &str, length: usize) -> transport::Request {
         transport::Request {
             method: "PATCH".into(),
-            uri: UPLOAD_ROUTE.into(),
+            uri: http::UPLOAD_ROUTE.into(),
             headers: vec![
                 ("Authorization".into(), format!("Bearer {token}")),
                 ("Content-Type".into(), "application/json".into()),

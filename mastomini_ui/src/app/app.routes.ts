@@ -8,6 +8,12 @@ import { adminOnly, ownerOnly, signedIn, scopedAdminOnly, unsavedAdminChanges } 
  */
 export const routes: Routes = [
   {
+    path: 'remote',
+    loadComponent: () => import('./pages/remote').then((m) => m.RemotePage),
+    title: 'Accounts elsewhere — mastomini',
+    canActivate: [signedIn],
+  },
+  {
     path: 'scheduled',
     loadComponent: () => import('./pages/scheduled').then((m) => m.ScheduledPage),
     title: 'Scheduled posts � mastomini',
@@ -59,6 +65,12 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/server').then((m) => m.ServerPage),
     title: 'Server — mastomini',
     canActivate: [adminOnly],
+  },
+  {
+    path: 'admin/remote',
+    loadComponent: () => import('./pages/remote-admin').then((m) => m.RemoteAdminPage),
+    title: 'Accounts elsewhere — mastomini',
+    canActivate: [scopedAdminOnly],
   },
   {
     path: 'admin/health',

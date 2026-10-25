@@ -132,6 +132,7 @@ mod tests {
                     return Err("offline".into());
                 }
                 Ok(crate::mastodon::HttpResponse {
+                    headers: Vec::new(),
                     status: 200,
                     body: br#"{"mode":"local","state":"operational"}"#.to_vec(),
                 })

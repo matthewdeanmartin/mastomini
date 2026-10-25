@@ -69,3 +69,8 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 
 # Resolve the trusted bots board for scheduler handoffs.
 CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=y
+
+# Searches on public servers (src/bin/esp32/public_client.rs) verify against
+# the public CA bundle.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y

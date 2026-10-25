@@ -14,6 +14,11 @@ import { when } from './format';
   template: `
     <h1>Moderation</h1>
     <p class="lede">Review household reports, take action, and resolve each case when finished.</p>
+    <p><button class="btn" type="button" (click)="loadDigest()">Show admin counts</button></p>
+    @if (digest(); as d) {
+      <p>{{ d.unresolved_reports }} open reports · {{ d.pending_approvals }} pending approvals ·
+         {{ d.invites_expiring_7d }} invites expire within seven days.</p>
+    }
     @if (error()) {
       <p class="error" role="alert">{{ error() }}</p>
     }
@@ -225,6 +230,11 @@ export class ModerationPage implements OnInit, OnDestroy {
   readonly previous = signal<string | null>(null);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly digest = signal<Awaited<ReturnType<Admin['digest']>> | null>(null);
+  async loadDigest(): Promise<void> {
+    try { this.digest.set(await this.admin.digest()); }
+    catch (e) { this.error.set(describe(e)); }
+  }
   readonly busy = signal(false);
   readonly loading = signal(false);
   readonly loaded = signal(false);

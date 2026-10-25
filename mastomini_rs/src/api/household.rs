@@ -34,6 +34,38 @@ fn status<S: Store>(c: &mut Call<'_, S>) -> Reply {
     })))
 }
 
+/// Counts only, computed on demand. No copies of reports, people or codes.
+fn admin_digest<S: Store>(c: &Call<'_, S>) -> Reply {
+    let actor = c.user_scoped("admin:read")?;
+    c.svc.require_admin(actor).map_err(fail)?;
+    let until = c.now.saturating_add(7 * 86_400_000);
+    let unresolved = c
+        .svc
+        .state
+        .reports
+        .values()
+        .filter(|r| r.action_taken_ms.is_none())
+        .count();
+    let expiring = c
+        .svc
+        .state
+        .invites
+        .values()
+        .filter(|r| {
+            matches!(r.kind, CodeKind::Invite) && r.expires_ms > c.now && r.expires_ms <= until
+        })
+        .count();
+    Ok(Response::ok(json!({
+        "schema": "mastomini.admin-digest/1",
+        "at_ms": c.now,
+        "unresolved_reports": unresolved,
+        // Household membership is invite-only; there is no approval queue.
+        "pending_approvals": 0,
+        "invites_expiring_7d": expiring,
+    }))
+    .with_header("Cache-Control", "no-store"))
+}
+
 fn member_from<S: Store>(c: &Call<'_, S>, default_role: Role) -> Result<NewMember, Response> {
     let p = &c.params;
     let role = match p.get("role") {
@@ -499,6 +531,7 @@ fn revoke_device<S: Store>(c: &mut Call<'_, S>, id: &str) -> Reply {
 pub(crate) fn route<S: Store>(c: &mut Call<'_, S>, method: &str, seg: &[&str]) -> Option<Reply> {
     Some(match (method, seg) {
         ("GET", ["status"]) => status(c),
+        ("GET", ["admin", "digest"]) => admin_digest(c),
         ("POST", ["admin", "bots", "login"]) => bot_login(c),
         ("GET", ["admin", "bots", "capacity"]) => bot_capacity(c),
         ("POST", ["admin", "bots"]) => create_bot(c),

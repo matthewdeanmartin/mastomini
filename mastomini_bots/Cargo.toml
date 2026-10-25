@@ -28,6 +28,11 @@ esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "bundled-web"]
 http2 = ["miniframework/http2"]
 # Embed the admin app (mastomini_bots_ui); needs `make web` first.
 bundled-web = []
+# Tests against a real mastomini and NanaCoin, in process (`make test`,
+# `make lint`). Optional dependencies, not dev-dependencies: esp-idf-sys takes
+# ESP-IDF components from every direct dependency, dev ones included, and
+# their mDNS declarations next to ours made the firmware manifest invalid.
+e2e = ["dep:mastomini", "dep:nanacoin"]
 
 [dependencies]
 base64 = "0.22"
@@ -38,7 +43,15 @@ pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 getrandom = "0.2"
 percent-encoding = "2.3"
 log = "0.4"
-miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls", "ops"] }
+# The feeds bot (src/bots/feeds.rs): RSS/Atom, and JPEG previews of images.
+quick-xml = { version = "0.37", default-features = false }
+jpeg-decoder = { version = "0.3", default-features = false }
+jpeg-encoder = { version = "0.6", default-features = false, features = ["std"] }
+png = { version = "0.17", default-features = false }
+# The `e2e` feature's servers (see [features]).
+mastomini = { package = "mastomini_rs", path = "../mastomini_rs", default-features = false, optional = true }
+nanacoin = { package = "nanacoin_rs", path = "../../nanacoin/nanacoin_rs", default-features = false, optional = true }
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls", "ops", "ota"] }
 # Desktop only. miniframework serves HTTP (or HTTPS with make certs),
 # the Mastodon client is ureq with the public roots plus the household CA.
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls", "json"] }
@@ -54,8 +67,6 @@ embuild = { version = "0.33", optional = true, features = ["espidf"] }
 
 [dev-dependencies]
 tempfile = "3"
-mastomini = { package = "mastomini_rs", path = "../mastomini_rs", default-features = false }
-nanacoin = { package = "nanacoin_rs", path = "../../nanacoin/nanacoin_rs", default-features = false }
 
 [profile.release]
 opt-level = "s"
@@ -70,3 +81,8 @@ esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "1.8.2" }
 bindings_header = "src/mdns_bindings.h"
+
+# Xtensa l32r literals reach 256 KiB: fully inlined, ed25519-compact makes one
+# function far larger than that and fails to link. Size-first keeps it small.
+[profile.release.package.ed25519-compact]
+opt-level = "z"

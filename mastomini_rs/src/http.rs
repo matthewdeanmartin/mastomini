@@ -11,6 +11,33 @@ use serde_json::Value;
 pub const BODY_LIMIT: usize = 4 * 1024;
 /// `update_credentials` may carry avatar/header images.
 pub const UPLOAD_BODY_LIMIT: usize = 160 * 1024;
+pub const UPLOAD_ROUTE: &str = "/api/v1/accounts/update_credentials";
+/// Restoring a household export onto a new board (domain::transfer).
+pub const IMPORT_ROUTE: &str = "/api/mastomini/v1/import";
+
+/// The largest body a route accepts. One table for the server's streaming
+/// and the API's check: when they disagreed, the server streamed a 10 KiB
+/// export in and the API refused it as too large (413).
+pub fn body_limit(path: &str) -> usize {
+    match path {
+        UPLOAD_ROUTE => UPLOAD_BODY_LIMIT,
+        IMPORT_ROUTE => crate::domain::transfer::ARCHIVE_MAX,
+        _ => match path
+            .strip_prefix(FEEDS_ROUTE)
+            .and_then(|p| p.split_once('/'))
+        {
+            // The bots board's nightly pushes (domain::remote).
+            Some((_, "result")) => FEED_RESULT_LIMIT,
+            Some((_, "media")) => crate::domain::remote::MAX_IMAGE_BYTES,
+            _ => BODY_LIMIT,
+        },
+    }
+}
+
+/// `/api/mastomini/v1/feeds/<account id>/{result,media}`.
+pub const FEEDS_ROUTE: &str = "/api/mastomini/v1/feeds/";
+/// One feed's posts: 20 posts of at most 2 KB text, plus links.
+pub const FEED_RESULT_LIMIT: usize = 96 * 1024;
 
 /// Log only fixed route segments, never account IDs, tag names or query values.
 pub fn route_label(path: &str) -> String {
@@ -155,6 +182,9 @@ pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Send this file instead of `body`, read as it is sent (an image on
+    /// the SD card), so it never sits whole in RAM.
+    pub file: Option<std::path::PathBuf>,
 }
 
 impl Response {
@@ -163,6 +193,15 @@ impl Response {
             status,
             headers: vec![("Content-Type".into(), content_type.into())],
             body: body.into(),
+            file: None,
+        }
+    }
+
+    /// A file streamed from disk; see [`Response::file`].
+    pub fn file(content_type: &str, path: std::path::PathBuf) -> Response {
+        Response {
+            file: Some(path),
+            ..Response::new(200, content_type, Vec::new())
         }
     }
 
@@ -288,6 +327,10 @@ impl Params {
                 .map(|b| b.trim_matches('"').to_string())
                 .ok_or("Missing multipart boundary")?;
             params.add_multipart(&req.body, &boundary)?;
+        } else if content_type.starts_with("image/")
+            || content_type.starts_with("application/octet-stream")
+        {
+            // A raw upload: the handler reads the body itself.
         } else {
             // Forms, and clients that omit the content type.
             params.add_urlencoded(&String::from_utf8_lossy(&req.body));

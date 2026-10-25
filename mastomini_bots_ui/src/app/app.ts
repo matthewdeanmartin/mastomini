@@ -15,6 +15,7 @@ import { Session } from './api/session';
       @if (session.signedIn()) {
         <nav>
           <a routerLink="/bots" routerLinkActive="on">Bots</a>
+          <a routerLink="/sre" routerLinkActive="on">SRE</a>
           <a routerLink="/activity" routerLinkActive="on">Activity</a>
           <a routerLink="/device" routerLinkActive="on">Device</a>
         </nav>

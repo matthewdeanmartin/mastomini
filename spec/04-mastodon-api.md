@@ -51,7 +51,7 @@ features we don't implement. (Open question: 4.3 vs 4.4.)
 | Notifications (persistent, see 02) | `GET /api/v1/notifications` (types/exclude_types/account_id), `GET /:id`, `POST /clear`, `POST /:id/dismiss`, `GET /api/v1/notifications/unread_count` |
 | Markers | `GET/POST /api/v1/markers` (RAM only, reset on reboot) |
 | Prefs & misc | `GET /api/v1/preferences`, `GET /api/v1/custom_emojis` (`[]`), `GET /api/v1/announcements` (published local notices), `GET /api/v1/followed_tags` (persistent) |
-| Search | `GET /api/v2/search` (accounts, hashtags, statuses: linear scan over RAM), `resolve=true` never goes off-box |
+| Search | `GET /api/v2/search` (accounts, hashtags, statuses: linear scan over RAM), `resolve=true` may ask one other server: the named account's own server for `@name@server`, the household's search server for a name ([remote_follow_rss.md](remote_follow_rss.md)) |
 
 ## Tier 2 — commonly used
 
@@ -178,7 +178,11 @@ Household rules:
 
 ## Semantics that differ from Mastodon
 
-- **No remote anything.** `acct` is always the bare username. `url` / `uri`
+- **Remote accounts are read by RSS.** Accounts on other servers have
+  `acct` `name@server`, can be followed and unfollowed, and their posts are
+  read-only (`422` for favourite, boost, reply); see
+  [remote_follow_rss.md](remote_follow_rss.md). For household accounts
+  `acct` is always the bare username. `url` / `uri`
   are `https://<host>/@<username>` and `https://<host>/@<username>/<id>`. The server
   serves no HTML for these URLs except a redirect to the household app.
 - **Rules and terms.** A new household starts with three rules (be patient, the

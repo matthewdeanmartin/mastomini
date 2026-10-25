@@ -16,6 +16,10 @@ pub fn tick<S: KvStore>(
     if crate::enrollment::tick(svc, http, now()) {
         return 0;
     }
+    crate::bots::sre_actions::mentions(svc, http, now());
+    if crate::bots::sre_actions::tick(svc, http, now()) {
+        return 0;
+    }
     let (jobs, bots) = {
         let mut svc = svc.lock().unwrap_or_else(|e| e.into_inner());
         (svc.due(now()), Arc::clone(&svc.bots))
@@ -28,6 +32,7 @@ pub fn tick<S: KvStore>(
             .unwrap_or_else(|e| e.into_inner())
             .finish(job, started, finished, outcome);
     }
+    crate::bots::sre_actions::suggest(svc, now());
     crate::profiles::tick(svc, http, now());
     jobs.len()
 }
@@ -96,6 +101,7 @@ mod tests {
                 "Network I/O must not hold the admin API lock"
             );
             Ok(HttpResponse {
+                headers: Vec::new(),
                 status: 200,
                 body: vec![],
             })

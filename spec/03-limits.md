@@ -78,6 +78,11 @@ and the server agree:
 | Posts per report | 10 | `422` |
 | Collections | 8 per account, items inline (≤ 15 other members) | `422` |
 | Notifications (persisted, RAM cache, all accounts) | 512 | oldest dropped; survives reboot |
+| Accounts followed on other servers | 30 household / 10 per person by default, admin-set up to 64 / 32 | `422` naming the limit |
+| Their posts (`mm_remote`) | 20 per account, 1,280 in all | oldest dropped |
+| Their pictures (SD card only) | 4 per post, 640 px, 128 KiB each; 256 MiB by default, admin-set | oldest posts' pictures dropped |
+| Device keys | 4 | `422` |
+| Searches on other servers | 30 per person per hour, answers cached 10 minutes | local results only |
 | Invites / reset codes | 8 live, 7-day expiry | oldest expired first |
 | Custom emoji | 0 | `[]` |
 | Polls | 2–4 options × 50 chars, 1 poll per status, 5 minutes to 7 days, not in direct messages | `422` |

@@ -15,12 +15,24 @@ import sys
 import tempfile
 
 # (type, subtype, offset, size): must match partitions.csv exactly.
-BOTS_LAYOUT = {
+# The first layout (partitions-v1.csv): one app slot. scripts/relayout.py
+# moves a board from it to BOTS_LAYOUT, once.
+BOTS_LAYOUT_V1 = {
     'nvs': (1, 0x02, 0x9000, 0x6000),
     'phy_init': (1, 0x01, 0xF000, 0x1000),
     'factory': (0, 0x00, 0x10000, 0x400000),
     'store': (1, 0x02, 0x410000, 0x100000),
     'coredump': (1, 0x03, 0x510000, 0x10000),
+}
+# The OTA layout (partitions.csv): the same data partitions, two app slots.
+BOTS_LAYOUT = {
+    'nvs': (1, 0x02, 0x9000, 0x6000),
+    'phy_init': (1, 0x01, 0xF000, 0x1000),
+    'ota_0': (0, 0x10, 0x10000, 0x400000),
+    'store': (1, 0x02, 0x410000, 0x100000),
+    'coredump': (1, 0x03, 0x510000, 0x10000),
+    'otadata': (1, 0x00, 0x520000, 0x2000),
+    'ota_1': (0, 0x11, 0x530000, 0x400000),
 }
 # mastomini's layout (../mastomini_rs/partitions.csv): a board with it holds
 # a household's posts and accounts.

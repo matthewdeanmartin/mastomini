@@ -12,7 +12,7 @@ fi
 : "${MINICLOUD_ADMIN_TOKEN:?Set MINICLOUD_ADMIN_TOKEN (7+ characters)}"
 if [[ ${#MINICLOUD_ADMIN_TOKEN} -lt 7 ]]; then echo 'Admin token must be 7+ characters' >&2; exit 1; fi
 if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/mcr}"
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/tmp/mcr}"
   export IDF_PATH="C:/Espressif/frameworks/esp-idf-v5.5.3"
   export IDF_TOOLS_PATH="C:/Espressif"
   export ESP_IDF_TOOLS_INSTALL_DIR=fromenv

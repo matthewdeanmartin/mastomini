@@ -917,3 +917,5 @@ fn discovery_etags_depend_on_request_origin() {
 mod scheduled;
 
 mod notifications;
+
+mod remote;

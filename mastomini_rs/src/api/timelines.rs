@@ -224,7 +224,8 @@ pub(super) fn search<S: Store>(c: &Call<'_, S>) -> Reply {
     let offset = c.params.u64("offset").unwrap_or(0) as usize;
     let want = |t: &str| kind.is_empty() || kind == t;
     let accounts: Vec<Value> = if want("accounts") {
-        c.svc
+        let mut accounts: Vec<Value> = c
+            .svc
             .search_accounts(&q, offset + limit)
             .into_iter()
             .skip(offset)
@@ -233,18 +234,52 @@ pub(super) fn search<S: Store>(c: &Call<'_, S>) -> Reply {
             .filter(|slot| *slot == viewer || !c.svc.state.suspended(*slot))
             .filter_map(|slot| c.svc.state.account(slot))
             .map(|a| entities::account(c.svc, c.ctx, a))
-            .collect()
+            .collect();
+        // Then accounts on other servers this board knows of.
+        if offset == 0 && accounts.len() < limit {
+            let viewer_bit = crate::domain::bit(viewer);
+            let following = c.params.flag("following");
+            accounts.extend(
+                super::remote::search_accounts(c, viewer, &q, limit - accounts.len())
+                    .into_iter()
+                    .filter(|a| {
+                        !following
+                            || a["id"]
+                                .as_str()
+                                .and_then(crate::ids::parse)
+                                .is_some_and(|id| {
+                                    c.svc
+                                        .remote
+                                        .accounts
+                                        .get(&id)
+                                        .is_some_and(|r| r.followers & viewer_bit != 0)
+                                })
+                    }),
+            );
+        }
+        accounts
     } else {
         Vec::new()
     };
     let statuses: Vec<Value> = if want("statuses") {
-        c.svc
+        let mut found: Vec<Value> = c
+            .svc
             .search_statuses(viewer, &q, offset + limit)
             .into_iter()
             .skip(offset)
             .filter_map(|id| c.svc.state.statuses.get(&id))
             .map(|s| entities::status(c.svc, c.ctx, s, Some(viewer)))
-            .collect()
+            .collect();
+        // Then posts from accounts elsewhere the viewer follows.
+        if offset == 0 && found.len() < limit {
+            found.extend(super::remote::search_statuses(
+                c,
+                viewer,
+                &q,
+                limit - found.len(),
+            ));
+        }
+        found
     } else {
         Vec::new()
     };

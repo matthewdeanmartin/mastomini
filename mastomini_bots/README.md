@@ -22,6 +22,7 @@ Bots in this build:
 | `fishtank` | A daily emoji aquarium at 10:00. Reconstructs moving fish from seed `42` and start date `2026-10-08`; no model, saved board or old-post reads. |
 | `mars_rover` | Mars Expedition: a seeded rover exploring an 8×8 Mars map. Polls commands every 5 minutes; daily mission log at noon. Its game state lives in checkpoints in the mission thread. No model calls. |
 | `nana_news` | NanaCoin news: twice a day (08:00, 20:00) posts what happened in the economy — lottos, listings, loan requests… One checkbox per category; crowded categories roll up into one line. Needs a NanaCoin read key. |
+| `feeds` | Feeds from other servers: each night (03:00 by default) fetches the RSS feeds of accounts household members follow on other servers, makes small JPEG previews of their pictures, and hands both to mastomini with a device key from its admin page. Never posts. Design: [`spec/remote_follow_rss.md`](../spec/remote_follow_rss.md). |
 | `sre` | SRE digest: at 07:30 reads every board's `/.well-known/ops/health` (miniframework `ops` feature) and posts a followers-only headline with what is wrong and what changed since yesterday, plus one reply per unhealthy board. Read-only; a model may optionally write the headline. Design: [`spec/OPS.md`](../../microcontroller/miniframework/spec/OPS.md). |
 | `trader_1` … `trader_6` | NanaCoin traders: each a bot member with its own money, key and strategy (forex band, lotto, borrower, bot bank, steady buyer, rebalancer, mean reversion). Dry run until turned off; posts its trades when it has a Mastodon key. |
 
@@ -377,7 +378,7 @@ and `make install` (first install) refuse the mastomini board, by its layout
 and its MAC.
 
 ```sh
-make firmware         # C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-*.bin; no board access
+make firmware         # C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-*.bin; no board access
 ```
 
 Wi-Fi credentials come from `MASTOMINI_WIFI_SSID` / `MASTOMINI_WIFI_PASSWORD`

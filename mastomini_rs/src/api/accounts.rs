@@ -122,6 +122,29 @@ fn search<S: Store>(c: &Call<'_, S>) -> Reply {
         .filter_map(|slot| c.svc.state.account(slot))
         .map(|a| entities::account(c.svc, c.ctx, a))
         .collect();
+    let mut rows = rows;
+    // Accounts elsewhere this board knows of (followed, or found by an
+    // earlier search) fill the rest.
+    if rows.len() < limit {
+        let viewer_bit = crate::domain::bit(viewer);
+        rows.extend(
+            super::remote::search_accounts(c, viewer, q, limit - rows.len())
+                .into_iter()
+                .filter(|a| {
+                    !following
+                        || a["id"]
+                            .as_str()
+                            .and_then(crate::ids::parse)
+                            .is_some_and(|id| {
+                                c.svc
+                                    .remote
+                                    .accounts
+                                    .get(&id)
+                                    .is_some_and(|r| r.followers & viewer_bit != 0)
+                            })
+                }),
+        );
+    }
     Ok(Response::ok(Value::Array(rows)))
 }
 

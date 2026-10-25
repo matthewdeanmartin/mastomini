@@ -91,7 +91,7 @@ impl Bot for Shoebox {
             .get("pending_day")
             .cloned()
             .unwrap_or_else(|| "1".into());
-        let text = format!("Day {day}: {}", turn.text);
+        let text = day_text(&day, &turn.text);
         let status = story::status(run, &text, limit, None);
         let mut body = json!({"status": status.text, "visibility": run.settings.get("visibility")});
         if turn.ending == "PLAY" {
@@ -131,6 +131,15 @@ impl Bot for Shoebox {
         run.state.remove("pending_day");
         Ok(format!("Shoebox turn posted ({})", turn.ending))
     }
+}
+
+fn day_text(day: &str, text: &str) -> String {
+    let prefix = format!("Day {day}:");
+    let mut body = text.trim();
+    while let Some(rest) = body.strip_prefix(&prefix) {
+        body = rest.trim_start();
+    }
+    format!("{prefix} {body}")
 }
 
 fn choose(counts: &[u64]) -> Result<usize, RunError> {
@@ -215,6 +224,11 @@ impl Turn {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn day_prefix_appears_once() {
+        assert_eq!(day_text("1", "Day 1: Day 1: Hello"), "Day 1: Hello");
+        assert_eq!(day_text("2", "Hello"), "Day 2: Hello");
+    }
     #[test]
     fn votes_and_abstentions() {
         for _ in 0..100 {

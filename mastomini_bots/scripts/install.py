@@ -18,10 +18,10 @@ import hashlib
 import pathlib
 import subprocess
 
-from board import (APP_LIMIT, BOOTLOADER, BOTS_LAYOUT, FLASH_SIZE, IMAGE, TABLE, check_image, describe,
+from board import (APP_LIMIT, BOOTLOADER, BOTS_LAYOUT, BOTS_LAYOUT_V1, FLASH_SIZE, IMAGE, TABLE, check_image, describe,
                    esptool, read_mac, read_table, refuse_mastomini)
 
-ERASE = ['nvs', 'store', 'coredump']
+ERASE = ['nvs', 'store', 'coredump', 'otadata']
 
 
 def main():
@@ -48,7 +48,7 @@ def main():
     print(f'Board on {args.port}: MAC {mac}')
     print(f'Current partition table:\n{describe(table)}')
     refuse_mastomini(mac, table)
-    if table == BOTS_LAYOUT:
+    if table in (BOTS_LAYOUT, BOTS_LAYOUT_V1):
         raise SystemExit('REFUSED: this board already runs mastomini-bots. Installing would erase its settings.\n'
                          'Use scripts/deploy.sh to upgrade it.')
     print('Plan: full backup, erase ' + ', '.join(ERASE) + ', write bootloader/partition table/application.')

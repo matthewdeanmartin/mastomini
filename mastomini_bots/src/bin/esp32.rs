@@ -56,6 +56,10 @@ const CA_PEM: &str = include_str!("../../certs/household-ca.crt");
 const CA_DER: &[u8] = include_bytes!("../../certs/household-ca.der");
 const CERT_INFO: &str = include_str!("../../certs/certificate.json");
 
+/// An update must carry this board's marker (miniframework `ota`).
+#[used]
+static BOARD_MARKER: &str = "MASTOMINI_BOTS-BOARD:s3:mastomini-bots.local;";
+
 type Shared = Arc<Mutex<Service<nvs_kv::NvsKv>>>;
 
 /// Before this instant SNTP has not set the clock (2024-01-01).
@@ -102,6 +106,23 @@ fn platform() -> Platform {
         wifi_rssi: rssi,
         reset_reason: Some(reset_reason()),
         ip: esp::station_ip(),
+    }
+}
+
+/// The board's resolver, except our own name: ESP-IDF's mDNS never answers
+/// its own query (ESP_ERR_NOT_FOUND), so the SRE bot reading this board's
+/// health would report it down. Our own name is our station address.
+fn resolver(
+    inner: impl Fn(&str, u16) -> std::io::Result<std::net::SocketAddr> + Send + 'static,
+) -> impl Fn(&str, u16) -> std::io::Result<std::net::SocketAddr> + Send + 'static {
+    move |host, port| {
+        let own = host
+            .strip_suffix(".local")
+            .is_some_and(|name| name.eq_ignore_ascii_case(HOSTNAME));
+        match esp::station_ip().and_then(|ip| ip.parse::<std::net::Ipv4Addr>().ok()) {
+            Some(ip) if own => Ok((ip, port).into()),
+            _ => inner(host, port),
+        }
     }
 }
 
@@ -172,11 +193,40 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info: serde_json::from_str(CERT_INFO)?,
         }),
     });
+    use miniframework::esp::ota as esp_ota;
+    let updates = server::Updates {
+        updater: miniframework::ota::Updater {
+            app: "mastomini-bots",
+            marker: BOARD_MARKER.to_string(),
+            chip: "esp32s3",
+            chip_id: Some(9),
+            keys: option_env!("MASTOBOTS_OTA_PUBKEY")
+                .and_then(miniframework::ota::parse_key)
+                .into_iter()
+                .collect(),
+            max_size: 0x400000,
+            version: option_env!("MASTOBOTS_OTA_VERSION")
+                .unwrap_or(env!("MASTOBOTS_BUILT_MS"))
+                .to_string(),
+            slot: Box::new(|| Box::new(esp_ota::EspSlot::default())),
+            installed: Box::new(|| esp_ota::restart_soon(Duration::from_secs(2))),
+            state: Box::new(|| {
+                let (slot, trial) = esp_ota::running();
+                (esp_ota::available(), slot, trial)
+            }),
+            last: Default::default(),
+        },
+        deploy_key: option_env!("MASTOBOTS_OTA_KEY"),
+    };
     let site = Site::new(
         server::config(&format!("{HOSTNAME}.local"), "esp32s3"),
-        Bots::new(Arc::clone(&shared), ctx, now_ms, uptime_ms).on_error(status_led::error),
+        Bots::new(Arc::clone(&shared), ctx, now_ms, uptime_ms)
+            .on_error(status_led::error)
+            .with_updates(updates),
         board.platform(peripherals.temp_sensor),
     );
+    // A new image is kept only after a healthy minute; otherwise it rolls back.
+    esp_ota::confirm_when_healthy(Duration::from_secs(60), || true);
 
     // The scheduler: its own task, so a slow server never holds up the admin
     // site. TLS client handshakes need a deep stack.
@@ -189,7 +239,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     .set()?;
     {
         let shared = Arc::clone(&shared);
-        let resolver = board.resolver();
+        let resolver = resolver(board.resolver());
         std::thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || {
@@ -205,7 +255,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Independent timer worker: an LLM request must not hold up scheduled posts.
     {
         let shared = Arc::clone(&shared);
-        let resolver = board.resolver();
+        let resolver = resolver(board.resolver());
         std::thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || {

@@ -17,6 +17,7 @@
 use crate::bot::Bot;
 
 mod daily_prompt;
+pub mod feeds;
 pub mod fishtank;
 pub mod good_morning;
 pub mod llm;
@@ -25,6 +26,12 @@ pub mod mars_rover;
 pub mod nana_news;
 pub mod shoebox;
 pub mod sre;
+pub mod sre_actions;
+pub mod sre_admin;
+pub mod sre_findings;
+pub mod sre_history;
+pub mod sre_issues;
+pub mod sre_trends;
 mod story;
 pub mod trader;
 
@@ -48,6 +55,7 @@ pub fn all() -> Vec<Box<dyn Bot>> {
         }),
         Box::new(nana_news::NanaNews),
         Box::new(sre::Sre),
+        Box::new(feeds::Feeds),
         // Six traders: each its own NanaCoin bot member, key and strategy.
         Box::new(trader::Trader {
             id: "trader_1",

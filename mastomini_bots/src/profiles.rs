@@ -120,7 +120,12 @@ pub fn tick<S: KvStore>(
         let svc = shared.lock().unwrap_or_else(|e| e.into_inner());
         (0..svc.infos.len()).find_map(|i| {
             let config = &svc.records[i].config;
-            if config.instance.is_empty() || config.token.is_empty() || svc.runtime[i].running {
+            // A mastomini device key (the feeds bot) is not an account: no profile.
+            if config.instance.is_empty()
+                || config.token.is_empty()
+                || config.token.starts_with("mmdev_")
+                || svc.runtime[i].running
+            {
                 return None;
             }
             let sig = signature(

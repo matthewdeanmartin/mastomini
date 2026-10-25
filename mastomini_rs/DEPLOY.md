@@ -1,4 +1,95 @@
-# Deploy mastomini to the ESP32-S3 board
+# Deploy mastomini to the household board
+
+**Since 2026-10-21 the household runs on the ESP32-P4** (COM19). Upgrade it
+with `make deploy-takeover PORT=COM19`. The S3 steps below are history: the
+S3 was repurposed for party the same evening (`microcontroller/party`), so
+there is no board-level rollback; the encrypted export in `../.local/move/`
+is the only copy of the household from before the move.
+
+### 2026-10-21: household moved from the ESP32-S3 to the ESP32-P4
+
+- Why: the S3 was the slowest board in the house, running at 6–8 KiB free
+  internal RAM; the P4 measured roughly twice as fast on October 9
+  (see *Deployment comments*). Procedure C (new, below).
+- Rehearsal on the P4's test household first (owner, alice, bob, carol, 48
+  posts): app-only upgrade to `a46f779` + working tree, export 9.7 KB / 107
+  records, erase, import → **HTTP 413**. The API's body check knew only the
+  upload route and refused anything over 4 KiB, although the server
+  streamed the import in; every real household is bigger. Fixed with one
+  limit table (`http::body_limit`), regression test
+  `a_household_larger_than_the_general_body_limit_restores`; 250 Rust tests,
+  10 property tests, clippy and fmt pass (the full `make check` was not run).
+  Rehearsal again: 4 accounts / 48 posts restored in 2.8 s, alice's
+  pre-move token still read her timeline.
+- Takeover image (`make firmware-takeover BOARD=p4`, HTTP/2 on; the S3's last
+  image was built without it): 2,659,744 bytes, sha256 `fb10d8b0…1623e2`,
+  embeds `mastomini.local` and `certs/`. COM19, MAC `e8:f6:0a:e3:6f:a2`,
+  layout verified; app written at 921600 baud in 26.7 s (138 s at the
+  default); store, media, coredump erased; chip held in its bootloader.
+- Cutover 20:38 UTC: S3 at 19 accounts / 166 posts. Export 47,494 bytes,
+  374 records, schema 9, 8.1 s on the S3; P4 booted; import 3.8 s →
+  19 / 166. S3 still 19 / 166 after the import. The owner had 8 sessions
+  after the move sign-in, so one stale owner device may have been evicted
+  and need to sign in again. The move token was revoked on both boards.
+- P4 checks: probe passed (household CA, `certs/mastomini.crt`), firmware
+  matches the working tree, health ok: 302 KiB internal free (lowest
+  197 KiB), largest block 104 KiB, -57 dBm. Address `192.168.1.164`.
+- Logs: `../.local/transplant-*.log`. Archive and passphrase:
+  `../.local/move/`. Keep them: once the S3 became party's board (same
+  evening, no flash backup), the archive is the only pre-move copy.
+- Note: 192.168.1.161 now answers as `party.local`. Anything that reached
+  mastomini by that IP instead of `mastomini.local` now reaches party.
+
+### 2026-10-19: SRE Sprint 1/2 prepared image deployed
+
+- Owner attached Mastomini and authorized flashing. COM11 native USB serial
+  and esptool both identified MAC `ac:a7:04:2c:29:9c`. Read-only install
+  preflight confirmed the existing layout: nvs 0x9000/0x6000,
+  phy_init 0xf000/0x1000, factory 0x10000/0x400000, store 0x410000/0x800000,
+  media 0xc10000/0x300000, coredump 0xf10000/0x10000.
+- Procedure A (`scripts/deploy.py`), prepared 2,624,640-byte app only at
+  0x10000; hash verified. No data partitions or certificates written.
+  No new backup taken for this app-only upgrade. Prepared-image validation
+  previously passed: 249 Rust tests, 10 property tests, smoke, 27 client
+  tests and conformance 139 passed / 58 skipped / 13 expected failures.
+- Dirty revision `a46f779b7d92`, fingerprint `81fa4917af49`, built
+  `2026-10-20T00:19:22.533Z`. `make board-version` confirms the running
+  firmware matches the working tree. Frozen image SHA-256:
+  `e8afd6b6f6e6efec77c68f27391fc72a537c9ed13d12623bc2ec243725db582a`.
+- Documented watchdog boot-log procedure passed: provisioned=true,
+  accounts=18, statuses=120, repairs=0; ready at `192.168.1.161`.
+  No immediate pre-flash count snapshot was taken; the previous deployment
+  recorded 18 accounts and 117 posts, so this is not an exact before/after
+  comparison. No accounts or posts were created for verification.
+- Strict probes passed by IP and `mastomini.local`; all 21 bundled UI assets
+  matched over verified HTTPS. Health at 51 seconds: ok, 8 KiB internal
+  free, minimum 6 KiB, largest block 7 KiB, zero allocation failures.
+  This confirms calibrated thresholds, not additional RAM or a loaded soak.
+  Admin digest rejects anonymous requests with 401; action catalog is empty.
+- Receipt: `../mastomini_bots/.local/sprint2-20261019/mastomini.receipt.json`;
+  baseline `mastomini.local=81fa4917af49`. Logs: `.local/sre-sprint2-`
+  `identify.log`, `flash.log`, `boot.log`, `probe-ip.log`, `probe-host.log`.
+  No bot settings or activation were changed.
+
+### 2026-10-19: Ops health endpoint deployed (SRE sprint 0)
+
+- Procedure A on COM11, MAC `ac:a7:04:2c:29:9c`; dry run showed the unchanged
+  mastomini layout. Revision `a46f779`, clean tree. `make check` passed
+  (conformance 139 passed / 58 skipped / 13 expected failures).
+- No pre-upgrade backup, at the owner's request (slow, flaky USB; the
+  first attempt failed at 16% with a short read, and nothing was written).
+- Application 2,607,360 / 4,194,304 bytes; hash verified; only 0x10000 written.
+  Boot: provisioned=true accounts=18 statuses=117 repairs=0, ready at
+  `192.168.1.161`. Probe passed; firmware matches the working tree.
+- New: `GET /.well-known/ops/health` (miniframework `ops`). First reading
+  15 s after boot: `heap.internal` **fail** (8 KiB free, lowest 6 KiB) and
+  `heap.largest` warn (6 KiB), so the default thresholds (warn below 32 KiB,
+  fail below 16 KiB) are tighter than this board's normal operating point.
+  Calibrate `Config::ops` from housemetrics history before trusting the digest.
+  `store.entries` 1% used.
+- Logs: `.local/ops-deploy-check.log`, `.local/ops-deploy-firmware.log`,
+  `.local/ops-deploy-flash.log`, `.local/ops-postdeploy-boot.log`,
+  `.local/ops-postdeploy-probe.log`.
 
 ### 2026-10-19: Persistent notifications deployed (schema 9)
 
@@ -18,7 +109,7 @@
   SHA-256 `1c3f2143bb17e35a8baa2b0a4a53c1dff63e5c2130ae9b36796ad3a61e6bc7f8`.
   Private household backup; never commit its contents.
 - S3 HTTP/2 application: 2,626,960 bytes / 4,194,304 bytes, at
-  `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
+  `C:/tmp/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
   SHA-256 `a1c57c599d471fa7c695940e254cf7fe7cd673b349f6a1b926d80814c1a51b91`.
   Fingerprint `923fd171aaae`, built `2026-10-19T16:28:41.719Z`.
 - `deploy.py` wrote only application offset 0x10000 and reported
@@ -53,7 +144,7 @@
   Conformance skips are inherited exclusions, not exercised coverage; some
   reasons (notably scheduled posts) predate features now covered by Rust tests.
 - Final S3 HTTP/2 image: 2,610,656 bytes, within the 4 MiB application partition.
-  `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`
+  `C:/tmp/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`
   SHA-256: `6734c3f54e143edf634e1c32178191de896a7511ed8f3a839660c96a794d64a0`.
   Source fingerprint: `82d7a9e71167`.
 - Identified COM11 by USB serial and esptool MAC `ac:a7:04:2c:29:9c`.
@@ -99,7 +190,7 @@
   Restricted MkDocs to `<2` for the existing YAML configuration; Python 3.13
   supplied published dependency wheels (no source builds).
 - `HTTP2=1 make firmware` produced a 2,605,504-byte app, within the 4 MiB
-  partition. Image: `C:/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
+  partition. Image: `C:/tmp/mmr/xtensa-esp32s3-espidf/release/mastomini-esp32.bin`.
   SHA-256: `3d74e9919e328b3dfadaa05a60195662804444be2e9b3b40af9b792e99d3ca38`.
   Dirty revision `6a3f7f5142d9`, built `2026-10-17T14:58:29.878Z`, fingerprint
   `01baa9e312ba`. Shared status HTML is now included in the Rust/Python
@@ -524,6 +615,52 @@ A backup from Step 4B restores the board exactly as it was:
   --chip esp32s3 --port "$PORT" --after watchdog_reset   write_flash 0x0 ../.local/board-backups/<file>.bin
 ```
 
+## Moving the household to another board (procedure C)
+
+Proven 2026-10-21, ESP32-S3 → ESP32-P4 (spec/board_migration_plan.md, path
+2, with lessons learned and wanted features). The household's name,
+certificate, tokens and passwords move, so phones, apps and bots stay
+signed in. The source board is never written: **rollback is powering it
+back on** (and powering the target off). Downtime is under a minute; the
+risk is writes to the source between the export and unplugging it.
+
+Before the day:
+
+1. **Both boards on the same schema-capable firmware.** The target must run
+   firmware with the import fix (2026-10-21; older firmware answers 413 to
+   any real household's archive). The source only needs `admin/export`.
+2. **Rehearse on the target with throwaway data**: seed it
+   (`loadtests/seed_board.py`), `make move-export` it, erase, `make
+   move-import` it back, check a seeded token still works. It costs ten
+   minutes and found the 413 before the household was at stake.
+3. **Owner sessions**: the export signs in as the owner, and a ninth
+   session evicts their least recently used device. Revoke a stale device
+   first if `/me/devices` shows 8.
+
+On the day (target on USB; the source only needs the network):
+
+```bash
+make firmware-takeover BOARD=p4        # the household name + certs/, HTTP/2
+# Flash the app and erase store, media, coredump (keep nvs: the target's
+# Wi-Fi), leaving the chip in its bootloader: it must not claim
+# mastomini.local while the source still serves. MAC and layout checked first.
+#   esptool ... -b 921600 --after no_reset write_flash 0x10000 <app>
+#   esptool ... --after no_reset erase_region 0x410000 0x800000 (and media, coredump)
+make move-export ADDRESS=<source ip>   # .local/move/: archive, passphrase, token
+#   esptool --chip esp32p4 -p COM19 --after hard_reset run     # boot the target
+make move-import ADDRESS=<target ip> FILE=../.local/move/<file>.mmexport
+```
+
+Then, at once: **unplug the source.** Verify: `make probe-board` and
+`make board-version` at the target's address; `/api/mastomini/v1/status`
+shows the source's `accounts`/`statuses`; `/.well-known/ops/health`; a
+member's device still loads its timeline. Update *Known boards*, and move
+the DHCP reservation (or `make reissue-cert` for the new IP: the certificate
+names the old one). The archive in `.local/move/` holds password and token
+hashes: keep it private, and keep it at all while it is the only copy of the
+household from before the move (it is, once the source board is reused;
+full flash backups over USB are too slow to be a routine step).
+
 ## Completion report
 
 Report, without credentials or household content:
@@ -541,9 +678,9 @@ Report, without credentials or household content:
 
 | MAC | Installed | Previous contents | Backup | Last known address |
 |---|---|---|---|---|
-| `ac:a7:04:2c:29:9c` (ESP32-S3 N16R8, COM11 on the build PC). Provisioned 2026-09-23 through the setup page with the owner from the repo-root `.env`; Wi-Fi saved on the board | 2026-09-23, procedure B | MicroPython 1.19.1 with an LED demo `main.py`; no household data | `.local/board-backups/aca7042c299c-20260923-081302-full16MB.bin`, sha256 `d73b6dd5…6fb15` | 192.168.1.161 (DHCP; may change) |
+| `ac:a7:04:2c:29:9c` (ESP32-S3 N16R8, COM11 on the build PC). **Retired 2026-10-21** (household moved to the P4, procedure C) and **repurposed the same day for party** (`microcontroller/party`, `party.local`, full erase, no backup at the owner's request). Not a mastomini board any more. Provisioned 2026-09-23 through the setup page with the owner from the repo-root `.env`; Wi-Fi saved on the board | 2026-09-23, procedure B | MicroPython 1.19.1 with an LED demo `main.py`; no household data | `.local/board-backups/aca7042c299c-20260923-081302-full16MB.bin`, sha256 `d73b6dd5…6fb15` | 192.168.1.161 (DHCP; may change) |
 
-| `e8:f6:0a:e3:6f:a2` (Meshnology/Waveshare ESP32-P4-WIFI6, ESP32-C6 Wi-Fi over SDIO, CH343 COM19). Test board, `MASTOMINI_BOARD=p4`, `mastomini-p4.local`, certificates in `certs-p4/`; seeded with `loadtests/seed_board.py` | 2026-10-09, manual esptool install (owner declined the backup) | nanacoin P4 test deploy (owner: not needed; nanacoin can be redeployed) | none | 192.168.1.164 (DHCP) |
+| `e8:f6:0a:e3:6f:a2` (Meshnology/Waveshare ESP32-P4-WIFI6, ESP32-C6 Wi-Fi over SDIO, CH343 COM19). **Household board since 2026-10-21** (procedure C): `make firmware-takeover`/`deploy-takeover`, `mastomini.local`, certificates in `certs/`. Before that a test board (`mastomini-p4.local`, `certs-p4/`, seeded) | 2026-10-09, manual esptool install (owner declined the backup) | nanacoin P4 test deploy (owner: not needed; nanacoin can be redeployed) | none | 192.168.1.164 (DHCP) |
 
 Add a row after every first install. Update the address when it changes.
 
@@ -552,7 +689,7 @@ Add a row after every first install. Update the address when it changes.
 - **2026-10-09 — mastomini on the ESP32-P4 test board.** New board profile
   (`MASTOMINI_BOARD=p4`: `scripts/board.py`, `boards/p4/sdkconfig.defaults`,
   `components/p4-network`, feature `board-p4`, target
-  `riscv32imafc-esp-espidf`, build dir `C:/mmr-p4`). Identified read-only on
+  `riscv32imafc-esp-espidf`, build dir `C:/tmp/mmr-p4`). Identified read-only on
   COM19 (ESP32-P4 v1.3, MAC above, nanacoin layout). The owner cancelled the
   32 MiB backup ("a test deploy, it isn't gold"), so instead of
   `install.py` the same steps ran directly with esptool: erase nvs, store,

@@ -43,8 +43,15 @@ mod net;
 #[path = "esp32/nvs_store.rs"]
 #[allow(unsafe_code)] // Fallible NVS enumeration and statistics SDK boundary.
 mod nvs_store;
+#[path = "esp32/public_client.rs"]
+#[allow(unsafe_code)] // One kept connection shared behind a Mutex (Send).
+mod public_client;
 #[path = "esp32/scheduler_client.rs"]
 mod scheduler_client;
+#[cfg(feature = "board-p4")]
+#[path = "esp32/sd_card.rs"]
+#[allow(unsafe_code)] // The TF card mount (components/p4-network/sd_card.c).
+mod sd_card;
 // Both boards must enforce the same constrained household CA, including the
 // mbedTLS extension handling already used by the bots HTTP client.
 #[path = "../../../mastomini_bots/src/bin/esp32/household_tls.rs"]
@@ -212,7 +219,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         host: ctx.host().to_string(),
         ..Config::default()
     };
-    let service = Service::open(store, config).map_err(|e| format!("store: {e}"))?;
+    #[allow(unused_mut)]
+    let mut service = Service::open(store, config).map_err(|e| format!("store: {e}"))?;
+    // Images from other servers live on the TF card, when there is one.
+    #[cfg(feature = "board-p4")]
+    service.set_media(sd_card::mount());
     log::info!(
         "store: provisioned={} accounts={} statuses={} repairs={}",
         service.state.provisioned,
@@ -229,7 +240,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut household = Household::new(Arc::clone(&shared), Arc::clone(&ctx), now_ms)
         .on_storage_failed(|| {
             mastomini::incidents::record(mastomini::incidents::Kind::StorageFailed, 0)
-        });
+        })
+        .with_fetch(Box::new(public_client::PublicClient::default()));
     if let Some(setup) = &setup {
         household = household.with_setup(Box::new(SharedSetup(Arc::clone(setup))));
     }

@@ -16,7 +16,9 @@
 
 ## Non-goals
 
-- Federation, ActivityPub, WebFinger for remote lookups, remote accounts.
+- Federation and ActivityPub. Members may follow public accounts on other
+  servers read by RSS ([remote_follow_rss.md](remote_follow_rss.md)); those
+  accounts are data, never sign in, and are never sent anything.
 - Post media attachments (images/video/audio) in v1.
 - Open registration. Only the household admin creates accounts.
 - Web Push delivery in v1 (needs internet access, VAPID and payload encryption).

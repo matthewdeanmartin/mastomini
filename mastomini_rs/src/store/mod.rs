@@ -42,10 +42,13 @@ pub enum Ns {
     Social = 14,
     /// Bounded durable notification history.
     Notif = 15,
+    /// Accounts on other servers read by RSS, their cached posts, the
+    /// settings for that, and device credentials (domain/remote.rs).
+    Remote = 16,
 }
 
 impl Ns {
-    pub const ALL: [Ns; 16] = [
+    pub const ALL: [Ns; 17] = [
         Ns::Cfg,
         Ns::Acct,
         Ns::App,
@@ -62,6 +65,7 @@ impl Ns {
         Ns::Filt,
         Ns::Social,
         Ns::Notif,
+        Ns::Remote,
     ];
 
     /// NVS namespace name (at most 15 characters).
@@ -83,6 +87,7 @@ impl Ns {
             Ns::Filt => "mm_filt",
             Ns::Social => "mm_social",
             Ns::Notif => "mm_notif",
+            Ns::Remote => "mm_remote",
         }
     }
 

@@ -25,7 +25,8 @@ const IDS: [&str; 7] = [
     "trader_6",
 ];
 
-#[cfg(test)]
+// Against a real mastomini and NanaCoin: `--features e2e` (make test).
+#[cfg(all(test, feature = "e2e"))]
 #[path = "enrollment_tests.rs"]
 mod tests;
 const STRATEGIES: [&str; 7] = [

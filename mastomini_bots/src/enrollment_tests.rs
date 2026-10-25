@@ -107,6 +107,7 @@ impl HttpClient for Servers {
         if let Some((failure, status)) = &self.fail_before {
             if path == failure {
                 return Ok(HttpResponse {
+                    headers: Vec::new(),
                     status: *status,
                     body: br#"{"error":"nana-secret owner-secret"}"#.to_vec(),
                 });
@@ -123,6 +124,7 @@ impl HttpClient for Servers {
             let (status, size) =
                 nanacoin::api::handle(&mut self.nc, req.method, path, auth, &req.body, &mut buffer);
             HttpResponse {
+                headers: Vec::new(),
                 status,
                 body: buffer[..size].into(),
             }
@@ -138,6 +140,7 @@ impl HttpClient for Servers {
                 Some(NOW),
             );
             HttpResponse {
+                headers: Vec::new(),
                 status: response.status,
                 body: response.body,
             }

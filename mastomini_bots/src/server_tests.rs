@@ -9,6 +9,29 @@ use crate::{
 use miniframework::{desktop::DesktopPlatform, http, site::Scratch, Site};
 use std::sync::{Arc, Mutex};
 
+#[test]
+fn calibrated_heap_accepts_observed_idle_but_keeps_pressure_and_failures_visible() {
+    let config = server::config("bots.local", "test");
+    let mut info = miniframework::sys::SysInfo::default();
+    info.heap.internal_total = 320 * 1024;
+    for (free, largest, failures, heap, block, allocations) in [
+        (14183, 6912, 0, "ok", "ok", "ok"),
+        (6000, 3072, 1, "warn", "warn", "warn"),
+        (3072, 3072, 1, "fail", "warn", "warn"),
+    ] {
+        info.heap.internal_free = free;
+        info.heap.internal_largest = largest;
+        let checks = miniframework::ops::builtin(&info, &config.ops, failures);
+        for (id, expected) in [
+            ("heap.internal", heap),
+            ("heap.largest", block),
+            ("heap.allocations", allocations),
+        ] {
+            assert_eq!(checks.iter().find(|c| c.id == id).unwrap().status, expected);
+        }
+    }
+}
+
 fn site() -> Site<Bots<MemStore>> {
     let service = Service::open(MemStore::default(), crate::bots::all()).unwrap();
     Site::new(

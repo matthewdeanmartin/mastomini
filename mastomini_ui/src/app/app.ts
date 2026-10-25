@@ -21,6 +21,7 @@ import { Auth } from './api/auth';
         <a routerLink="/trust" routerLinkActive="on">Trust</a>
         @if (auth.me()) {
           <a routerLink="/me" routerLinkActive="on">My account</a>
+          <a routerLink="/remote" routerLinkActive="on">Accounts elsewhere</a>
           <a routerLink="/scheduled" routerLinkActive="on">Scheduled posts</a>
           @if (auth.isAdmin()) {
             <a routerLink="/admin/members" routerLinkActive="on">Members</a>

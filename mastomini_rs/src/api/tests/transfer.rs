@@ -94,6 +94,35 @@ fn a_household_moves_to_an_empty_board_with_sessions_and_messages_intact() {
     );
 }
 
+/// A real household's export is far over the 4 KiB general body limit; the
+/// API once refused any such restore with 413 (found moving the S3 to the P4).
+#[test]
+fn a_household_larger_than_the_general_body_limit_restores() {
+    let (mut old, alice, _, _) = household();
+    let long = "a household post long enough to fill the store quickly ".repeat(2);
+    for n in 0..60 {
+        let r = old.post_form(
+            "/api/v1/statuses",
+            Some(&alice),
+            &[("status", &format!("{n} {long}"))],
+        );
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    }
+    let archive = export(&mut old, &alice, "alicepw", PASSPHRASE).body;
+    assert!(
+        archive.len() > 2 * crate::http::BODY_LIMIT,
+        "{} bytes",
+        archive.len()
+    );
+    let mut new = Server::new();
+    let r = import(&mut new, &archive, PASSPHRASE);
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    assert_eq!(
+        r.json_body()["statuses"].as_u64().unwrap() as usize,
+        old.svc.state.statuses.len()
+    );
+}
+
 #[test]
 fn only_the_owner_with_their_password_and_a_real_passphrase_can_export() {
     let (mut s, alice, bob, _) = household();

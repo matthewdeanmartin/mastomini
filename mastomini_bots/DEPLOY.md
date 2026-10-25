@@ -1,5 +1,76 @@
 # Deploy mastomini-bots to its ESP32-S3 board
 
+### 2026-10-24 (later): SRE sprint 4 and housemetrics default deployed
+
+- Same identification: only COM15, MAC `ac:a7:04:2c:38:b8`. `make check`
+  passed (196 Rust, 19 UI, 12 e2e). Procedure A, app only. Boot: 16 bots,
+  admin password set, ready at 192.168.1.162. Probe passed. Health ok, 81 KiB
+  free, 0 failed allocations. No settings touched. Logs `.local/sre-sprint4-*.log`.
+
+### 2026-10-24: SRE sprints 1-3 deployed
+
+- Owner said the board was attached and asked for the next sprint. Read-only
+  enumeration found exactly one Espressif board: COM15, MAC `ac:a7:04:2c:38:b8`
+  (the known bots board). Procedure A (`make deploy PORT=COM15`) wrote only the
+  application at `0x10000` (2,539,424 / 4,194,304 bytes), and the hash was verified.
+- `make check` passed first: 190 Rust tests, 19 UI tests, 12 e2e (3 live-model skipped).
+- Boot: power-on reset, 16 bots, admin password set, ready at `192.168.1.162`.
+  `make probe-board ADDRESS=mastomini-bots.local` passed. Health ok, 82 KiB
+  internal free (lowest 78), largest block 31 KiB, 0 failed allocations.
+- No admin login, settings, bot runs or checks. Logs:
+  `.local/sre-sprint3-{flash,boot,probe}.log`. HEAD `a46f779` with a dirty tree.
+
+### 2026-10-19: SRE Sprint 1/2 controls deployed
+
+- Owner explicitly requested flashing the attached bots board. Native USB
+  enumeration and serial reads confirmed COM15, MAC `ac:a7:04:2c:38:b8`,
+  ESP32-S3 with 8 MB PSRAM and the exact existing bots partition layout.
+  First-install dry run refused as expected; Procedure A was used.
+- Flashed the frozen `.local/sprint2-20261019/mastomini-bots-esp32.bin`:
+  2,214,768 / 4,194,304 bytes; SHA-256
+  `668b5cde8f71f7754d9004299e177c6b39b704f335bec7e3c2dea6de64997888`.
+  Only the application at `0x10000` was written; esptool verified its hash.
+  No settings, keys, store, bootloader or partition-table writes were made.
+- Boot capture passed: 15 bots, admin password set, ready at `192.168.1.162`.
+  Strict IP and hostname probes passed, including exact certificate and CA
+  matches. Firmware reports dirty commit `a46f779b7d92`, built
+  `2026-10-20T00:19:18.566Z` (October 19 locally).
+- All 10 bundled Angular assets matched the local build byte-for-byte over
+  verified HTTPS. SRE history/action admin endpoints return 401 without a
+  session; the bots board's own action catalog is empty as intended.
+- Post-probe health: **ok**, 54 KiB internal free, 8 KiB minimum, largest
+  block 31 KiB, zero failed allocations, RSSI -64 dBm, no Wi-Fi disconnects,
+  synchronized clock. This is startup verification, not a loaded soak test.
+- No admin login, settings changes, bot activation, manual bot job or ops
+  action was performed. Existing enable flags were preserved, not inspected
+  through an admin session. No other board was flashed.
+- Logs: `.local/sre-sprint2-{identify,flash,boot,probe-ip,probe-host,verify}.log`.
+  Runtime baseline receipt: `.local/sprint2-20261019/mastomini-bots.receipt.json`,
+  `mastomini-bots.local=1792455558566`. The collector and Mastomini images
+  remain pending deployment; see miniframework `spec/OPS.md`.
+
+### 2026-10-19: SRE digest bot and ops health deployed
+
+- Procedure A on native COM15, composite MAC `ac:a7:04:2c:38:b8`; the dry run
+  showed the bots layout (`store` 0x410000/0x100000, `coredump`
+  0x510000/0x10000) and refused install. Revision `a46f779`, clean tree.
+  `make check` passed (e2e 12 passed, 3 skipped live-model tests).
+- No pre-upgrade backup, at the owner's request (slow, flaky USB hub). The hub
+  repeatedly dropped boards: the bots board first appeared only as an
+  unidentified CH343 (COM14, never opened), then on native COM15.
+- Application 2,123,024 / 4,194,304 bytes; hash verified; only 0x10000 written.
+- `make boot-log` could not open COM15: the hub dropped the board right after
+  the flash and power-cycled it (health later showed `Last reset: power on`).
+  No serial boot log; bot count and the admin line were taken from the probe.
+- Probe passed at `192.168.1.162`: build commit matches the tree, admin
+  password set, clock set. The new `sre` bot starts off, as every new bot
+  does; it was not configured, run or turned on (the bot list needs the
+  admin's session, so this was not checked live). Health all `ok`: 48 KiB internal free (lowest 18 KiB),
+  largest block 27 KiB, −65 dBm.
+- Logs: `.local/ops-deploy-check.log`, `.local/ops-deploy-firmware.log`,
+  `.local/ops-deploy-flash.log`, `.local/ops-postdeploy-boot.log` (failed
+  restart), `.local/ops-postdeploy-probe.log`.
+
 ### 2026-10-19: Mars instructions and reply mentions deployed
 
 - Procedure A upgraded only COM15, MAC `ac:a7:04:2c:38:b8`. Initially Windows
@@ -11,7 +82,7 @@
   dependency lockfile offline for the current local framework. Updated the
   enrollment-capacity test to use `MAX_ACCOUNTS` instead of assuming the old
   household size. Existing certificate checks passed without replacement.
-- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+- Image: `C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
   2,098,528 / 4,194,304 bytes. SHA-256:
   `b6ab3a6bacaaeab091f0d3e48819ce02530f6045fe1f7919a29cb773981e33ee`.
   Esptool verified the written hash. Only the application at `0x10000` was
@@ -38,7 +109,7 @@
 - `make check` passed: formatting, Clippy, script checks, 137 Rust tests,
   15 UI tests and 12 end-to-end tests (three live-model skips). Fixed module
   ordering and two boolean assertions caught by these gates before building.
-- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+- Image: `C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
   2,090,352 / 4,194,304 bytes. SHA-256:
   `3a5bbf6774f8d761ca594c55020da1b4214163c534fd43ef50515b76870c9eb4`.
   Esptool verified the written hash. Firmware identifies dirty revision
@@ -67,7 +138,7 @@
   three live-model skips, formatting, Clippy and script checks. Existing
   certificate checks passed. The status source now lives in `shared/status.html`
   outside generated MkDocs output; final build and gates ran after that move.
-- Image: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+- Image: `C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
   2,047,424 bytes of the 4,194,304-byte app partition. Verified flash SHA-256:
   `c6272cd761ef21503f7e5a903c52bbce22b445d77d95adfc276ea8245a54153e`.
   Firmware: dirty revision `6a3f7f5142d9`, built `2026-10-17T14:48:02.872Z`.
@@ -94,7 +165,7 @@
   and three skipped live-model tests; formatting, Clippy and script checks
   passed. Existing certificate checks passed without replacing the CA or
   certificate. The ESP32 build included the bundled admin app.
-- Application: `C:/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
+- Application: `C:/tmp/mmb/xtensa-esp32s3-espidf/release/mastomini-bots-esp32.bin`,
   2,033,648 bytes, flashed only at `0x10000`; esptool verified its hash.
   SHA-256: `debd442852e8cb688257af18d5345976b66a87a176d1820f2d269526a5729cde`.
   Firmware reports dirty revision `10863d6f648c`, built
@@ -330,7 +401,7 @@ source scripts/esp-python.sh
 ```
 
 This builds the firmware and the admin app **once** (the first build takes 10–20
-minutes; target directory `C:/mmb`, separate from mastomini's `C:/mmr`). Then
+minutes; target directory `C:/tmp/mmb`, separate from mastomini's `C:/tmp/mmr`). Then
 it reads the board's MAC and partition table **without writing anything**, and
 prints them.
 

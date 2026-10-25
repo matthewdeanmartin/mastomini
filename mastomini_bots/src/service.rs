@@ -31,6 +31,8 @@ const MINUTE_MS: u64 = 60_000;
 const RETRY_MINUTES: [u64; 4] = [1, 5, 15, 30];
 const MAX_EVENTS: usize = 200;
 const MAX_TOKEN: usize = 256;
+/// One bot record is one NVS string (see `bin/esp32/nvs_kv.rs`).
+pub const RECORD_MAX: usize = 4000;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BotConfig {
@@ -169,6 +171,8 @@ pub struct OpenRouterUpdate {
 }
 
 pub struct Service<S: KvStore> {
+    pub sre_action: Option<Box<crate::bots::sre_actions::Pending>>,
+    pub sre_mention_at: u64,
     pub public_origin: String,
     pub profiles: Vec<crate::profiles::Publication>,
     pub profile_runtime: Vec<crate::profiles::Runtime>,
@@ -194,6 +198,7 @@ fn key(id: &str) -> String {
 
 impl<S: KvStore> Service<S> {
     pub fn open(store: S, bots: Vec<Box<dyn Bot>>) -> Result<Service<S>, String> {
+        let sre_action = crate::bots::sre_actions::load(&store)?;
         let infos: Vec<BotInfo> = bots.iter().map(|b| b.info()).collect();
         let mut records = Vec::new();
         for info in &infos {
@@ -242,6 +247,8 @@ impl<S: KvStore> Service<S> {
         let scheduler = crate::scheduler::load(&store)?;
         let monitor = crate::status::Monitor::load(&store);
         Ok(Service {
+            sre_action,
+            sre_mention_at: 0,
             public_origin,
             profiles,
             profile_runtime: vec![crate::profiles::Runtime::default(); bots.len()],
@@ -287,9 +294,47 @@ impl<S: KvStore> Service<S> {
         self.infos.iter().position(|i| i.id == id)
     }
 
+    /// Saves bot `i`'s record. One record is one NVS string: when it would
+    /// not fit, the bot forgets its largest memory values (never settings or
+    /// keys) until it does, and says so in the activity log. A failed write
+    /// is logged too, not dropped.
     fn save(&mut self, i: usize) -> Result<(), String> {
-        let text = serde_json::to_string(&self.records[i]).map_err(|e| e.to_string())?;
-        self.store.put(&key(self.infos[i].id), &text)
+        let id = self.infos[i].id;
+        let mut text = serde_json::to_string(&self.records[i]).map_err(|e| e.to_string())?;
+        let mut forgot = Vec::new();
+        while text.len() > RECORD_MAX {
+            let largest = self.records[i]
+                .state
+                .iter()
+                .max_by_key(|(_, v)| v.len())
+                .map(|(k, _)| k.clone());
+            let Some(k) = largest else { break };
+            self.records[i].state.remove(&k);
+            forgot.push(k);
+            text = serde_json::to_string(&self.records[i]).map_err(|e| e.to_string())?;
+        }
+        if !forgot.is_empty() {
+            self.activity.add(
+                None,
+                Some(id),
+                "error",
+                format!(
+                    "Bot memory was over {RECORD_MAX} bytes; forgot {}",
+                    forgot.join(", ")
+                ),
+            );
+        }
+        let result = self.store.put(&key(id), &text);
+        if let Err(e) = &result {
+            self.activity
+                .add(None, Some(id), "error", format!("Could not save: {e}"));
+        }
+        result
+    }
+
+    /// Bytes bot `i`'s saved record takes, of [`RECORD_MAX`].
+    pub fn record_bytes(&self, i: usize) -> usize {
+        serde_json::to_string(&self.records[i]).map_or(0, |t| t.len())
     }
 
     /// Bot `i`'s settings with their values.
@@ -472,6 +517,19 @@ impl<S: KvStore> Service<S> {
             };
             if let Some((kind, slot_ms)) = next {
                 self.runtime[i].running = true;
+                let mut state = self.records[i].state.clone();
+                if self.infos[i].id == "sre" {
+                    let disabled = self.records.iter().filter(|r| !r.config.enabled).count();
+                    let failing = self
+                        .records
+                        .iter()
+                        .filter(|r| r.last_run.as_ref().is_some_and(|r| !r.ok))
+                        .count();
+                    state.insert(
+                        "admin_local".into(),
+                        format!("Bots: {disabled} off, {failing} last runs failed"),
+                    );
+                }
                 jobs.push(Job {
                     index: i,
                     id: self.infos[i].id,
@@ -480,7 +538,7 @@ impl<S: KvStore> Service<S> {
                     instance: self.records[i].config.instance.clone(),
                     token: self.records[i].config.token.clone(),
                     settings: self.settings(i),
-                    state: self.records[i].state.clone(),
+                    state,
                     openrouter: Some(self.openrouter.clone()).filter(|c| !c.key.is_empty()),
                     uses_llm: self.infos[i].uses_llm,
                 });
@@ -716,6 +774,30 @@ mod tests {
     // 07:30 EDT on Saturday 26 September 2026.
     fn slot() -> u64 {
         utc(2026, 9, 26, 11, 30)
+    }
+
+    #[test]
+    fn an_oversized_record_forgets_its_largest_memory_and_says_so() {
+        let mut s = service();
+        let i = s.index("sre").unwrap();
+        s.records[i].state.insert("small".into(), "kept".into());
+        s.records[i]
+            .state
+            .insert("big".into(), "x".repeat(RECORD_MAX));
+        s.save(i).unwrap();
+        let saved = s
+            .store
+            .map
+            .values()
+            .find(|v| v.contains("\"small\""))
+            .unwrap();
+        assert!(saved.len() <= RECORD_MAX);
+        assert!(!s.records[i].state.contains_key("big"));
+        assert_eq!(s.records[i].state["small"], "kept");
+        let event = s.activity.recent(0, 1)[0];
+        assert_eq!(event.level, "error");
+        assert!(event.text.contains("forgot big"), "{}", event.text);
+        assert!(s.record_bytes(i) <= RECORD_MAX);
     }
 
     fn service() -> Service<MemStore> {

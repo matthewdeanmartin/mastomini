@@ -17,6 +17,8 @@ mod moderation;
 mod notification_groups;
 mod oauth;
 mod pages;
+pub mod remote;
+pub mod remote_search;
 mod scheduled;
 mod setup;
 mod social;
@@ -288,12 +290,7 @@ fn dispatch<S: Store>(
             ))
         }
     };
-    let limit = if req.path == "/api/v1/accounts/update_credentials" {
-        http::UPLOAD_BODY_LIMIT
-    } else {
-        http::BODY_LIMIT
-    };
-    if req.body.len() > limit {
+    if req.body.len() > http::body_limit(&req.path) {
         return Response::error(413, "Request body is too large");
     }
     // Public probes must not run maintenance, parse authentication, or scan state.
@@ -365,12 +362,18 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         (_, ["api", "v1", "accounts", _, "collections" | "in_collections"])
         | (_, ["api", "v1", "collections", ..]) => return collections::route(c, method, seg),
         (_, ["api", "v1", "accounts", _, "lists"]) => return lists::route(c, method, seg),
-        (_, ["api", "v1", "accounts", ..]) => return accounts::route(c, method, seg),
+        (_, ["api", "v1", "accounts", ..]) => {
+            return remote::accounts_route(c, method, &seg[3..])
+                .or_else(|| accounts::route(c, method, seg))
+        }
         (_, ["api", "v1" | "v2", "admin", ..])
         | (_, ["api", "v1", "blocks" | "mutes" | "reports"]) => {
             return moderation::route(c, method, seg)
         }
-        (_, ["api", "v1", "statuses", ..]) => return statuses::route(c, method, seg),
+        (_, ["api", "v1", "statuses", ..]) => {
+            return remote::statuses_route(c, method, &seg[3..])
+                .or_else(|| statuses::route(c, method, seg))
+        }
         (_, ["api", "v1", "conversations", ..]) => return conversations::route(c, method, seg),
         (_, ["api", "v1", "polls", ..]) => return statuses::polls(c, method, seg),
         (_, ["api", "v1" | "v2", "filters", ..]) => return filters::route(c, method, seg),
@@ -380,12 +383,14 @@ fn route<S: Store>(c: &mut Call<'_, S>, seg: &[&str]) -> Option<Reply> {
         (_, ["api", "mastomini", "v1", ..]) => {
             return diag::route(c, method, &seg[3..])
                 .or_else(|| household::route(c, method, &seg[3..]))
+                .or_else(|| remote::route(c, method, &seg[3..]))
         }
         (
             "GET",
             ["avatars", "original", "missing.png"] | ["headers", "original", "missing.png"],
         ) => Ok(Response::new(200, "image/png", MISSING_PNG).public_cache(c.req, 604800)),
         ("GET", ["avatars", file]) => Ok(avatar(c, file)),
+        ("GET", ["media", "remote", file]) => Ok(remote::media(c, file)),
         // The `url`s of posts, profiles and hashtags: plain pages.
         (_, ["web", "signin" | "signout"] | ["tags", _]) => return pages::route(c, method, seg),
         (_, [first, ..]) if first.starts_with('@') || first.starts_with("%40") => {

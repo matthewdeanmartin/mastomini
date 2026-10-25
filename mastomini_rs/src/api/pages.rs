@@ -218,6 +218,7 @@ fn entries_html<S: Store>(c: &Call<'_, S>, viewer: Option<u8>, entries: &[(u64, 
                 let s = c.svc.visible(viewer, target)?;
                 Some(post_html(c, viewer, s, booster, false))
             }
+            Entry::Remote(_) => None,
         })
         .collect()
 }

@@ -18,8 +18,8 @@ fi
 # Git Bash support for the official Windows ESP-IDF installation (same as nanacoin).
 if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
   # esp-idf-sys rejects long Windows output paths; keep the target dir short
-  # (C:/mmb: separate from mastomini's C:/mmr, so both can build at once).
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/mmb}"
+  # (C:/tmp/mmb: separate from mastomini's C:/tmp/mmr, so both can build at once).
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/tmp/mmb}"
   export IDF_PATH="C:/Espressif/frameworks/esp-idf-v5.5.3"
   export IDF_TOOLS_PATH="C:/Espressif"
   export ESP_IDF_TOOLS_INSTALL_DIR=fromenv

@@ -47,7 +47,7 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    fn range(self) -> (std::ops::Bound<u64>, std::ops::Bound<u64>) {
+    pub(crate) fn range(self) -> (std::ops::Bound<u64>, std::ops::Bound<u64>) {
         use std::ops::Bound::*;
         (
             self.lower.map_or(Unbounded, Excluded),
@@ -96,13 +96,18 @@ pub fn paginate<'a, T>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Entry {
     Status(u64),
-    Boost { id: u64, target: u64 },
+    Boost {
+        id: u64,
+        target: u64,
+    },
+    /// A post from an account on another server (remote.rs), home only.
+    Remote(u64),
 }
 
 impl Entry {
     pub fn status_id(self) -> u64 {
         match self {
-            Entry::Status(id) => id,
+            Entry::Status(id) | Entry::Remote(id) => id,
             Entry::Boost { target, .. } => target,
         }
     }
@@ -220,13 +225,13 @@ impl<S: Store> Service<S> {
         };
         let booster = match entry {
             Entry::Boost { id, .. } => self.state.boosts.get(&id).map_or(0, |b| bit(b.booster)),
-            Entry::Status(_) => 0,
+            Entry::Status(_) | Entry::Remote(_) => 0,
         };
         (bit(s.rec.author) | booster | s.mentions) & hidden != 0
     }
 
     fn in_home_masked(&self, viewer: u8, entry: Entry, hidden: AccountMask) -> bool {
-        if !self.entry_visible(viewer, entry) {
+        if matches!(entry, Entry::Remote(_)) || !self.entry_visible(viewer, entry) {
             return false;
         }
         // Your own posts may mention someone you muted; keep them.
@@ -236,7 +241,7 @@ impl<S: Store> Service<S> {
                 .statuses
                 .get(&id)
                 .is_some_and(|s| s.rec.author == viewer),
-            Entry::Boost { .. } => false,
+            Entry::Boost { .. } | Entry::Remote(_) => false,
         };
         if !own && self.hidden_entry(entry, hidden & !bit(viewer)) {
             return false;
@@ -275,6 +280,7 @@ impl<S: Store> Service<S> {
                         .get(&(viewer, boost.booster))
                         .is_some_and(|f| f.reblogs)
             }
+            Entry::Remote(_) => false,
         }
     }
 
@@ -286,14 +292,21 @@ impl<S: Store> Service<S> {
             let who = match e {
                 Entry::Status(id) => self.state.statuses.get(&id).map(|s| s.rec.author),
                 Entry::Boost { id, .. } => self.state.boosts.get(&id).map(|b| b.booster),
+                Entry::Remote(_) => None,
             };
             who.is_some_and(|s| bit(s) & exclusive != 0)
         };
+        // Posts of followed accounts on other servers are woven in by id.
         paginate(q, |bounds, asc| {
-            Box::new(
-                self.entries(bounds, asc)
-                    .filter(move |(_, e)| self.in_home_masked(viewer, *e, hidden) && !off_home(*e)),
-            )
+            let local: Scan<'_, Entry> =
+                Box::new(self.entries(bounds, asc).filter(move |(_, e)| {
+                    self.in_home_masked(viewer, *e, hidden) && !off_home(*e)
+                }));
+            Box::new(Merge {
+                a: local.peekable(),
+                b: self.remote_entries(viewer, bounds, asc).peekable(),
+                ascending: asc,
+            })
         })
     }
 
@@ -386,6 +399,7 @@ impl<S: Store> Service<S> {
                             .is_some_and(|b| b.booster == author)
                         && self.visible(viewer, target).is_some()
                 }
+                Entry::Remote(_) => false,
             }
         };
         paginate(q, |bounds, asc| {

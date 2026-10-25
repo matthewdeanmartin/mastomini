@@ -15,16 +15,68 @@ pub struct HttpRequest {
     pub body: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HttpResponse {
     pub status: u16,
     pub body: Vec<u8>,
+    /// The response headers in [`KEPT_HEADERS`], names in lowercase. The
+    /// rest are dropped as they arrive: a board keeps what it uses.
+    pub headers: Vec<(String, String)>,
+}
+
+/// Response headers a transport keeps: caching validators (conditional
+/// GETs), the type, and how long to wait when a server is busy.
+pub const KEPT_HEADERS: [&str; 5] = [
+    "etag",
+    "last-modified",
+    "content-type",
+    "retry-after",
+    "cache-control",
+];
+/// At most this many kept headers, each at most this long.
+pub const KEPT_HEADER_MAX: (usize, usize) = (16, 256);
+
+impl HttpResponse {
+    /// A response without headers (tests, simple transports).
+    pub fn new(status: u16, body: Vec<u8>) -> HttpResponse {
+        HttpResponse {
+            status,
+            body,
+            headers: Vec::new(),
+        }
+    }
+
+    /// A kept header, by name in any case.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Keep `name: value` if it is one of [`KEPT_HEADERS`].
+    pub fn keep_header(&mut self, name: &str, value: &str) {
+        let name = name.trim().to_ascii_lowercase();
+        if KEPT_HEADERS.contains(&name.as_str()) && self.headers.len() < KEPT_HEADER_MAX.0 {
+            let value: String = value.trim().chars().take(KEPT_HEADER_MAX.1).collect();
+            self.headers.push((name, value));
+        }
+    }
 }
 
 /// Sends one request. Implementations keep connections (and TLS sessions)
 /// open between calls to the same server, and resolve names once.
 pub trait HttpClient: Send {
     fn send(&mut self, req: &HttpRequest) -> Result<HttpResponse, String>;
+    /// Production transports enforce this while reading, before JSON parsing.
+    /// The fallback keeps small test/custom clients source-compatible.
+    fn send_bounded(&mut self, req: &HttpRequest, limit: usize) -> Result<HttpResponse, String> {
+        let response = self.send(req)?;
+        if response.body.len() > limit {
+            return Err("HTTP response exceeds request limit".into());
+        }
+        Ok(response)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +152,8 @@ pub enum Visibility {
     Public,
     Unlisted,
     Private,
+    /// Only the mentioned accounts (a DM).
+    Direct,
 }
 
 impl Visibility {
@@ -108,6 +162,7 @@ impl Visibility {
             Visibility::Public => "public",
             Visibility::Unlisted => "unlisted",
             Visibility::Private => "private",
+            Visibility::Direct => "direct",
         }
     }
 }
@@ -117,6 +172,7 @@ impl Visibility {
         match text {
             "unlisted" => Visibility::Unlisted,
             "private" => Visibility::Private,
+            "direct" => Visibility::Direct,
             _ => Visibility::Public,
         }
     }
@@ -446,6 +502,7 @@ pub mod testing {
     impl Scripted {
         pub fn answer(&self, status: u16, body: Value) {
             self.answers.lock().unwrap().push(Ok(HttpResponse {
+                headers: Vec::new(),
                 status,
                 body: serde_json::to_vec(&body).unwrap(),
             }));

@@ -1155,6 +1155,8 @@ Reply scan, sample, map or help.",
                 .cursor,
             51
         );
+        // mastomini's own length rules: `--features e2e` (make test).
+        #[cfg(feature = "e2e")]
         for post in posted_bodies(&http) {
             mastomini::text::validate_status(
                 post["status"].as_str().unwrap(),

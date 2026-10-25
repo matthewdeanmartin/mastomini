@@ -25,6 +25,30 @@ fn household() -> (Server, String, String, String) {
 }
 
 #[test]
+fn digest_requires_admin_read_and_returns_counts_without_private_details() {
+    let (mut s, _alice, bob, carol) = household();
+    let path = "/api/mastomini/v1/admin/digest";
+    assert_eq!(s.get(path, None).status, 401);
+    assert_eq!(s.get(path, Some(&bob)).status, 403);
+    let plain = s.login("alice", "alicepw", "read");
+    assert_eq!(s.get(path, Some(&plain)).status, 403);
+    let target = me(&mut s, &carol);
+    s.send_json(
+        "POST",
+        "/api/v1/reports",
+        Some(&bob),
+        &json!({"account_id":target, "comment":"private report"}),
+    );
+    let readonly = s.login("alice", "alicepw", "admin:read");
+    let r = s.get(path, Some(&readonly));
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json_body()["unresolved_reports"], 1);
+    assert_eq!(r.json_body()["pending_approvals"], 0);
+    assert!(!String::from_utf8_lossy(&r.body).contains("private report"));
+    assert_eq!(r.header("Cache-Control"), Some("no-store"));
+}
+
+#[test]
 fn admin_pages_follow_filtered_links_and_enforce_role_and_scopes() {
     let (mut s, alice, bob, carol) = household();
     let target = me(&mut s, &carol);

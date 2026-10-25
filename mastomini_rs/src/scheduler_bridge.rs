@@ -100,6 +100,47 @@ pub fn desktop_agent(ca: &[u8]) -> Result<ureq::Agent, String> {
         .build())
 }
 
+/// Searches on public servers from the desktop build (server::Fetch).
+#[cfg(feature = "desktop")]
+pub struct DesktopFetch(pub ureq::Agent);
+
+#[cfg(feature = "desktop")]
+impl crate::server::Fetch for DesktopFetch {
+    fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Result<(u16, Vec<u8>), String> {
+        use std::io::Read;
+        let mut call = self
+            .0
+            .request(method, url)
+            .set("User-Agent", "mastomini (household server)");
+        for (name, value) in headers {
+            call = call.set(name, value);
+        }
+        let result = if method == "GET" {
+            call.call()
+        } else {
+            call.send_bytes(body)
+        };
+        let response = match result {
+            Ok(r) | Err(ureq::Error::Status(_, r)) => r,
+            Err(e) => return Err(e.kind().to_string()),
+        };
+        let status = response.status();
+        let mut body = Vec::new();
+        response
+            .into_reader()
+            .take(crate::api::remote::LOOKUP_LIMIT as u64)
+            .read_to_end(&mut body)
+            .map_err(|e| e.to_string())?;
+        Ok((status, body))
+    }
+}
+
 #[cfg(feature = "desktop")]
 pub fn desktop_send(agent: &ureq::Agent, job: &Handoff) -> Result<u16, String> {
     match agent

@@ -74,3 +74,12 @@ CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D3_4BIT_BUS_SLOT_1=17
 CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54
 # Hosted calls the enabled/high EN state "active high": reset pulses it low.
 CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
+
+# The TF card for images from other servers (components/p4-network/sd_card.c):
+# long file names (image files are named by 13-character ids).
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=64
+# Searches on public servers (src/bin/esp32/public_client.rs) verify against
+# the public CA bundle.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y

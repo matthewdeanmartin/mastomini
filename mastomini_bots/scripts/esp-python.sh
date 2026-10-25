@@ -6,7 +6,7 @@ if [[ -z "${MASTOMINI_ESPTOOL_PYTHON:-}" && -f /c/Espressif/python_env/idf5.5_py
   esp_python=/c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
 fi
 if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
-  # The bots' own target directory: never mastomini's C:/mmr.
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/mmb}"
+  # The bots' own target directory: never mastomini's C:/tmp/mmr.
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-C:/tmp/mmb}"
 fi
 images="${CARGO_TARGET_DIR:-target}/xtensa-esp32s3-espidf/release"

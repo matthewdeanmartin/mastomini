@@ -46,6 +46,11 @@ pub enum Kind {
     /// Password verifier and matching sealed DM key share one commit point.
     AccountWithKey = 32,
     Notification = 33,
+    RemoteSettings = 34,
+    RemoteAccount = 35,
+    RemoteItem = 36,
+    Device = 37,
+    SearchAuth = 38,
 }
 
 pub fn encode<T: Serialize>(kind: Kind, value: &T) -> Result<Vec<u8>, StoreError> {

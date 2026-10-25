@@ -15,6 +15,8 @@
 //!   and `@user@host` mentions
 //! - `MASTOMINI_PASSWORD_ROUNDS` (default: the firmware value)
 //! - `MASTOMINI_TRACE_TIMING`: log every request's timing (else only slow ones)
+//! - `MASTOMINI_MEDIA_DIR`: where images from other servers are kept (the
+//!   board's SD card). Unset: no images.
 
 use mastomini::api::Ctx;
 use mastomini::domain::{Config, Service};
@@ -91,7 +93,13 @@ fn main() -> Result<(), BoxError> {
     }
 
     let store = FileStore::open(&path).map_err(|e| format!("store {path}: {e}"))?;
-    let svc = Service::open(store, config).map_err(|e| format!("store {path}: {e}"))?;
+    let mut svc = Service::open(store, config).map_err(|e| format!("store {path}: {e}"))?;
+    let media_dir = env("MASTOMINI_MEDIA_DIR", "");
+    if !media_dir.is_empty() {
+        let media = mastomini::media::MediaDir::open(Path::new(&media_dir))
+            .map_err(|e| format!("media {media_dir}: {e}"))?;
+        svc.set_media(Some(media));
+    }
     println!(
         "mastomini {} on {base_url} (store: {path})",
         env!("CARGO_PKG_VERSION")
@@ -116,9 +124,13 @@ fn main() -> Result<(), BoxError> {
         });
     }
     let site_config = server::config(&ctx, "desktop");
-    let household = Household::new(shared, Arc::clone(&ctx), now_ms).on_storage_failed(|| {
-        eprintln!("storage failure, serving read-only until restart");
-    });
+    let household = Household::new(shared, Arc::clone(&ctx), now_ms)
+        .on_storage_failed(|| {
+            eprintln!("storage failure, serving read-only until restart");
+        })
+        .with_fetch(Box::new(mastomini::scheduler_bridge::DesktopFetch(
+            mastomini::scheduler_bridge::desktop_agent(&[])?,
+        )));
     let site = Site::new(site_config, household, DesktopPlatform);
     serve_https(&site, &format!("{bind}:{port}"), https.as_ref(), || {})?;
     Ok(())

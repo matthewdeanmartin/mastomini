@@ -20,6 +20,12 @@ export const routes: Routes = [
     title: 'Bots — mastomini-bots',
   },
   {
+    path: 'sre',
+    canActivate: [signedIn],
+    loadComponent: () => import('./pages/sre').then((m) => m.SrePage),
+    title: 'SRE — mastomini-bots',
+  },
+  {
     path: 'activity',
     canActivate: [signedIn],
     loadComponent: () => import('./pages/activity').then((m) => m.ActivityPage),
